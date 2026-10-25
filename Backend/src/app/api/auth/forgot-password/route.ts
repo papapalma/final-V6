@@ -141,12 +141,21 @@ const otpResponse = await createOTPVerification({
   verificationId: otpResponse.verificationId,
   });
 
-  // Send email
+  // Resolve tenant for user if available
+  const { data: userTenant } = await supabaseAdmin
+    .from('users_tenants')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
 
-const emailResult = await sendPasswordResetOtpEmail({
-  tenantId: user.id, // Use user ID as tenant identifier for platform-level operation
-  recipientEmail: user.email,
-  otpCode: otpResponse.code,
+  const tenantId = userTenant?.tenant_id || '194876de-a68c-4d33-8f80-c0978e5d44b3';
+
+  // Send email
+  const emailResult = await sendPasswordResetOtpEmail({
+    tenantId,
+    recipientEmail: user.email,
+    otpCode: otpResponse.code,
   });
 
   if (!emailResult.success) {

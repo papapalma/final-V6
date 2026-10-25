@@ -413,7 +413,21 @@ export default function AttendancePage() {
                         return (
                           <button key={r.id} onClick={() => openModal(r, t)} className="text-left rounded-lg border p-2 hover:shadow-sm hover:border-primary/50 transition-all bg-card">
                             <div className="flex items-center gap-2">
-                              {t?.photo_path ? <img src={getFileUrl(t.photo_path)} alt="" className="size-8 rounded-full object-cover" /> : <div className="size-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold">{t?.first_name?.[0]}{t?.last_name?.[0]}</div>}
+                              {t?.photo_path ? (
+                                <img
+                                  src={getFileUrl(t.photo_path)}
+                                  alt=""
+                                  className="size-8 rounded-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const next = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                    if (next) next.style.display = 'flex';
+                                  }}
+                                />
+                              ) : null}
+                              <div className={`size-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold ${t?.photo_path ? 'hidden' : ''}`}>
+                                {t?.first_name?.[0]}{t?.last_name?.[0]}
+                              </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium truncate">{t?.first_name} {t?.last_name}</p>
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATUS_BADGE[r.status] ?? ''}`}>{r.status}</span>
@@ -437,7 +451,21 @@ export default function AttendancePage() {
                         return (
                           <button key={r.id} onClick={() => openModal(r, t)} className="text-left rounded-lg border p-2 hover:shadow-sm hover:border-primary/50 transition-all bg-card">
                             <div className="flex items-center gap-2">
-                              {t?.photo_path ? <img src={getFileUrl(t.photo_path)} alt="" className="size-8 rounded-full object-cover" /> : <div className="size-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold">{t?.first_name?.[0]}{t?.last_name?.[0]}</div>}
+                              {t?.photo_path ? (
+                                <img
+                                  src={getFileUrl(t.photo_path)}
+                                  alt=""
+                                  className="size-8 rounded-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const next = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                    if (next) next.style.display = 'flex';
+                                  }}
+                                />
+                              ) : null}
+                              <div className={`size-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold ${t?.photo_path ? 'hidden' : ''}`}>
+                                {t?.first_name?.[0]}{t?.last_name?.[0]}
+                              </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium truncate">{t?.first_name} {t?.last_name}</p>
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${STATUS_BADGE[r.status] ?? ''}`}>{r.status}</span>

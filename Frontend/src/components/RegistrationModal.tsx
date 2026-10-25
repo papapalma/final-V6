@@ -106,12 +106,14 @@ export default function RegistrationModal({
     setLoadingRequirements(true);
     setRequirementsError(null);
     try {
-      const response = await fetch(`/api/requirement-definitions?public=true&tenant_id=${tenantId}&is_active=true&limit=100`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch requirements');
-      }
-      const result = await response.json();
-      setRequirementDefinitions(result.data || []);
+      const response = await api.get('/requirement-definitions', {
+        public: 'true',
+        tenant_id: tenantId,
+        is_active: 'true',
+        limit: 100
+      });
+      const data = response?.data || response;
+      setRequirementDefinitions(Array.isArray(data) ? data : []);
     } catch (error: any) {
       setRequirementsError(error.message || 'Failed to load requirements');
       setRequirementDefinitions([]);
@@ -449,8 +451,10 @@ export default function RegistrationModal({
       );
 
       if (!allRequiredFilesPresent) {
-        errs.email = 'Please upload all required documents to proceed';
+        setRequirementsError('Please upload all required documents to proceed');
+        return false;
       }
+      setRequirementsError(null);
     }
 
     if (s === 7) {
@@ -502,25 +506,35 @@ export default function RegistrationModal({
           formDataToSend.append('file', file);
           formDataToSend.append('requirement_type', key);
           
-          const response = await api.post(`/trainees/${traineeId}/requirements`, formDataToSend);
+          await api.post(`/trainees/${traineeId}/requirements`, formDataToSend);
           logger.info('Uploaded requirement file:', { traineeId, fileName: file.name });
         } catch (error) {
           logger.error('Failed to upload requirement file:', { error });
-          toast.warning('Could not upload file, but registration was saved');
+          toast.warning(`Could not upload ${file.name}, but registration was saved`);
         }
       }
     }
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(6)) return;
+    if (!validateStep(6)) {
+      setStep(6);
+      toast.error('Please upload all required documents before submitting');
+      return;
+    }
     setSubmitting(true);
     try {
       const { confirm_password, ...data } = form;
-      await registrationService.submitRegistration({
+      const regResponse = await registrationService.submitRegistration({
         ...data,
         disability: data.disability?.trim() || null,
       });
+
+      const traineeId = (regResponse as any)?.id || (regResponse as any)?.data?.id;
+      if (traineeId && Object.keys(requirementFiles).length > 0) {
+        await uploadRequirementFiles(traineeId);
+      }
+
       setSubmitted(true);
       
       // Call the parent callback to transition to login modal
@@ -896,8 +910,8 @@ export default function RegistrationModal({
                   )}
                 </div>
 
-                {errors.email && step === 6 && (
-                  <p className="text-xs text-destructive">{errors.email}</p>
+                {(requirementsError || (errors.email && step === 6)) && (
+                  <p className="text-xs text-destructive">{requirementsError || errors.email}</p>
                 )}
               </div>
             </>

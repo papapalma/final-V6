@@ -4,10 +4,11 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
-import { CheckCircle2, XCircle, Clock, Mail, Phone, MapPin, BookOpen, User, Calendar } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Mail, Phone, MapPin, BookOpen, User, Calendar, FileText, Download } from 'lucide-react';
 import { PendingRegistration } from '../services/registrationService';
 import { toast } from 'sonner';
 import registrationService from '../services/registrationService';
+import api from '../services/api';
 
 interface TraineePreviewModalProps {
   open: boolean;
@@ -29,6 +30,29 @@ export default function TraineePreviewModal({
   const [actionLoading, setActionLoading] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [requirementFiles, setRequirementFiles] = useState<any[]>([]);
+  const [loadingReqs, setLoadingReqs] = useState(false);
+
+  React.useEffect(() => {
+    if (trainee?.id && open) {
+      loadRequirements(trainee.id);
+    } else {
+      setRequirementFiles([]);
+    }
+  }, [trainee?.id, open]);
+
+  const loadRequirements = async (traineeId: string) => {
+    try {
+      setLoadingReqs(true);
+      const res = await api.get(`/trainees/${traineeId}/requirements`);
+      const files = res?.files || res?.data?.files || res?.data || [];
+      setRequirementFiles(Array.isArray(files) ? files : []);
+    } catch {
+      setRequirementFiles([]);
+    } finally {
+      setLoadingReqs(false);
+    }
+  };
 
   if (!trainee) return null;
 
@@ -103,11 +127,12 @@ export default function TraineePreviewModal({
         <Separator className="my-2" />
 
         <Tabs defaultValue="personal" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 text-xs sm:text-sm mb-4">
+          <TabsList className="grid w-full grid-cols-5 text-xs sm:text-sm mb-4">
             <TabsTrigger value="personal" className="truncate">Personal</TabsTrigger>
             <TabsTrigger value="address" className="truncate">Address</TabsTrigger>
             <TabsTrigger value="education" className="truncate">Education</TabsTrigger>
             <TabsTrigger value="program" className="truncate">Program</TabsTrigger>
+            <TabsTrigger value="requirements" className="truncate">Requirements</TabsTrigger>
           </TabsList>
 
           <TabsContent value="personal" className="space-y-3 mt-4">
@@ -172,6 +197,41 @@ export default function TraineePreviewModal({
               <InfoRow label="Registration Date" value={new Date(trainee.created_at).toLocaleDateString()} />
               {trainee.reviewed_at && (
                 <InfoRow label="Reviewed Date" value={new Date(trainee.reviewed_at).toLocaleDateString()} />
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="requirements" className="space-y-3 mt-4">
+            <div className="bg-muted/50 rounded-lg p-3 sm:p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="size-4 text-muted-foreground" />
+                <p className="text-xs sm:text-sm font-semibold">Submitted Requirement Documents</p>
+              </div>
+              {loadingReqs ? (
+                <p className="text-xs text-muted-foreground py-2">Loading documents...</p>
+              ) : requirementFiles.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">No documents uploaded</p>
+              ) : (
+                <div className="space-y-2">
+                  {requirementFiles.map((rf: any) => (
+                    <div key={rf.id} className="flex items-center justify-between p-2.5 rounded-md bg-background border text-xs">
+                      <div className="min-w-0 flex-1 mr-2">
+                        <p className="font-medium truncate">{rf.file_name || rf.requirement_type}</p>
+                        <p className="text-[11px] text-muted-foreground capitalize">
+                          {rf.requirement_type?.replace(/_/g, ' ')}
+                        </p>
+                      </div>
+                      <a
+                        href={`/api/trainees/${trainee.id}/requirements/${rf.requirement_type}/download?file_id=${rf.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline font-medium text-xs shrink-0"
+                      >
+                        <Download className="size-3" /> Download
+                      </a>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </TabsContent>

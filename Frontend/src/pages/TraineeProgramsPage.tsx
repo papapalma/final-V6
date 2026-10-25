@@ -167,11 +167,6 @@ export default function TraineeProgramsPage() {
     }
   };
 
-  const getCachebustedImageUrl = (baseUrl: string) => {
-    if (!baseUrl) return baseUrl;
-    const separator = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${separator}t=${Date.now()}`;
-  };
 
   const handleApply = async () => {
     if (!selectedProgram) return;
@@ -359,7 +354,7 @@ export default function TraineeProgramsPage() {
                           image_path: program.image_path,
                           icon: IconComponent,
                         }}
-                        photoUrl={photoUrl ? getCachebustedImageUrl(photoUrl) : undefined}
+                        photoUrl={photoUrl || undefined}
                         isEnrolled={enrollment?.isEnrolled || false}
                         enrollmentStatus={enrollment?.enrollmentStatus || 'accepting'}
                         enrollmentDate={enrollment?.enrollmentDate}

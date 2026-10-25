@@ -24,6 +24,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import sharp from 'sharp';
 import { requireTenantContext } from '@/middleware/tenantContext';
 import { UPLOAD_BASE_DIR, validateTenantId } from '@/lib/fileStorage';
 import { withErrorHandler } from '@/middleware/errorHandler';
@@ -135,43 +137,137 @@ if (!absolutePath.startsWith(UPLOAD_BASE_DIR)) { logger.warn('[FILE_ACCESS] Path
         timestamp: new Date().toISOString(), });
       return forbiddenResponse('Invalid file path'); }
 
-    // ── 7. Read file ──────────────────────────────────────────────────────────
+    // ── 7. Read file with thumbnail auto-generation & missing-image fallback ───
+    let fileBuffer: Buffer | null = null;
+    let servedFilename = path.basename(absolutePath);
+    let servedMimeType = getMimeType(servedFilename);
+    let isFallback = false;
 
-let fileBuffer: Buffer;
-    try { fileBuffer = await fs.readFile(absolutePath); } catch (err: unknown) { if ((err as NodeJS.ErrnoException).code === 'ENOENT') { // Log access attempt even for missing files (Req 15.7)
-        logger.info('[FILE_ACCESS] File not found', { userId: userId || 'public',
-          userTenantId: userTenantId || 'none',
-          filePath,
-          isPublicAsset,
-          timestamp: new Date().toISOString(), });
-        return notFoundResponse('File not found'); }
-      throw err; }
+    try {
+      fileBuffer = await fs.readFile(absolutePath);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        // Case A: Missing thumbnail (.webp in a thumbnails directory)
+        const isThumbnailRequest = rest.includes('thumbnails') && servedFilename.endsWith('.webp');
+        if (isThumbnailRequest) {
+          const thumbnailDir = path.dirname(absolutePath);
+          const masterDir = path.dirname(thumbnailDir);
+          const baseName = path.parse(servedFilename).name;
+          const candidateExts = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif'];
+
+          let masterBuffer: Buffer | null = null;
+          for (const ext of candidateExts) {
+            const masterPath = path.join(/*turbopackIgnore: true*/ masterDir, `${baseName}${ext}`);
+            try {
+              masterBuffer = await fs.readFile(/*turbopackIgnore: true*/ masterPath);
+              break;
+            } catch {
+              // Try next extension
+            }
+          }
+
+          if (masterBuffer) {
+            try {
+              await fs.mkdir(thumbnailDir, { recursive: true });
+              fileBuffer = await sharp(masterBuffer)
+                .rotate()
+                .resize(200, 200, { fit: 'cover', position: 'centre' })
+                .webp({ quality: 80 })
+                .toBuffer();
+              // Save generated thumbnail to disk for future requests
+              await fs.writeFile(absolutePath, fileBuffer);
+              logger.info('[FILE_ACCESS] Generated missing thumbnail on-the-fly', {
+                filePath,
+                baseName,
+              });
+            } catch (sharpErr) {
+              logger.warn('[FILE_ACCESS] Failed to generate thumbnail from master, serving master', { error: sharpErr });
+              fileBuffer = masterBuffer;
+            }
+          }
+        }
+
+        // Case B: Master image or thumbnail still not found
+        if (!fileBuffer) {
+          const isImageRequest = rest[0] === 'images' || servedMimeType.startsWith('image/');
+          if (isImageRequest && isPublicAsset) {
+            const defaultThumbnailPath = path.join(UPLOAD_BASE_DIR, 'images', 'defaults', 'blank-thumbnail.webp');
+            try {
+              fileBuffer = await fs.readFile(defaultThumbnailPath);
+              servedFilename = 'blank-thumbnail.webp';
+              servedMimeType = 'image/webp';
+              isFallback = true;
+              logger.warn('[FILE_ACCESS] File not found on disk, serving default placeholder', {
+                filePath,
+                isPublicAsset,
+              });
+            } catch {
+              // Default thumbnail missing too, proceed to notFoundResponse
+            }
+          }
+        }
+
+        if (!fileBuffer) {
+          logger.info('[FILE_ACCESS] File not found', {
+            userId: userId || 'public',
+            userTenantId: userTenantId || 'none',
+            filePath,
+            isPublicAsset,
+            timestamp: new Date().toISOString(),
+          });
+          return notFoundResponse('File not found');
+        }
+      } else {
+        throw err;
+      }
+    }
 
     // ── 7b. Task 10.4: Decrypt selfie images if encrypted ────────────────────
     // Selfies stored in /uploads/{tenant_id}/images/attendance/ are encrypted
     // if FILE_ENCRYPTION_ENABLED is true. Decrypt them on retrieval.
     const isAttendanceSelfie = rest[0] === 'images' && rest[1] === 'attendance';
-    if (isAttendanceSelfie) {
+    if (isAttendanceSelfie && !isFallback) {
       fileBuffer = maybeDecrypt(fileBuffer);
     }
 
     // ── 8. Log successful access (Req 15.7) ───────────────────────────────────
-    logger.info('[FILE_ACCESS] File served', { userId: userId || 'public',
+    logger.info('[FILE_ACCESS] File served', {
+      userId: userId || 'public',
       tenantId: userTenantId || fileTenantId,
       filePath,
       isPublicAsset,
+      isFallback,
       sizeBytes: fileBuffer.length,
-      timestamp: new Date().toISOString(), });
+      timestamp: new Date().toISOString(),
+    });
 
-    // ── 9. Return file with appropriate headers ───────────────────────────────
+    // ── 9. Return file with appropriate headers (ETag, 304, caching) ─────────
+    const etag = `W/"${fileBuffer.length}-${crypto.createHash('md5').update(fileBuffer).digest('hex').substring(0, 16)}"`;
+    const clientEtag = request.headers.get('if-none-match');
+    const cacheControl = isFallback
+      ? 'no-cache'
+      : 'public, max-age=86400, stale-while-revalidate=604800';
 
-const filename = path.basename(absolutePath);
-    const mimeType = getMimeType(filename);
+    if (clientEtag && clientEtag === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          'ETag': etag,
+          'Cache-Control': cacheControl,
+        },
+      });
+    }
 
-    return new NextResponse(new Uint8Array(fileBuffer), { status: 200,
-      headers: { 'Content-Type':        mimeType,
-        'Content-Length':      String(fileBuffer.length),
-        'Content-Disposition': `inline; filename="${filename}"`,
-        // Cache for 1 hour — files are immutable once written
-        'Cache-Control':       'private, max-age=3600', }, }); }
+    return new NextResponse(new Uint8Array(fileBuffer), {
+      status: 200,
+      headers: {
+        'Content-Type': servedMimeType,
+        'Content-Length': String(fileBuffer.length),
+        'Content-Disposition': `inline; filename="${servedFilename}"`,
+        'Cache-Control': cacheControl,
+        'ETag': etag,
+        ...(isFallback ? { 'X-Fallback-Image': 'true' } : {}),
+      },
+    });
+  }
 );

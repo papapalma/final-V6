@@ -97,13 +97,6 @@ export default function ProgramsPage() {
     contextRefetch();
   }, [location.pathname, isAuthReady, contextRefetch]);
 
-  // Add cache-buster to image URLs at render time (not fetch time)
-  // This ensures images bypass browser cache when the component re-renders
-  const getCachebustedImageUrl = (baseUrl: string) => {
-    if (!baseUrl) return baseUrl;
-    const separator = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${separator}t=${Date.now()}`;
-  };
 
   // Refetch when filters change
   useEffect(() => {
@@ -297,7 +290,14 @@ export default function ProgramsPage() {
                           <div className="flex items-center gap-3">
                             {program.photoUrl ? (
                               <div className="size-10 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 shrink-0">
-                                <img src={getCachebustedImageUrl(program.photoUrl)} alt={program.name} className="size-full object-cover" />
+                                <img
+                                  src={program.photoUrl}
+                                  alt={program.name}
+                                  className="size-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
                               </div>
                             ) : (
                               <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
@@ -402,7 +402,14 @@ export default function ProgramsPage() {
                 >
                   {program.photoUrl && (
                     <div className="w-full h-32 sm:h-40 md:h-48 rounded-t-xl overflow-hidden border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
-                      <img src={getCachebustedImageUrl(program.photoUrl)} alt={program.name} className="w-full h-full object-cover" />
+                      <img
+                        src={program.photoUrl}
+                        alt={program.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
                     </div>
                   )}
                   <CardHeader className="pb-2 sm:pb-3">

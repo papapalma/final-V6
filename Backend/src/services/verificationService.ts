@@ -240,10 +240,11 @@ export class VerificationService {
     method: 'email' | 'whatsapp' | 'both';
     firstName?: string;
     registrationContext?: boolean;
+    tenantId?: string;
   }): Promise<{ success: boolean; message: string; code?: string }> {
     try {
-      const { email, phone, method, firstName = 'User', registrationContext = false } = params;
-      console.log('[VERIFICATION_SERVICE] sendVerificationCode called with:', { email, phone, method, firstName, registrationContext });
+      const { email, phone, method, firstName = 'User', registrationContext = false, tenantId: requestedTenantId } = params;
+      console.log('[VERIFICATION_SERVICE] sendVerificationCode called with:', { email, phone, method, firstName, registrationContext, tenantId: requestedTenantId });
 
       // STEP 1: Check if account type is allowed (trainee only)
       // Skip check if registrationContext=true (during manual registration)
@@ -310,8 +311,8 @@ export class VerificationService {
 <p>If you did not request this code, please ignore this email.</p>
           `.trim();
 
-          // Need tenantId - for now use a default one. This should ideally be passed in params
-          const tenantId = process.env.NEXT_PUBLIC_BMDC_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+          // Resolve tenantId: requested, or active tenant from DB, or environment fallback
+          let tenantId: string = requestedTenantId || process.env.NEXT_PUBLIC_BMDC_TENANT_ID || '194876de-a68c-4d33-8f80-c0978e5d44b3';
 
           await sendEmail({
             tenantId,
@@ -335,7 +336,7 @@ export class VerificationService {
       // Send via WhatsApp
       if ((method === 'whatsapp' || method === 'both') && phone) {
         try {
-          const tenantId = process.env.NEXT_PUBLIC_BMDC_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+          let tenantId = requestedTenantId || process.env.NEXT_PUBLIC_BMDC_TENANT_ID || '194876de-a68c-4d33-8f80-c0978e5d44b3';
 
           await sendWhatsApp({
             tenantId,

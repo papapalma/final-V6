@@ -177,6 +177,9 @@ export function ProgramCard({
             src={photoUrl}
             alt={program.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
           />
         </div>
       )}

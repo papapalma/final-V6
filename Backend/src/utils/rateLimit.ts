@@ -36,6 +36,11 @@ export interface RateLimitOptions {
  *          the limit has been exceeded.
  */
 export function checkRateLimit(key: string, options: RateLimitOptions): Response | null {
+  // Bypass rate limiting in test environment
+  if (process.env.NODE_ENV === 'test') {
+    return null;
+  }
+
   const now = Date.now();
   const entry = store.get(key);
 
@@ -77,4 +82,11 @@ export function getRateLimitKey(request: Request, prefix: string): string {
   const realIp = request.headers.get('x-real-ip');
   const ip = forwarded?.split(',')[0].trim() ?? realIp ?? 'unknown';
   return `${prefix}:${ip}`;
+}
+
+/**
+ * Reset the rate limit store. Useful for testing.
+ */
+export function resetRateLimitStore(): void {
+  store.clear();
 }

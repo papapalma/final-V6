@@ -598,13 +598,19 @@ export default function TraineesPage() {
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar>
-                            {trainee.photoUrl ? (
-                              <img src={trainee.photoUrl} alt={trainee.name} className="size-full object-cover" />
-                            ) : (
-                              <AvatarFallback className="bg-primary/10 text-primary">
-                                {trainee.name.split(' ').map((n: string) => n[0]).join('')}
-                              </AvatarFallback>
+                            {trainee.photoUrl && (
+                              <img
+                                src={trainee.photoUrl}
+                                alt={trainee.name}
+                                className="size-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
                             )}
+                            <AvatarFallback className="bg-primary/10 text-primary">
+                              {trainee.name.split(' ').map((n: string) => n[0]).join('')}
+                            </AvatarFallback>
                           </Avatar>
                           <div>
                             <p>{trainee.name}</p>
@@ -733,13 +739,19 @@ export default function TraineesPage() {
                 <CardContent className="p-6">
                   <div className="mb-4 flex items-start gap-3">
                     <Avatar className="size-12">
-                      {trainee.photoUrl ? (
-                        <img src={trainee.photoUrl} alt={trainee.name} className="size-full object-cover" />
-                      ) : (
-                        <AvatarFallback className="bg-primary/10 text-primary">
-                          {trainee.name.split(' ').map((n: string) => n[0]).join('')}
-                        </AvatarFallback>
+                      {trainee.photoUrl && (
+                        <img
+                          src={trainee.photoUrl}
+                          alt={trainee.name}
+                          className="size-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
                       )}
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        {trainee.name.split(' ').map((n: string) => n[0]).join('')}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <h3 className="truncate">{trainee.name}</h3>
@@ -893,13 +905,19 @@ export default function TraineesPage() {
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
                   <Avatar className="size-12">
-                    {trainee.photoUrl ? (
-                      <img src={trainee.photoUrl} alt={trainee.name} className="size-full object-cover" />
-                    ) : (
-                      <AvatarFallback className="bg-primary/10 text-primary">
-                        {trainee.name.split(' ').map((n: string) => n[0]).join('')}
-                      </AvatarFallback>
+                    {trainee.photoUrl && (
+                      <img
+                        src={trainee.photoUrl}
+                        alt={trainee.name}
+                        className="size-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
                     )}
+                    <AvatarFallback className="bg-primary/10 text-primary">
+                      {trainee.name.split(' ').map((n: string) => n[0]).join('')}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">

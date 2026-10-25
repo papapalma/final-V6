@@ -23,7 +23,8 @@ export interface PendingRegistration {
   disability?: string | null;
   employment_status: string;
   program_id: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'active' | 'inactive';
+  registration_status?: 'pending' | 'approved' | 'rejected' | 'completed';
   rejection_reason?: string | null;
   reviewed_by?: string | null;
   reviewed_at?: string | null;

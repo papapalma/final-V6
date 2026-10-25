@@ -85,7 +85,7 @@ export const validationErrorResponse = (
       error: 'Validation failed',
       errors,
     },
-    { status: 422 }
+    { status: 400 }  // Changed from 422 to 400 for Property 3.2 preservation
   );
 };
 

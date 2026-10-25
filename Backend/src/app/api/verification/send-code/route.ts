@@ -11,6 +11,7 @@ const sendCodeSchema = z.object({
   method: z.enum(['email', 'whatsapp', 'both']),
   firstName: z.string().optional(),
   registrationContext: z.boolean().optional(),
+  tenantId: z.string().optional(),
 });
 
 // POST /api/verification/send-code - Send verification code
@@ -20,8 +21,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const body = await request.json();
   console.log('[VERIFICATION] Request body:', JSON.stringify(body, null, 2));
   
-  const { email, phone, method, firstName, registrationContext } = sendCodeSchema.parse(body);
-  console.log('[VERIFICATION] Parsed params:', { email, phone, method, firstName, registrationContext });
+  const { email, phone, method, firstName, registrationContext, tenantId } = sendCodeSchema.parse(body);
+  console.log('[VERIFICATION] Parsed params:', { email, phone, method, firstName, registrationContext, tenantId });
 
   // Rate limiting by email (public endpoint - prevent enumeration/spam)
   const normalizedEmail = email.toLowerCase();
@@ -37,6 +38,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     method,
     firstName,
     registrationContext: registrationContext || false,
+    tenantId,
   });
 
   console.log('[VERIFICATION] Result:', JSON.stringify(result, null, 2));

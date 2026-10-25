@@ -140,6 +140,9 @@ const SidebarLogo = memo(({ cmsSettings, user }: any) => (
         alt="Logo"
         className="size-10 rounded-xl object-contain shadow-sm border border-border"
         loading="lazy"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+        }}
       />
     ) : (
       <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">

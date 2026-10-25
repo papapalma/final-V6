@@ -25,7 +25,8 @@ const config = {
     '/node_modules/',
     '/.next/',
     '\\.perf\\.test\\.ts$',
-    '\\.properties\\.test\\.ts$',
+    // Note: .properties.test.ts files are now included to support property-based testing
+    // Removed: '\\.properties\\.test\\.ts$',
     'dataRetention',
     'enrollmentRequirementService',
     'cms-error-handling',

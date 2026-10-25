@@ -26,9 +26,11 @@ import {
   Check,
   X,
   Loader,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import registrationService from '../services/registrationService';
+import api from '../services/api';
 import { PaginationWrapper } from '../components/PaginationWrapper';
 import logger from '../utils/logger';
 
@@ -71,6 +73,8 @@ export default function RegistrationsPage() {
   const [total, setTotal] = useState(0);
 
   const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null);
+  const [requirementFiles, setRequirementFiles] = useState<any[]>([]);
+  const [loadingReqs, setLoadingReqs] = useState(false);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
@@ -81,13 +85,34 @@ export default function RegistrationsPage() {
     fetchRegistrations();
   }, [statusFilter, page, pageSize]);
 
+  useEffect(() => {
+    if (selectedRegistration) {
+      loadTraineeRequirements(selectedRegistration.id);
+    } else {
+      setRequirementFiles([]);
+    }
+  }, [selectedRegistration]);
+
+  const loadTraineeRequirements = async (traineeId: string) => {
+    try {
+      setLoadingReqs(true);
+      const res = await api.get(`/trainees/${traineeId}/requirements`);
+      const files = res?.files || res?.data?.files || res?.data || [];
+      setRequirementFiles(Array.isArray(files) ? files : []);
+    } catch (err) {
+      logger.error('Failed to load trainee requirements', { err });
+      setRequirementFiles([]);
+    } finally {
+      setLoadingReqs(false);
+    }
+  };
+
   const fetchRegistrations = async () => {
     try {
       setLoading(true);
-      const filters: any = {};
-      if (statusFilter !== 'all') {
-        filters.status = statusFilter;
-      }
+      const filters: any = {
+        status: statusFilter,
+      };
       if (searchQuery) {
         filters.search = searchQuery;
       }
@@ -417,6 +442,37 @@ export default function RegistrationsPage() {
                   <p className="font-medium text-sm">
                     {new Date(selectedRegistration.created_at).toLocaleString()}
                   </p>
+                </div>
+
+                {/* Submitted Requirements */}
+                <div className="pt-2 border-t">
+                  <p className="text-xs sm:text-sm font-semibold mb-2">Submitted Requirements</p>
+                  {loadingReqs ? (
+                    <p className="text-xs text-muted-foreground">Loading requirements...</p>
+                  ) : requirementFiles.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No documents uploaded</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {requirementFiles.map((rf: any) => (
+                        <div key={rf.id} className="flex items-center justify-between p-2 rounded-md bg-muted/40 border text-xs">
+                          <div className="min-w-0 flex-1 mr-2">
+                            <p className="font-medium truncate">{rf.file_name || rf.requirement_type}</p>
+                            <p className="text-[11px] text-muted-foreground capitalize">
+                              {rf.requirement_type?.replace(/_/g, ' ')}
+                            </p>
+                          </div>
+                          <a
+                            href={`/api/trainees/${selectedRegistration.id}/requirements/${rf.requirement_type}/download?file_id=${rf.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-primary hover:underline font-medium text-xs shrink-0"
+                          >
+                            <Download className="size-3" /> Download
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Rejection Reason (if applicable) */}

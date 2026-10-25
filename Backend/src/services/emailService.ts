@@ -509,7 +509,7 @@ const fallbackName = process.env.SMTP_SENDER_NAME ?? 'Training Management System
  * Persist a notification attempt record to the audit_logs table (Req 12.9).
  */
 async function logEmailAttempt(params: {
-  tenantId: string;
+  tenantId?: string | null;
   recipientEmail: string;
   templateName: string;
   deliveryStatus: 'sent' | 'failed' | 'queued';
@@ -519,8 +519,20 @@ async function logEmailAttempt(params: {
   usedFallbackConfig: boolean;
 }): Promise<void> {
   try {
+    let validTenantId: string | null = null;
+    if (params.tenantId && typeof params.tenantId === 'string') {
+      const { data: tenant } = await supabaseAdmin
+        .from('tenants')
+        .select('id')
+        .eq('id', params.tenantId)
+        .maybeSingle();
+      if (tenant) {
+        validTenantId = tenant.id;
+      }
+    }
+
     await supabaseAdmin.from('audit_logs').insert({
-      tenant_id: params.tenantId,
+      tenant_id: validTenantId,
       action: 'email_notification',
       entity_type: 'notification',
       entity_id: null,

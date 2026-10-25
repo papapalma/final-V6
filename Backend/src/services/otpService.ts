@@ -178,7 +178,7 @@ export async function createOTPVerification(params: CreateOTPParams): Promise<OT
     trainee_id: params.traineeId || null,
     attempt_count: 0,
     max_attempts: maxAttempts,
-  });
+  }).select();
 
   if (error) {
     logger.error('[OTP] Failed to create OTP verification', {

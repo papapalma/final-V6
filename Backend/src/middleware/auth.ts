@@ -35,13 +35,20 @@ return false;
 };
 
 const getRequestToken = (request: NextRequest): string | null => {
+  // Debug: print all headers to see what we're receiving
+  console.log('[getRequestToken] REQUEST HEADERS:', {
+    'authorization': request.headers.get('authorization'),
+    'Authorization': request.headers.get('Authorization'),
+  });
+
   const authHeader = request.headers.get('authorization');
   const cookieHeader = request.headers.get('cookie');
 
   console.log('[getRequestToken] Attempting token extraction', {
     hasAuthHeader: !!authHeader,
     hasCookieHeader: !!cookieHeader,
-    authHeaderPrefix: authHeader?.substring(0, 20),
+    authHeaderValue: authHeader,
+    authHeaderPrefix: authHeader?.substring(0, 30),
   });
 
   let token = extractTokenFromHeader(authHeader || '');
@@ -52,7 +59,7 @@ const getRequestToken = (request: NextRequest): string | null => {
   console.log('[getRequestToken] Token extraction result', {
     tokenFound: !!token,
     tokenLength: token?.length,
-    tokenPrefix: token?.substring(0, 20),
+    tokenPrefix: token?.substring(0, 30),
   });
 
   return token;

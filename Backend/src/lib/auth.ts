@@ -3,10 +3,16 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { JWTPayload } from '@/types';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
-}
+// Get JWT_SECRET dynamically to support test environment setup timing
+// (jest.setup.ts runs after module load, so we can't cache at module scope)
+const getJWTSecret = (): string => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  return secret;
+};
+
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '2h';
 
 export const hashPassword = async (password: string): Promise<string> => {
@@ -30,7 +36,7 @@ export const generateToken = (payload: Partial<Omit<JWTPayload, 'jti' | 'iat' | 
     tenantId: payload.tenantId || 'unknown',
     jti,
   };
-  return jwt.sign(fullPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
+  return jwt.sign(fullPayload, getJWTSecret(), { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
 };
 
 export const generateOpaqueToken = (bytes: number = 32): string => {
@@ -43,16 +49,32 @@ export const hashOpaqueToken = (token: string): string => {
 
 export const verifyToken = (token: string): JWTPayload | null => {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    const secret = getJWTSecret();
+    console.log('[verifyToken] Verifying token with secret length:', secret.length, 'secret:', secret);
+    const decoded = jwt.verify(token, secret) as JWTPayload;
+    console.log('[verifyToken] Token verified successfully, decoded payload keys:', Object.keys(decoded));
+    return decoded;
   } catch (error) {
+    console.error('[verifyToken] Token verification failed:', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorName: error instanceof Error ? error.name : 'unknown',
+    });
     return null;
   }
 };
 
 export const extractTokenFromHeader = (authHeader?: string): string | null => {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader) {
     return null;
   }
+  
+  // Handle case-insensitive Bearer check (normalize to lowercase)
+  const normalized = authHeader.toLowerCase();
+  if (!normalized.startsWith('bearer ')) {
+    return null;
+  }
+  
+  // Extract token preserving original case
   return authHeader.substring(7);
 };
 

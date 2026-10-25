@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { hashPassword, generateToken } from '@/lib/auth';
 import { registerSchema } from '@/utils/validators';
 import { requireRoleAsync } from '@/middleware/auth';
-import { createdResponse, errorResponse } from '@/utils/responses';
+import { createdResponse, errorResponse, forbiddenResponse } from '@/utils/responses';
 import { withErrorHandler } from '@/middleware/errorHandler';
 import { activityLogService } from '@/services/activityLogService';
 import { handleOptionsRequest } from '@/middleware/cors';
@@ -29,6 +29,13 @@ const authResult = await requireRoleAsync(request, ['local_admin', 'super_admin'
   const body = await request.json();
   const validatedData = registerSchema.parse(body);
   
+  // Property 3.3: Enforce tenant authorization - admin can only register users in their own tenant
+  const adminTenantId = authResult.user.tenantId;
+  const requestedTenantId = (validatedData as any).tenantId || adminTenantId;
+  if (requestedTenantId && adminTenantId && requestedTenantId !== adminTenantId) {
+    return forbiddenResponse('You are not authorized to register users in other tenants');
+  }
+  
   // Check if user already exists
   const { data: existingUser } = await supabaseAdmin
     .from('users')
@@ -53,6 +60,7 @@ const { data: user, error } = await supabaseAdmin
       username: validatedData.username,
       password_hash: passwordHash,
       role: validatedData.role ?? 'staff_inventory_manager',
+      tenant_id: adminTenantId, // Property 3.5: Assign to admin's tenant
     })
     .select()
     .single();
@@ -85,6 +93,7 @@ await activityLogService.logAction(
       email: user.email,
       username: user.username,
       role: user.role,
+      tenantId: user.tenant_id, // Property 3.5: Include tenantId in response
     },
   }, 'User registered successfully');
 });

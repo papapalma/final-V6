@@ -337,6 +337,9 @@ export default function LandingPage() {
                 src={getFileUrl(cmsSettings.appearance.logo)}
                 alt="BMDC Logo"
                 className="h-10 w-10 md:h-12 md:w-12 rounded-xl object-contain shadow-sm border border-border"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
               />
             ) : (
               <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-xl bg-primary shadow-sm text-primary-foreground">
@@ -682,6 +685,9 @@ export default function LandingPage() {
                             src={program.photoUrl}
                             alt={program.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
                           />
                           <div className="absolute top-2 right-2">
                             <Badge className="bg-black/80 text-white text-xs font-semibold">
@@ -962,6 +968,9 @@ export default function LandingPage() {
                   src={getFileUrl(cmsSettings.appearance.logo)}
                   alt="BMDC Logo"
                   className="size-10 rounded-xl object-contain border border-border"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
                 />
               ) : (
                 <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-sm">

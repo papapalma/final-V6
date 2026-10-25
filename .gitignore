@@ -22,10 +22,14 @@ docs
 .DS_Store
 *.pem
 
-# debug
+# debug and test output
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
+*-output.txt
+*test*.txt
+*results*.txt
 
 # local env files
 .env*.local

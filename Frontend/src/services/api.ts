@@ -449,22 +449,34 @@ const TENANT_PATH_RE = /^\/uploads\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
  *   public directory as before.
  * - Absolute URLs, blob: and data: URLs are passed through unchanged.
  */
-export function getFileUrl(path: string | null | undefined): string {
+export function getFileUrl(path: string | null | undefined, version?: string | number): string {
   if (!path) return '';
   if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) {
     return path;
   }
 
-  // Tenant-scoped path → route through the secure API proxy
-  if (TENANT_PATH_RE.test(path)) {
-    // /uploads/{tenant_id}/images/items/photo.jpg
-    // → {API_BASE_URL}/files/{tenant_id}/images/items/photo.jpg
-    const withoutUploadsPrefix = path.replace(/^\/uploads\//, '');
-    const hash = Math.abs(path.split("").reduce((h, c) => ((h << 5) - h) + c.charCodeAt(0), 0)).toString(16); return `${API_BASE_URL}/files/${withoutUploadsPrefix}?v=${hash}`;
+  const normalized = path.replace(/\\/g, '/').replace(/^\/+/, '/');
+
+  // Compute a stable version tag: caller provided version, or deterministic hash of the path
+  const vTag = version !== undefined && version !== null
+    ? String(version)
+    : Math.abs(normalized.split('').reduce((h, c) => ((h << 5) - h) + c.charCodeAt(0), 0)).toString(16);
+
+  // Tenant-scoped path → route through the secure API proxy (/api/files/{tenant_id}/...)
+  if (TENANT_PATH_RE.test(normalized)) {
+    const withoutUploadsPrefix = normalized.replace(/^\/uploads\//, '');
+    return `${API_BASE_URL}/files/${withoutUploadsPrefix}?v=${vTag}`;
   }
 
-  // Legacy flat path → serve directly from the public directory
-  return `${BACKEND_BASE_URL}${path}`;
+  // Check if relative path starts with tenant UUID directly: e.g. "194876de-.../images/..."
+  const rawTenantMatch = normalized.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//i);
+  if (rawTenantMatch) {
+    return `${API_BASE_URL}/files/${normalized}?v=${vTag}`;
+  }
+
+  // Legacy flat path (/uploads/images/...) → serve from BACKEND_BASE_URL
+  const cleanPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+  return `${BACKEND_BASE_URL}${cleanPath}?v=${vTag}`;
 }
 
 /**
@@ -527,9 +539,9 @@ export function getThumbnailPath(path: string | null | undefined): string {
 /**
  * Convert a source image path to a full thumbnail URL.
  */
-export function getThumbnailUrl(path: string | null | undefined): string {
+export function getThumbnailUrl(path: string | null | undefined, version?: string | number): string {
   const thumbnailPath = getThumbnailPath(path);
-  return getFileUrl(thumbnailPath);
+  return getFileUrl(thumbnailPath, version);
 }
 
 export default api;

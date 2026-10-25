@@ -777,6 +777,9 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
                     src={getFileUrl(cmsSettings.appearance.logo)} 
                     alt="Logo" 
                     className="size-14 rounded-xl object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
                   />
                 ) : (
                   <span className="text-2xl text-primary-foreground">BMDC</span>

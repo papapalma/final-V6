@@ -9,6 +9,7 @@ import {
   sendRegistrationRejectionEmail,
 } from './emailService';
 import { getTenantConfiguration } from './tenantConfigurationService';
+import { initializeEnrollmentRequirements } from './enrollmentRequirementService';
 
 /**
  * Custom error class for HTTP 409 Conflict responses
@@ -267,14 +268,44 @@ const trainee = incompleteEnrollmentCheck.trainee;
     }
     // ========== END: Incomplete enrollment check ==========
 
+    // Hash password
+    const hashedPassword = await hashPassword(data.password);
+    let userId: string | null = null;
+
+    // Create user account in users table (old/standard path)
+    if (!isExistingTrainee) {
+      const { data: newUser, error: userError } = await supabaseAdmin
+        .from('users')
+        .insert({
+          email: data.email.toLowerCase(),
+          username: data.username,
+          password_hash: hashedPassword,
+          role: 'trainee',
+        })
+        .select('id')
+        .single();
+
+      if (userError) {
+        console.error('[Registration] Failed to create user account:', userError);
+        throw userError;
+      }
+      userId = newUser.id;
+      console.log('[Registration] User account created in users table:', { userId, email: data.email });
+    } else {
+      const { data: existingUser } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('email', data.email.toLowerCase())
+        .maybeSingle();
+      userId = existingUser?.id || null;
+    }
+
     // NORMALIZED SCHEMA: Insert into trainees table with registration_status = 'pending'
-    // (Instead of separate pending_registrations table)
-    
-    // Note: Password hash and username are stored in users table (created later during approval)
     const { data: trainee, error } = await supabaseAdmin
       .from('trainees')
       .insert({
         tenant_id: tenantId,
+        user_id: userId,
         email: data.email.toLowerCase(),
         first_name: data.first_name,
         last_name: data.last_name,
@@ -295,10 +326,9 @@ const trainee = incompleteEnrollmentCheck.trainee;
         disability: data.disability || null,
         employment_status: data.employment_status,
         registration_status: 'pending',  // Mark as pending approval
-        // Note: registration_reviewed_by and registration_reviewed_at set during approval
         status: 'inactive',  // Inactive until registration is approved and completed
         consent_given: false,
-        is_verified: false,
+        is_verified: true,  // Verified via OTP step 6
       })
       .select()
       .single();
@@ -308,40 +338,23 @@ const trainee = incompleteEnrollmentCheck.trainee;
       throw error;
     }
 
-    // Store username from registration for later approval
-    const { error: usernameError } = await supabaseAdmin
-      .from('pending_registration_usernames')
-      .insert({
-        trainee_id: trainee.id,
-        username: data.username,
-      });
+    // Also populate pending tables for backward compatibility with any legacy read queries
+    try {
+      await supabaseAdmin
+        .from('pending_registration_usernames')
+        .insert({
+          trainee_id: trainee.id,
+          username: data.username,
+        });
 
-    if (usernameError) {
-      console.error('[Registration] Failed to store registration username', {
-        trainee_id: trainee.id,
-        error: usernameError,
-      });
-      throw usernameError;
-    }
-
-    console.log('[Registration] Username stored for pending registration', {
-      trainee_id: trainee.id,
-      username: data.username,
-    });
-
-    // Store the hashed password temporarily in pending_registration_passwords table
-    // This will be retrieved during approval and moved to users.password_hash
-    const hashedPassword = await hashPassword(data.password);
-    const { error: passwordError } = await supabaseAdmin
-      .from('pending_registration_passwords')
-      .insert({
-        trainee_id: trainee.id,
-        password_hash: hashedPassword,
-      });
-
-    if (passwordError) {
-      console.error('[Registration] Failed to store temporary password:', passwordError);
-      throw passwordError;
+      await supabaseAdmin
+        .from('pending_registration_passwords')
+        .insert({
+          trainee_id: trainee.id,
+          password_hash: hashedPassword,
+        });
+    } catch (legacyErr) {
+      console.warn('[Registration] Warning inserting legacy pending tables:', legacyErr);
     }
 
     // Create enrollment record with the specified enrollment source
@@ -362,6 +375,12 @@ const trainee = incompleteEnrollmentCheck.trainee;
       console.error('[Registration] Failed to create enrollment record:', enrollmentError);
       // Note: trainee was created but enrollment failed - this is unusual
       throw enrollmentError;
+    }
+
+    try {
+      await initializeEnrollmentRequirements(enrollment.id, trainee.id, tenantId);
+    } catch (reqErr) {
+      console.warn('[Registration] Warning initializing enrollment requirements:', reqErr);
     }
 
     console.log('[Registration] Trainee registration created (pending approval):', {
@@ -418,10 +437,17 @@ const trainee = incompleteEnrollmentCheck.trainee;
         registration_reviewed_at,
         created_at,
         updated_at,
+        users:users!trainees_user_id_fkey(id, username),
         enrollments(id, program_id, programs(id, name, description, start_date, end_date, status))
       `)
-      .eq('registration_status', filters?.status || 'pending')
       .order('created_at', { ascending: false });
+
+    // Handle status filtering: 'all' returns all, otherwise filter by status or default to 'pending'
+    if (filters?.status && filters.status !== 'all') {
+      query = query.eq('registration_status', filters.status);
+    } else if (!filters?.status) {
+      query = query.eq('registration_status', 'pending');
+    }
 
     // Apply tenant filtering for non-super-admin users
     if (context && !context.isSuperAdmin) {
@@ -439,7 +465,15 @@ const trainee = incompleteEnrollmentCheck.trainee;
       this.throwIfPendingRegistrationsMissing(error);
       throw error;
     }
-    return (data || []) as PendingRegistration[];
+
+    // Normalize returned rows for frontend compatibility
+    return (data || []).map((row: any) => ({
+      ...row,
+      status: row.registration_status || row.status || 'pending',
+      username: row.users?.username || row.username || '',
+      program: row.enrollments?.[0]?.programs || row.program || undefined,
+      program_id: row.enrollments?.[0]?.program_id || row.program_id || undefined,
+    })) as PendingRegistration[];
   }
 
   /**
@@ -476,6 +510,7 @@ const trainee = incompleteEnrollmentCheck.trainee;
         registration_reviewed_at,
         created_at,
         updated_at,
+        users:users!trainees_user_id_fkey(id, username),
         enrollments(id, program_id, programs(id, name, description, start_date, end_date, status))
       `)
       .eq('id', id);
@@ -492,9 +527,15 @@ const trainee = incompleteEnrollmentCheck.trainee;
       throw error;
     }
 
-if (!data) return null;
-    const { password_hash, ...safe } = data;
-    return safe as PendingRegistration;
+    if (!data) return null;
+    const { password_hash, ...safe } = data as any;
+    return {
+      ...safe,
+      status: safe.registration_status || safe.status || 'pending',
+      username: safe.users?.username || safe.username || '',
+      program: safe.enrollments?.[0]?.programs || safe.program || undefined,
+      program_id: safe.enrollments?.[0]?.program_id || safe.program_id || undefined,
+    } as PendingRegistration;
   }
 
   /**
@@ -667,18 +708,39 @@ if (!data) return null;
         email: traineeReg.email,
         user_id: user.id,
       });
+    }
 
-      // Create users_tenants association so trainee can login to their tenant
+    // Ensure users_tenants association exists so trainee can login to their tenant
+    const { data: existingUserTenant } = await supabaseAdmin
+      .from('users_tenants')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .eq('tenant_id', traineeReg.tenant_id)
+      .maybeSingle();
+
+    if (!existingUserTenant) {
       const { error: userTenantError } = await supabaseAdmin
         .from('users_tenants')
         .insert({
           user_id: user.id,
           tenant_id: traineeReg.tenant_id,
+          is_primary: true,
         });
 
-      if (userTenantError) throw userTenantError;
+      if (userTenantError) {
+        console.warn('[Approval] Failed to insert users_tenants (might already exist):', userTenantError);
+      }
+    }
 
-      // Create trainee_accounts link (for backward compatibility and query efficiency)
+    // Ensure trainee_accounts link exists (for backward compatibility and query efficiency)
+    const { data: existingTraineeAccount } = await supabaseAdmin
+      .from('trainee_accounts')
+      .select('user_id')
+      .eq('trainee_id', id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!existingTraineeAccount) {
       const { error: traineeAccountError } = await supabaseAdmin
         .from('trainee_accounts')
         .insert({
@@ -687,29 +749,24 @@ if (!data) return null;
           user_id: user.id,
         });
 
-      if (traineeAccountError) throw traineeAccountError;
+      if (traineeAccountError) {
+        console.warn('[Approval] Failed to insert trainee_accounts (might already exist):', traineeAccountError);
+      }
+    }
 
-      // Delete the temporary password from pending_registration_passwords table
+    // Delete any temporary password/username records
+    try {
       await supabaseAdmin
         .from('pending_registration_passwords')
         .delete()
         .eq('trainee_id', id);
 
-      // Clean up: Remove username from pending table after successful approval
-      if (pendingUsername) {
-        const { error: deleteError } = await supabaseAdmin
-          .from('pending_registration_usernames')
-          .delete()
-          .eq('trainee_id', id);
-
-        if (deleteError) {
-          console.warn('[Approval] Failed to clean up pending username', {
-            trainee_id: id,
-            error: deleteError,
-          });
-          // Don't fail approval if cleanup fails
-        }
-      }
+      await supabaseAdmin
+        .from('pending_registration_usernames')
+        .delete()
+        .eq('trainee_id', id);
+    } catch (cleanupErr) {
+      console.warn('[Approval] Failed to clean up legacy pending tables:', cleanupErr);
     }
 
     // Complete the registration

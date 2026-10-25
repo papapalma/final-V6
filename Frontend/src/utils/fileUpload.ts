@@ -214,23 +214,9 @@ export const uploadFile = async (options: UploadOptions): Promise<UploadResult> 
 };
 
 /**
- * Get full URL for a file path
+ * Re-export getFileUrl from services/api to maintain a single source of truth
  */
-export const getFileUrl = (filePath: string): string => {
-  if (!filePath) return '';
-  
-  // If already a full URL, return as is
-  if (filePath.startsWith('http')) {
-    return filePath;
-  }
-  
-  const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || (
-    typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://localhost:3003'
-      : window.location.origin
-  );
-  return `${baseUrl}${filePath}`;
-};
+export { getFileUrl } from '../services/api';
 
 /**
  * Upload item photo
