@@ -33,6 +33,7 @@ import { createOTPVerification } from '@/services/otpService';
 import { sendPasswordResetOtpEmail } from '@/services/emailService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { logger } from '@/utils/logger';
+import { isAuthRateLimitDisabled } from '@/utils/rateLimit';
 
 interface ForgotPasswordRequest {
   email: string;
@@ -44,6 +45,9 @@ const MAX_RESET_ATTEMPTS_PER_HOUR = 3;
 const HOUR_MS = 60 * 60 * 1000;
 
 function checkRateLimit(email: string): boolean {
+  if (isAuthRateLimitDisabled()) {
+    return true;
+  }
   const now = Date.now();
   const existing = resetAttempts.get(email);
 

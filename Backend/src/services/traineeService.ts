@@ -155,7 +155,7 @@ const { data, error } = await query.single();
     return this.withThumbnail(data as Trainee);
   }
 
-  async createTrainee(traineeData: CreateTraineeInput & { tenantId?: string }): Promise<{ trainee: Trainee; temp_password: string }> {
+  async createTrainee(traineeData: CreateTraineeInput & { tenantId?: string }): Promise<{ trainee: Trainee; temp_password: string; default_password: string }> {
     // Check if email already exists within the same tenant
     const { tenantId, ...rest } = traineeData as any;
     const existingTrainee = await this.getTraineeByEmail(traineeData.email, tenantId);
@@ -179,10 +179,11 @@ if (existingUserByEmail) {
       throw new Error('An account with this email already exists');
     }
 
-    const newTrainee: Partial<Trainee> & { tenant_id?: string } = {
+    const newTrainee: Partial<Trainee> & { tenant_id?: string; registration_status?: string } = {
       ...rest,
       email: normalizedEmail,
       status: 'active',
+      registration_status: 'completed',
       // NOTE: enrollment_date, program_id are NOT stored on trainees table (normalized schema)
       // These are managed exclusively via the enrollments table
       // Explicitly remove these fields to prevent schema errors
@@ -203,10 +204,9 @@ const { data, error } = await supabaseAdmin
     if (error) throw error;
     const trainee: Trainee = data;
 
-    // Create a user account so the trainee can log in
-
-const tempPassword = `BMDC-${Math.random().toString(36).slice(2, 7).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-    const password_hash = await hashPassword(tempPassword);
+    // Create a user account with default password Admin123 so the trainee can log in immediately
+    const defaultPassword = 'Admin123';
+    const password_hash = await hashPassword(defaultPassword);
 
     const usernameBase = `${traineeData.first_name.toLowerCase().replace(/[^a-z0-9]/g, '')}${traineeData.last_name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     const username = `${usernameBase}${Math.floor(1000 + Math.random() * 9000)}`;
@@ -225,8 +225,23 @@ const tempPassword = `BMDC-${Math.random().toString(36).slice(2, 7).toUpperCase(
 
     if (accountError) throw accountError;
 
+    // Link user to tenant in users_tenants junction table for multi-tenant auth
+    if (tenantId) {
+      const { error: userTenantError } = await supabaseAdmin
+        .from('users_tenants')
+        .insert({
+          user_id: userRecord.id,
+          tenant_id: tenantId,
+          is_primary: true,
+        });
+
+      if (userTenantError) {
+        console.warn('[createTrainee] Failed to insert users_tenants:', userTenantError);
+      }
+    }
+
     const traineeWithThumbnail = await this.withThumbnail(trainee);
-    return { trainee: traineeWithThumbnail, temp_password: tempPassword };
+    return { trainee: traineeWithThumbnail, temp_password: defaultPassword, default_password: defaultPassword };
   }
 
   async updateTrainee(id: string, traineeData: UpdateTraineeInput): Promise<Trainee> {
@@ -264,6 +279,32 @@ const tempPassword = `BMDC-${Math.random().toString(36).slice(2, 7).toUpperCase(
     let linkedUserId: string | null = null;
     let nextEmail: string | null = null;
 
+    // 1. Resolve linked user account via trainee_accounts
+    const { data: accountLink, error: accountLinkError } = await supabaseAdmin
+      .from('trainee_accounts')
+      .select('user_id')
+      .eq('trainee_id', id)
+      .maybeSingle();
+
+    if (accountLinkError && accountLinkError.code !== 'PGRST116') {
+      throw accountLinkError;
+    }
+
+    linkedUserId = accountLink?.user_id ?? null;
+
+    // If no trainee_accounts record, check if a user exists with existing trainee email
+    if (!linkedUserId) {
+      const { data: userByEmail } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('email', this.normalizeEmail(existingTrainee.email))
+        .maybeSingle();
+
+      if (userByEmail) {
+        linkedUserId = userByEmail.id;
+      }
+    }
+
     if (emailChanged) {
       nextEmail = normalizedData.email as string;
 
@@ -278,21 +319,9 @@ const tempPassword = `BMDC-${Math.random().toString(36).slice(2, 7).toUpperCase(
         throw duplicateTraineeError;
       }
 
-if (duplicateTrainee) {
+      if (duplicateTrainee) {
         throw new Error('A trainee with this email already exists');
       }
-
-const { data: accountLink, error: accountLinkError } = await supabaseAdmin
-        .from('trainee_accounts')
-        .select('user_id')
-        .eq('trainee_id', id)
-        .maybeSingle();
-
-      if (accountLinkError && accountLinkError.code !== 'PGRST116') {
-        throw accountLinkError;
-      }
-
-      linkedUserId = accountLink?.user_id ?? null;
 
       let duplicateUserQuery = supabaseAdmin
         .from('users')
@@ -303,13 +332,13 @@ const { data: accountLink, error: accountLinkError } = await supabaseAdmin
         duplicateUserQuery = duplicateUserQuery.neq('id', linkedUserId);
       }
 
-const { data: duplicateUser, error: duplicateUserError } = await duplicateUserQuery.maybeSingle();
+      const { data: duplicateUser, error: duplicateUserError } = await duplicateUserQuery.maybeSingle();
 
       if (duplicateUserError && duplicateUserError.code !== 'PGRST116') {
         throw duplicateUserError;
       }
 
-if (duplicateUser) {
+      if (duplicateUser) {
         throw new Error('This email is already connected to another account');
       }
     }
@@ -343,19 +372,78 @@ if (
       await deleteImageWithThumbnail(existingTrainee.photo_path);
     }
 
-if (emailChanged && linkedUserId && nextEmail) {
+    const targetEmail = nextEmail || this.normalizeEmail(data.email || existingTrainee.email);
+    const effectiveTenantId = existingTrainee.tenant_id || (data as any)?.tenant_id;
+
+    if (linkedUserId) {
+      // Sync user email so users.email ALWAYS matches trainees.email
       const { error: syncUserEmailError } = await supabaseAdmin
         .from('users')
-        .update({ email: nextEmail })
+        .update({ email: targetEmail })
         .eq('id', linkedUserId);
 
       if (syncUserEmailError) {
-        await supabaseAdmin
-          .from('trainees')
-          .update({ email: this.normalizeEmail(existingTrainee.email) })
-          .eq('id', id);
+        if (emailChanged) {
+          await supabaseAdmin
+            .from('trainees')
+            .update({ email: this.normalizeEmail(existingTrainee.email) })
+            .eq('id', id);
 
-        throw new Error('Failed to sync trainee account email; trainee email update was reverted');
+          throw new Error('Failed to sync trainee account email; trainee email update was reverted');
+        }
+        console.error('Failed to sync user email with trainee email:', syncUserEmailError);
+      }
+
+      // Ensure trainee_accounts and users_tenants link exist
+      await supabaseAdmin
+        .from('trainee_accounts')
+        .upsert(
+          { trainee_id: id, user_id: linkedUserId, ...(effectiveTenantId ? { tenant_id: effectiveTenantId } : {}) },
+          { onConflict: 'trainee_id' }
+        );
+
+      if (effectiveTenantId) {
+        await supabaseAdmin
+          .from('users_tenants')
+          .upsert(
+            { user_id: linkedUserId, tenant_id: effectiveTenantId, is_primary: true },
+            { onConflict: 'user_id,tenant_id' }
+          );
+      }
+    } else {
+      // If trainee never had a user account, provision one with targetEmail & default Admin123 password
+      const defaultPassword = 'Admin123';
+      const password_hash = await hashPassword(defaultPassword);
+      const usernameBase = `${(data.first_name || existingTrainee.first_name || 'trainee').toLowerCase().replace(/[^a-z0-9]/g, '')}${(data.last_name || existingTrainee.last_name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      const username = `${usernameBase || 'trainee'}${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const { data: newUser, error: newUserError } = await supabaseAdmin
+        .from('users')
+        .insert({
+          email: targetEmail,
+          username,
+          password_hash,
+          role: 'trainee',
+        })
+        .select('id')
+        .single();
+
+      if (!newUserError && newUser) {
+        await supabaseAdmin
+          .from('trainee_accounts')
+          .upsert(
+            { trainee_id: id, user_id: newUser.id, ...(effectiveTenantId ? { tenant_id: effectiveTenantId } : {}) },
+            { onConflict: 'trainee_id' }
+          );
+
+        if (effectiveTenantId) {
+          await supabaseAdmin
+            .from('users_tenants')
+            .upsert(
+              { user_id: newUser.id, tenant_id: effectiveTenantId, is_primary: true },
+              { onConflict: 'user_id,tenant_id' }
+            );
+        }
       }
     }
 
@@ -395,6 +483,96 @@ const { data, error } = await supabaseAdmin
 
   async getTraineesByProgram(programId: string, tenantId: string): Promise<Trainee[]> {
     return this.getAllTrainees(null, { program_id: programId, tenant_id: tenantId });
+  }
+
+  async resetTraineePassword(context: TenantContext | null, id: string): Promise<{ email: string; default_password: string; message: string }> {
+    const trainee = await this.getTraineeById(context, id);
+    if (!trainee) {
+      throw new Error('Trainee not found');
+    }
+
+    const defaultPassword = 'Admin123';
+    const password_hash = await hashPassword(defaultPassword);
+    const normalizedEmail = this.normalizeEmail(trainee.email);
+
+    // 1. Check if user account exists by email or trainee_accounts
+    let userId: string | null = null;
+    const { data: traineeAccount } = await supabaseAdmin
+      .from('trainee_accounts')
+      .select('user_id')
+      .eq('trainee_id', id)
+      .maybeSingle();
+
+    if (traineeAccount?.user_id) {
+      userId = traineeAccount.user_id;
+    } else {
+      const { data: userByEmail } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+      if (userByEmail?.id) {
+        userId = userByEmail.id;
+      }
+    }
+
+    if (userId) {
+      // Update existing user password
+      const { error: updateError } = await supabaseAdmin
+        .from('users')
+        .update({ password_hash })
+        .eq('id', userId);
+
+      if (updateError) throw updateError;
+    } else {
+      // Create user account if it doesn't exist yet
+      const usernameBase = `${trainee.first_name.toLowerCase().replace(/[^a-z0-9]/g, '')}${trainee.last_name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      const username = `${usernameBase}${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const { data: newUser, error: createError } = await supabaseAdmin
+        .from('users')
+        .insert({ email: normalizedEmail, username, password_hash, role: 'trainee' })
+        .select('id')
+        .single();
+
+      const effectiveTenantId = trainee.tenant_id || context?.tenantId;
+
+      if (createError) throw createError;
+      userId = newUser.id;
+
+      await supabaseAdmin
+        .from('trainee_accounts')
+        .insert({ trainee_id: trainee.id, user_id: userId, tenant_id: effectiveTenantId });
+    }
+
+    // 2. Ensure users_tenants link exists for tenant login
+    const effectiveTenantId = trainee.tenant_id || context?.tenantId;
+    if (effectiveTenantId && userId) {
+      const { data: existingUserTenant } = await supabaseAdmin
+        .from('users_tenants')
+        .select('user_id')
+        .eq('user_id', userId)
+        .eq('tenant_id', effectiveTenantId)
+        .maybeSingle();
+
+      if (!existingUserTenant) {
+        await supabaseAdmin
+          .from('users_tenants')
+          .insert({ user_id: userId, tenant_id: effectiveTenantId, is_primary: true });
+      }
+    }
+
+    // 3. Ensure trainee registration_status is completed and status is active
+    await supabaseAdmin
+      .from('trainees')
+      .update({ registration_status: 'completed', status: 'active' })
+      .eq('id', id);
+
+    return {
+      email: normalizedEmail,
+      default_password: defaultPassword,
+      message: 'Password successfully reset to default Admin123',
+    };
   }
 }
 

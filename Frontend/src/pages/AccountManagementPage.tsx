@@ -321,7 +321,10 @@ export default function AccountManagementPage() {
               <span className="hidden sm:inline">Pending Registrations</span>
               <span className="sm:hidden">Registrations</span>
               {pendingCount > 0 && (
-                <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white flex-shrink-0">
+                <span 
+                  style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
+                  className="notif-badge-red ml-1 flex min-w-5 h-5 px-1.5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white flex-shrink-0 shadow-sm ring-2 ring-card"
+                >
                   {pendingCount > 99 ? '99+' : pendingCount}
                 </span>
               )}

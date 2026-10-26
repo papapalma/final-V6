@@ -28,7 +28,7 @@ import { unauthorizedResponse, forbiddenResponse } from '@/utils/responses';
 import { withErrorHandler } from '@/middleware/errorHandler';
 import { activityLogService } from '@/services/activityLogService';
 import { handleOptionsRequest } from '@/middleware/cors';
-import { checkRateLimit, getRateLimitKey } from '@/utils/rateLimit';
+import { checkRateLimit, getRateLimitKey, isAuthRateLimitDisabled } from '@/utils/rateLimit';
 import { authRecoveryService } from '@/services/authRecoveryService';
 import { generateCsrfToken } from '@/lib/security/csrf';
 import {
@@ -50,23 +50,27 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // - Per-email limit: 3 attempts per email per 15 minutes  
   // ────────────────────────────────────────────────────────────────────────
   
-  const ipKey = getRateLimitKey(request, 'login_ip');
-  const rlResponse = checkRateLimit(ipKey, {
-    limit: 5,
-    windowMs: 15 * 60 * 1000, // 15 minutes
-  });
-  if (rlResponse) return rlResponse as NextResponse;
+  if (!isAuthRateLimitDisabled()) {
+    const ipKey = getRateLimitKey(request, 'login_ip');
+    const rlResponse = checkRateLimit(ipKey, {
+      limit: 5,
+      windowMs: 15 * 60 * 1000, // 15 minutes
+    });
+    if (rlResponse) return rlResponse as NextResponse;
+  }
 
   const body = await request.json();
   const validatedData = loginSchema.parse(body);
 
   // Per-email rate limiting to prevent user enumeration
-  const emailKey = `login_email:${validatedData.email}`;
-  const emailRlResponse = checkRateLimit(emailKey, {
-    limit: 3,
-    windowMs: 15 * 60 * 1000, // 15 minutes
-  });
-  if (emailRlResponse) return emailRlResponse as NextResponse;
+  if (!isAuthRateLimitDisabled()) {
+    const emailKey = `login_email:${validatedData.email}`;
+    const emailRlResponse = checkRateLimit(emailKey, {
+      limit: 3,
+      windowMs: 15 * 60 * 1000, // 15 minutes
+    });
+    if (emailRlResponse) return emailRlResponse as NextResponse;
+  }
 
   // ── Step 1: Find user by email ──────────────────────────────────────────
 
@@ -85,31 +89,33 @@ return unauthorizedResponse('Invalid email or password');
 
   // ── Step 1.5: Check if account is locked (Task 16) ─────────────────────
 
-  const isLocked = await authRecoveryService.isAccountLocked(user.id);
-  if (isLocked) {
-    const lockedUntil = await authRecoveryService.getLockedUntil(user.id);
-    const retryAfterSeconds = lockedUntil 
-      ? Math.ceil((lockedUntil.getTime() - Date.now()) / 1000)
-      : 0;
-    
-    const response = new NextResponse(
-      JSON.stringify({
-        success: false,
-        error: 'Account temporarily locked due to too many failed login attempts. Please try again later.',
-      }),
-      {
-        status: 403,
-        headers: {
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfterSeconds),
-        },
-      }
-    );
-    
-    // Log the lockout attempt
-    await activityLogService.logAction(user.id, 'login_failed_account_locked', 'user', user.id, undefined, undefined, undefined);
-    
-    return response;
+  if (!isAuthRateLimitDisabled()) {
+    const isLocked = await authRecoveryService.isAccountLocked(user.id);
+    if (isLocked) {
+      const lockedUntil = await authRecoveryService.getLockedUntil(user.id);
+      const retryAfterSeconds = lockedUntil 
+        ? Math.ceil((lockedUntil.getTime() - Date.now()) / 1000)
+        : 0;
+      
+      const response = new NextResponse(
+        JSON.stringify({
+          success: false,
+          error: 'Account temporarily locked due to too many failed login attempts. Please try again later.',
+        }),
+        {
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(retryAfterSeconds),
+          },
+        }
+      );
+      
+      // Log the lockout attempt
+      await activityLogService.logAction(user.id, 'login_failed_account_locked', 'user', user.id, undefined, undefined, undefined);
+      
+      return response;
+    }
   }
 
   // ── Step 2: Verify password ─────────────────────────────────────────────

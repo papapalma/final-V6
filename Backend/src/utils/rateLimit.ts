@@ -90,3 +90,11 @@ export function getRateLimitKey(request: Request, prefix: string): string {
 export function resetRateLimitStore(): void {
   store.clear();
 }
+
+/**
+ * Check if authentication rate limiting is disabled.
+ * Defaults to true (disabled) unless explicitly set to 'false'.
+ */
+export function isAuthRateLimitDisabled(): boolean {
+  return process.env.DISABLE_AUTH_RATE_LIMIT !== 'false';
+}

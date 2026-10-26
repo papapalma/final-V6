@@ -1,5 +1,6 @@
 import { ReactNode, useState, useEffect, useMemo, memo, lazy, Suspense } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getRoleDisplayName, getRoleBadgeColor } from '../utils/roles';
@@ -158,7 +159,7 @@ const SidebarLogo = memo(({ cmsSettings, user }: any) => (
 SidebarLogo.displayName = 'SidebarLogo';
 
 // Memoized Navigation Item Component
-const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDropdown }: any) => {
+const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDropdown, badgeCount }: any) => {
   if (item.children) {
     return (
       <div>
@@ -201,19 +202,33 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
     );
   }
 
+  const isCurrentActive = isActive(item.href!);
+
   return (
     <Link
       to={item.href!}
       className={`ds-nav-item flex items-center justify-between gap-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-        isActive(item.href!)
+        isCurrentActive
           ? 'is-active bg-primary text-primary-foreground font-semibold shadow-sm'
           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
       }`}
     >
       <div className="flex items-center gap-x-3">
         <item.icon className="size-4.5 shrink-0" />
-        {item.name}
+        <span>{item.name}</span>
       </div>
+      {typeof badgeCount === 'number' && badgeCount > 0 && (
+        <span
+          style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
+          className={`notif-badge-red inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums text-white bg-red-600 shadow-sm transition-all ${
+            isCurrentActive
+              ? 'ring-2 ring-primary-foreground/40'
+              : 'ring-2 ring-background'
+          }`}
+        >
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </span>
+      )}
     </Link>
   );
 });
@@ -267,7 +282,18 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
   const [cmsSettings, setCmsSettings] = useState<any>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
-  const [pendingRegistrationCount, setPendingRegistrationCount] = useState(0);
+  const [pendingRegistrationCount, setPendingRegistrationCount] = useState<number>(() => {
+    try {
+      const cached = sessionStorage.getItem('bmdc-pending-registrations');
+      if (cached !== null) {
+        const parsed = parseInt(cached, 10);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+    } catch {
+      // Ignore
+    }
+    return 0;
+  });
   const [showBottomNav, setShowBottomNav] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
@@ -302,25 +328,48 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
 
   // Lazy load pending registrations count
   useEffect(() => {
-    if ((user?.role === 'local_admin' || user?.role === 'staff_training_coordinator' || user?.role === 'super_admin') && user?.tenantId) {
+    const canSeeRegistrations = hasPermission('canManageTrainees') || 
+      user?.role === 'local_admin' || 
+      user?.role === 'staff_training_coordinator' || 
+      user?.role === 'super_admin';
+
+    if (canSeeRegistrations) {
       const fetchPendingCount = async () => {
         try {
           const api = await import('../services/api').then(m => m.default);
-          const response = await api.get('/registrations/pending-count', undefined, { timeout: 5000 });
-          setPendingRegistrationCount(response.data?.count || 0);
-        } catch (error) {
-          // Silently fail - set count to 0 on error
-          setPendingRegistrationCount(0);
+          // Try /registrations?status=pending first since it directly queries the database
+          const regResponse = await api.get('/registrations', { status: 'pending' }, { timeout: 6000 });
+          const list = Array.isArray((regResponse as any)?.data) 
+            ? (regResponse as any).data 
+            : (Array.isArray(regResponse) ? regResponse : []);
+          
+          if (list.length > 0 || (regResponse as any)?.success) {
+            setPendingRegistrationCount(list.length);
+            try { sessionStorage.setItem('bmdc-pending-registrations', String(list.length)); } catch {}
+            return;
+          }
+
+          // Fallback to /registrations/pending-count endpoint
+          const response = await api.get('/registrations/pending-count', undefined, { timeout: 4000 });
+          const count = 
+            typeof (response as any)?.data?.count === 'number' ? (response as any).data.count :
+            typeof (response as any)?.count === 'number' ? (response as any).count :
+            typeof (response as any)?.data === 'number' ? (response as any).data : 0;
+          
+          setPendingRegistrationCount(count);
+          try { sessionStorage.setItem('bmdc-pending-registrations', String(count)); } catch {}
+        } catch {
+          // Keep cached count on network hiccup
         }
       };
       fetchPendingCount();
       const interval = setInterval(fetchPendingCount, 30000);
       return () => clearInterval(interval);
     } else {
-      // Clear count if user doesn't have permission
       setPendingRegistrationCount(0);
+      try { sessionStorage.removeItem('bmdc-pending-registrations'); } catch {}
     }
-  }, [user]);
+  }, [user, hasPermission]);
 
   const openLogoutDialog = () => {
     setLogoutDialogOpen(true);
@@ -385,6 +434,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                     isChildActive={isChildActive}
                     onToggle={toggleDropdown}
                     openDropdown={openDropdown}
+                    badgeCount={item.href === '/registrations' ? pendingRegistrationCount : undefined}
                   />
                 </li>
               ))}
@@ -408,43 +458,79 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
         <div className="flex h-16 w-full items-stretch">
           {mobileMenuItems.slice(0, 5).map((item) => {
             const isCurrentActive = item.href && isActive(item.href);
+            const isRegistrationsItem = item.href === '/registrations';
+            const showRegBadge = isRegistrationsItem && pendingRegistrationCount > 0;
             
             return (
               <Link
                 key={item.name}
                 to={item.href || '#'}
-                className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] transition-colors ${
+                className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] transition-colors ${
                   isCurrentActive
-                    ? 'text-primary'
+                    ? 'text-primary font-semibold'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <item.icon className="size-5" />
+                <div className="relative">
+                  <item.icon className="size-5" />
+                  {showRegBadge && (
+                    <span
+                      style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
+                      className="notif-badge-red absolute -top-1.5 -right-2 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white shadow-sm ring-2 ring-card"
+                    >
+                      {pendingRegistrationCount > 9 ? '9+' : pendingRegistrationCount}
+                    </span>
+                  )}
+                </div>
                 <span className="line-clamp-1 text-center">{item.name}</span>
               </Link>
             );
           })}
 
-          {mobileMenuItems.length > 5 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] text-muted-foreground transition-colors hover:text-foreground">
-                  <Settings className="size-5" />
-                  <span>More</span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
-                {mobileMenuItems.slice(5).map((item) => (
-                  <DropdownMenuItem key={item.name} asChild>
-                    <Link to={item.href || '#'} className="flex cursor-pointer items-center gap-2">
-                      <item.icon className="size-4" />
-                      {item.name}
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          {mobileMenuItems.length > 5 && (() => {
+            const hasRegistrationsInMore = mobileMenuItems.slice(5).some(item => item.href === '/registrations' && pendingRegistrationCount > 0);
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] text-muted-foreground transition-colors hover:text-foreground">
+                    <div className="relative">
+                      <Settings className="size-5" />
+                      {hasRegistrationsInMore && (
+                        <span className="absolute -top-0.5 -right-1 flex size-2">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF3B30] opacity-75" />
+                          <span className="relative inline-flex size-2 rounded-full bg-[#FF3B30]" />
+                        </span>
+                      )}
+                    </div>
+                    <span>More</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
+                  {mobileMenuItems.slice(5).map((item) => {
+                    const isReg = item.href === '/registrations';
+                    return (
+                      <DropdownMenuItem key={item.name} asChild>
+                        <Link to={item.href || '#'} className="flex cursor-pointer items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <item.icon className="size-4" />
+                            {item.name}
+                          </div>
+                          {isReg && pendingRegistrationCount > 0 && (
+                            <span 
+                              style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
+                              className="notif-badge-red inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-[10px] font-bold text-white shadow-sm ring-2 ring-card"
+                            >
+                              {pendingRegistrationCount > 99 ? '99+' : pendingRegistrationCount}
+                            </span>
+                          )}
+                        </Link>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          })()}
         </div>
       </nav>
 

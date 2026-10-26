@@ -11,7 +11,9 @@ import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Search, UserPlus, Edit, MoreVertical, RefreshCw, Download, LayoutGrid, TableIcon, QrCode, Eye, Building2, Trash2, Save } from 'lucide-react';
+import { Search, UserPlus, Edit, MoreVertical, RefreshCw, Download, LayoutGrid, TableIcon, QrCode, Eye, Building2, Trash2, Save, KeyRound, ShieldCheck, Copy, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Separator } from '../components/ui/separator';
 import PaginationWrapper from '../components/PaginationWrapper';
 import {
   DropdownMenu,
@@ -52,6 +54,14 @@ export default function TraineesPage() {
   const [selectedTraineeForDeletion, setSelectedTraineeForDeletion] = useState<any | null>(null);
   const [deletionConfirmDialogOpen, setDeletionConfirmDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [resetPasswordTrainee, setResetPasswordTrainee] = useState<any | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [resetSuccessCredentials, setResetSuccessCredentials] = useState<{
+    fullName: string;
+    email: string;
+    password: string;
+  } | null>(null);
+  const [copiedResetCredentials, setCopiedResetCredentials] = useState(false);
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [savingRemark, setSavingRemark] = useState<Record<string, boolean>>({});
 
@@ -417,6 +427,29 @@ export default function TraineesPage() {
     // Keep dialog open for retry
   };
 
+  const handleResetPasswordClick = (trainee: any) => {
+    setResetPasswordTrainee(trainee);
+  };
+
+  const handleConfirmResetPassword = async () => {
+    if (!resetPasswordTrainee) return;
+    try {
+      setIsResettingPassword(true);
+      const res = await traineeService.resetTraineePassword(String(resetPasswordTrainee.id));
+      setResetSuccessCredentials({
+        fullName: resetPasswordTrainee.name || `${resetPasswordTrainee.first_name || ''} ${resetPasswordTrainee.last_name || ''}`.trim(),
+        email: res.email || resetPasswordTrainee.email,
+        password: res.default_password || 'Admin123',
+      });
+      setResetPasswordTrainee(null);
+      toast.success('Password reset successfully to Admin123');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to reset password');
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   const filteredTrainees = trainees.filter(trainee => {
     const matchesSearch = trainee.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          trainee.trainings.some((training: {program: string}) => training.program.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -707,6 +740,15 @@ export default function TraineesPage() {
                                 <DropdownMenuItem 
                                   onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
+                                    handleResetPasswordClick(trainee);
+                                  }}
+                                >
+                                  <KeyRound className="mr-2 size-4" />
+                                  Reset Password
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={(e: React.MouseEvent) => {
+                                    e.stopPropagation();
                                     handleDeleteClick(trainee);
                                   }}
                                   className="text-destructive focus:text-destructive focus:bg-destructive/10"
@@ -801,6 +843,15 @@ export default function TraineesPage() {
                           {hasPermission('canManageTrainees') && (
                             <>
                               <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  handleResetPasswordClick(trainee);
+                                }}
+                              >
+                                <KeyRound className="mr-2 size-4" />
+                                Reset Password
+                              </DropdownMenuItem>
                               <DropdownMenuItem 
                                 onClick={(e: React.MouseEvent) => {
                                   e.stopPropagation();
@@ -961,6 +1012,20 @@ export default function TraineesPage() {
                         >
                           <Eye className="size-4" />
                         </Button>
+                        {hasPermission('canManageTrainees') && (
+                          <Button 
+                            variant="outline" 
+                            size="icon"
+                            className="size-8 border-border bg-background text-foreground hover:bg-muted"
+                            title="Reset Password to Admin123"
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              handleResetPasswordClick(trainee);
+                            }}
+                          >
+                            <KeyRound className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                     {!isTrainingStaff && (
@@ -1036,6 +1101,129 @@ export default function TraineesPage() {
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />
+
+      {/* Password Reset Confirmation Dialog */}
+      <Dialog open={!!resetPasswordTrainee} onOpenChange={(open) => {
+        if (!open && !isResettingPassword) setResetPasswordTrainee(null);
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
+              <KeyRound className="size-6" />
+            </div>
+            <DialogTitle className="text-center text-lg font-bold">
+              Reset Password to Admin123
+            </DialogTitle>
+            <DialogDescription className="text-center text-sm">
+              Are you sure you want to reset the password for{' '}
+              <span className="font-semibold text-foreground">
+                {resetPasswordTrainee?.name || resetPasswordTrainee?.first_name}
+              </span>
+              ? The password will be set to <span className="font-mono font-bold text-foreground">Admin123</span> and the account will be immediately active with no OTP required.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetPasswordTrainee(null)}
+              disabled={isResettingPassword}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmResetPassword}
+              disabled={isResettingPassword}
+            >
+              {isResettingPassword ? (
+                <span className="flex items-center gap-2">
+                  <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Resetting...
+                </span>
+              ) : (
+                'Confirm Reset'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Success Dialog */}
+      <Dialog open={!!resetSuccessCredentials} onOpenChange={(open) => {
+        if (!open) setResetSuccessCredentials(null);
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="size-6" />
+            </div>
+            <DialogTitle className="text-center text-xl font-bold">
+              Password Reset Complete
+            </DialogTitle>
+            <DialogDescription className="text-center text-sm">
+              The trainee account has been updated with the default credentials:
+            </DialogDescription>
+          </DialogHeader>
+
+          {resetSuccessCredentials && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Trainee</span>
+                  <p className="text-sm font-semibold text-foreground">{resetSuccessCredentials.fullName}</p>
+                </div>
+                <Separator />
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Login Email</span>
+                  <p className="font-mono text-sm font-semibold text-primary">{resetSuccessCredentials.email}</p>
+                </div>
+                <Separator />
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Default Password</span>
+                  <p className="font-mono text-sm font-bold tracking-wide text-foreground">{resetSuccessCredentials.password}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    const text = `Trainee Account Credentials\nName: ${resetSuccessCredentials.fullName}\nEmail: ${resetSuccessCredentials.email}\nDefault Password: ${resetSuccessCredentials.password}`;
+                    navigator.clipboard.writeText(text);
+                    setCopiedResetCredentials(true);
+                    toast.success('Credentials copied to clipboard');
+                    setTimeout(() => setCopiedResetCredentials(false), 2000);
+                  }}
+                >
+                  {copiedResetCredentials ? (
+                    <>
+                      <Check className="mr-2 size-4 text-emerald-600" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 size-4" />
+                      Copy Credentials
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              onClick={() => setResetSuccessCredentials(null)}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -32,8 +32,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
-const randomChunk = () => Math.random().toString(36).slice(2, 7).toUpperCase();
-const tempPassword = () => `BMDC-${randomChunk()}-${randomChunk()}`;
+const defaultPassword = 'Admin123';
 
 const sanitizeName = (value) =>
   String(value || '')
@@ -111,19 +110,25 @@ async function updateUserEmail(userId, email) {
   if (error) throw error;
 }
 
-async function createLink(traineeId, userId) {
+async function createLink(traineeId, userId, tenantId) {
   if (isDryRun) return;
 
   const { error } = await supabase
     .from('trainee_accounts')
-    .insert({ trainee_id: traineeId, user_id: userId });
+    .upsert({ trainee_id: traineeId, user_id: userId, ...(tenantId ? { tenant_id: tenantId } : {}) }, { onConflict: 'trainee_id' });
 
   if (error) throw error;
+
+  if (tenantId) {
+    await supabase
+      .from('users_tenants')
+      .upsert({ user_id: userId, tenant_id: tenantId, is_primary: true }, { onConflict: 'user_id,tenant_id' });
+  }
 }
 
 async function createTraineeUser(trainee, email) {
   const username = await generateUniqueUsername(trainee.first_name, trainee.last_name);
-  const plainPassword = tempPassword();
+  const plainPassword = defaultPassword;
   const password_hash = await hashPassword(plainPassword);
 
   if (isDryRun) {
@@ -159,7 +164,7 @@ async function run() {
 
   const { data: trainees, error } = await supabase
     .from('trainees')
-    .select('id, first_name, last_name, email')
+    .select('id, first_name, last_name, email, tenant_id')
     .order('created_at', { ascending: true });
 
   if (error) throw error;
@@ -226,14 +231,14 @@ async function run() {
             continue;
           }
 
-          await createLink(traineeId, existingUser.id);
+          await createLink(traineeId, existingUser.id, trainee.tenant_id);
           summary.linksCreated += 1;
           link = { user_id: existingUser.id };
         } else {
           const createdUser = await createTraineeUser(trainee, normalizedEmail);
           summary.usersCreated += 1;
 
-          await createLink(traineeId, createdUser.id);
+          await createLink(traineeId, createdUser.id, trainee.tenant_id);
           summary.linksCreated += 1;
           link = { user_id: createdUser.id };
 
@@ -244,6 +249,11 @@ async function run() {
             tempPassword: createdUser.plainPassword,
           });
         }
+      }
+
+      if (isDryRun && link.user_id === '(dry-run)') {
+        // In dry run, new user creation is simulated so skip DB fetch
+        continue;
       }
 
       const linkedUser = await maybeSingle(

@@ -63,7 +63,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // Inject tenant_id from JWT — callers cannot override this (Req 9.2)
   // DENY BY DEFAULT: Verify all tenant references match user's tenant
 
-  const { trainee: traineeRecord, temp_password } = await traineeService.createTrainee({
+  const { trainee: traineeRecord, temp_password, default_password } = await traineeService.createTrainee({
     ...validatedData,
     tenantId,
   });
@@ -76,5 +76,5 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     program_id: validatedData.program_id,
   }, undefined, tenantId);
 
-  return successResponse({ ...traineeRecord, temp_password }, 'Trainee created successfully', 201);
+  return successResponse({ ...traineeRecord, temp_password, default_password: default_password || 'Admin123' }, 'Trainee created successfully', 201);
 });

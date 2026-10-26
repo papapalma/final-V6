@@ -36,6 +36,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { logger } from '@/utils/logger';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { isAuthRateLimitDisabled } from '@/utils/rateLimit';
 
 interface ResetPasswordRequest {
   email: string;
@@ -150,15 +151,15 @@ const validationResult = await validateOTP(normalizedEmail, otp, 'password_reset
   remainingAttempts: validationResult.remainingAttempts,
   });
 
-  if ((validationResult.remainingAttempts ?? 0) === 0) {
-  return NextResponse.json(
-  {
-  error: 'Too many failed attempts. Please request a new reset code.',
-  locked: true,
-  },
-  { status: 429 }
-  );
-  }
+      if (!isAuthRateLimitDisabled() && (validationResult.remainingAttempts ?? 0) === 0) {
+      return NextResponse.json(
+        {
+          error: 'Too many failed attempts. Please request a new reset code.',
+          locked: true,
+        },
+        { status: 429 }
+      );
+    }
 
   return NextResponse.json(
   {

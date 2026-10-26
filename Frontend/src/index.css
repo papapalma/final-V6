@@ -5006,3 +5006,33 @@ h4,
     height: 0;
   }
 }
+
+/* Apple System Red Notification Badges */
+.notif-badge-red {
+  background-color: #FF3B30 !important;
+  color: #ffffff !important;
+  fill: #ffffff !important;
+}
+
+.notif-badge-red * {
+  color: #ffffff !important;
+}
+
+/* Apple Design Modal & Sheet Padding & Solid Surface */
+.apple-modal-dialog {
+  background-color: var(--card) !important;
+  color: var(--card-foreground) !important;
+}
+
+.apple-modal-header {
+  padding: 1.5rem 1.5rem 1rem 1.5rem !important;
+}
+
+.apple-modal-body {
+  padding: 1.5rem !important;
+}
+
+.apple-modal-footer {
+  padding: 1.25rem 1.5rem !important;
+}
+

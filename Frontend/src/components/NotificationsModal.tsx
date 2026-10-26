@@ -45,13 +45,20 @@ export default function NotificationsModal({ open, onOpenChange, notifications }
                 onClick={() => onOpenChange(false)}
                 className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted"
               >
-                <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors ${notification.type === 'overdue' ? 'bg-[#FF3B30]/15 text-[#FF3B30] dark:bg-[#FF453A]/20 dark:text-[#FF453A]' : 'bg-primary/10 text-primary'}`}>
                   {notification.type === 'overdue' ? <Package className="size-4" /> : <Bell className="size-4" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{notification.title}</p>
-                    {notification.type === 'overdue' && <Badge variant="destructive">Overdue</Badge>}
+                    {notification.type === 'overdue' && (
+                      <Badge
+                        style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
+                        className="notif-badge-red border-none bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-sm"
+                      >
+                        Overdue
+                      </Badge>
+                    )}
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{notification.description}</p>
                   <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">

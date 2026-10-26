@@ -30,6 +30,7 @@ import { validateOTP, getRemainingAttempts } from '@/services/otpService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { logger } from '@/utils/logger';
 import jwt from 'jsonwebtoken';
+import { isAuthRateLimitDisabled } from '@/utils/rateLimit';
 
 interface VerifyPasswordResetOTPRequest {
   email: string;
@@ -79,15 +80,15 @@ const validationResult = await validateOTP(normalizedEmail, otp, 'password_reset
 
   // Return 429 if locked out
 
-if (remainingAttempts === 0) {
-  return NextResponse.json(
-  {
-  error: 'Too many failed attempts. Please request a new reset code.',
-  locked: true,
-  },
-  { status: 429 }
-  );
-  }
+    if (!isAuthRateLimitDisabled() && remainingAttempts === 0) {
+      return NextResponse.json(
+        {
+          error: 'Too many failed attempts. Please request a new reset code.',
+          locked: true,
+        },
+        { status: 429 }
+      );
+    }
 
   return NextResponse.json(
   {

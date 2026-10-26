@@ -44,7 +44,7 @@ import { verifyLogin2FASchema } from '@/utils/validators';
 import { validateOTP, markOTPAsVerified } from '@/services/otpService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { logger } from '@/utils/logger';
-import { checkRateLimit, getRateLimitKey } from '@/utils/rateLimit';
+import { checkRateLimit, getRateLimitKey, isAuthRateLimitDisabled } from '@/utils/rateLimit';
 import { validationErrorResponse, successResponse, errorResponse, unauthorizedResponse } from '@/utils/responses';
 import jwt from 'jsonwebtoken';
 
@@ -102,15 +102,17 @@ const { otp, tempToken } = validation.data;
   // STEP 2: Rate limiting check (per IP)
   // ────────────────────────────────────────────────────────────────────
 
-const clientIp = getRateLimitKey(request, 'login-2fa');
-  const rateLimitResponse = checkRateLimit(clientIp, {
-  limit: 5,
-  windowMs: 30 * 60 * 1000, // 30 minutes
-  });
+  if (!isAuthRateLimitDisabled()) {
+    const clientIp = getRateLimitKey(request, 'login-2fa');
+    const rateLimitResponse = checkRateLimit(clientIp, {
+      limit: 5,
+      windowMs: 30 * 60 * 1000, // 30 minutes
+    });
 
-  if (rateLimitResponse) {
-  logger.warn('[LOGIN_2FA] Rate limit exceeded', { clientIp });
-  return rateLimitResponse as NextResponse;
+    if (rateLimitResponse) {
+      logger.warn('[LOGIN_2FA] Rate limit exceeded', { clientIp });
+      return rateLimitResponse as NextResponse;
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -176,15 +178,15 @@ await supabaseAdmin.from('audit_logs').insert({
 
   // Return 429 if locked out
 
-if (remainingAttempts === 0) {
-  return NextResponse.json(
-  {
-  success: false,
-  error: 'Too many failed attempts. Please request a new verification code.',
-  locked: true,
-  },
-  { status: 429, headers: { 'Retry-After': '600' } }
-  );
+  if (!isAuthRateLimitDisabled() && remainingAttempts === 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Too many failed attempts. Please request a new verification code.',
+        locked: true,
+      },
+      { status: 429, headers: { 'Retry-After': '600' } }
+    );
   }
 
   return NextResponse.json(

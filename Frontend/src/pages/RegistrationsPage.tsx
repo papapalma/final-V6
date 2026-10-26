@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import DashboardLayout from '../components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -27,6 +28,13 @@ import {
   X,
   Loader,
   Download,
+  User,
+  Mail,
+  Phone,
+  GraduationCap,
+  Clock,
+  AlertCircle,
+  FileCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import registrationService from '../services/registrationService';
@@ -151,9 +159,16 @@ export default function RegistrationsPage() {
   const handleApprove = async () => {
     if (!selectedRegistration) return;
     setProcessing(true);
+    const targetId = selectedRegistration.id;
     try {
-      await registrationService.approveRegistration(selectedRegistration.id);
+      await registrationService.approveRegistration(targetId);
       toast.success('Registration approved successfully');
+      // Optimistically update local registrations list for fluid exit transition
+      setRegistrations(prev =>
+        statusFilter === 'pending'
+          ? prev.filter(r => r.id !== targetId)
+          : prev.map(r => r.id === targetId ? { ...r, registration_status: 'approved' as const } : r)
+      );
       // Reset all dialog states first
       setSelectedRegistration(null);
       setActionDialogOpen(false);
@@ -176,9 +191,16 @@ export default function RegistrationsPage() {
       return;
     }
     setProcessing(true);
+    const targetId = selectedRegistration.id;
     try {
-      await registrationService.rejectRegistration(selectedRegistration.id, rejectionReason);
+      await registrationService.rejectRegistration(targetId, rejectionReason);
       toast.success('Registration rejected');
+      // Optimistically update local registrations list for fluid exit transition
+      setRegistrations(prev =>
+        statusFilter === 'pending'
+          ? prev.filter(r => r.id !== targetId)
+          : prev.map(r => r.id === targetId ? { ...r, registration_status: 'rejected' as const, registration_rejection_reason: rejectionReason } : r)
+      );
       // Reset all dialog states first
       setSelectedRegistration(null);
       setActionDialogOpen(false);
@@ -286,87 +308,98 @@ export default function RegistrationsPage() {
           </Card>
         ) : (
           <div className="grid gap-3 sm:gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {paginatedRegistrations.map((registration) => (
-              <Card 
-                key={registration.id} 
-                className="group hover:shadow-lg transition-all cursor-pointer flex flex-col"
-                onClick={() => {
-                  setSelectedRegistration(registration);
-                  setViewDetailsOpen(true);
-                }}
-              >
-                <CardHeader className="pb-3 sm:pb-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <CardTitle className="truncate text-sm sm:text-base">
-                        {registration.first_name} {registration.last_name}
-                      </CardTitle>
-                      <CardDescription className="text-xs mt-1">
-                        @{registration.username}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {getStatusBadge(registration.registration_status)}
-                  </div>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col">
-                  <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm flex-1">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Email</p>
-                      <p className="font-medium break-all truncate">{registration.email}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Phone</p>
-                      <p className="font-medium">{registration.phone}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Program</p>
-                      <p className="font-medium truncate">{registration.program?.name}</p>
-                    </div>
-                    <div className="pt-2 border-t">
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(registration.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
+            <AnimatePresence mode="popLayout">
+              {paginatedRegistrations.map((registration) => (
+                <motion.div
+                  layout
+                  key={registration.id}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                  transition={{ duration: 0.22, ease: "easeOut" }}
+                  className="flex flex-col"
+                >
+                  <Card 
+                    className="group hover:shadow-lg transition-all cursor-pointer flex flex-col h-full"
+                    onClick={() => {
+                      setSelectedRegistration(registration);
+                      setViewDetailsOpen(true);
+                    }}
+                  >
+                    <CardHeader className="pb-3 sm:pb-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="truncate text-sm sm:text-base">
+                            {registration.first_name} {registration.last_name}
+                          </CardTitle>
+                          <CardDescription className="text-xs mt-1">
+                            @{registration.username}
+                          </CardDescription>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {getStatusBadge(registration.registration_status)}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex-1 flex flex-col">
+                      <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm flex-1">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Email</p>
+                          <p className="font-medium break-all truncate">{registration.email}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Phone</p>
+                          <p className="font-medium">{registration.phone}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Program</p>
+                          <p className="font-medium truncate">{registration.program?.name}</p>
+                        </div>
+                        <div className="pt-2 border-t">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(registration.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
 
-                  {/* Action Buttons */}
-                  {registration.registration_status === 'pending' && (
-                    <div className="flex gap-2 mt-3 sm:mt-4" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        size="sm"
-                        className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
-                        onClick={() => {
-                          setSelectedRegistration(registration);
-                          setActionType('approve');
-                          setActionDialogOpen(true);
-                        }}
-                      >
-                        <Check className="size-3 sm:size-4 mr-1" />
-                        <span className="hidden xs:inline">Approve</span>
-                        <span className="inline xs:hidden">OK</span>
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
-                        onClick={() => {
-                          setSelectedRegistration(registration);
-                          setActionType('reject');
-                          setRejectionReason('');
-                          setActionDialogOpen(true);
-                        }}
-                      >
-                        <X className="size-3 sm:size-4 mr-1" />
-                        <span className="hidden xs:inline">Reject</span>
-                        <span className="inline xs:hidden">No</span>
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                      {/* Action Buttons */}
+                      {registration.registration_status === 'pending' && (
+                        <div className="flex gap-2 mt-3 sm:mt-4" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            size="sm"
+                            className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
+                            onClick={() => {
+                              setSelectedRegistration(registration);
+                              setActionType('approve');
+                              setActionDialogOpen(true);
+                            }}
+                          >
+                            <Check className="size-3 sm:size-4 mr-1" />
+                            <span className="hidden xs:inline">Approve</span>
+                            <span className="inline xs:hidden">OK</span>
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
+                            onClick={() => {
+                              setSelectedRegistration(registration);
+                              setActionType('reject');
+                              setRejectionReason('');
+                              setActionDialogOpen(true);
+                            }}
+                          >
+                            <X className="size-3 sm:size-4 mr-1" />
+                            <span className="hidden xs:inline">Reject</span>
+                            <span className="inline xs:hidden">No</span>
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
 
@@ -383,91 +416,162 @@ export default function RegistrationsPage() {
 
       {/* View Details Dialog */}
       <Dialog open={viewDetailsOpen} onOpenChange={setViewDetailsOpen}>
-        <DialogContent className="w-[92vw] max-w-2xl flex flex-col max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">Registration Details</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              Review complete registration information
-            </DialogDescription>
-          </DialogHeader>
-
+        <DialogContent 
+          className="w-[94vw] max-w-2xl p-0 overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 shadow-2xl flex flex-col max-h-[92vh] apple-modal-dialog"
+          style={{ backgroundColor: 'var(--card)' }}
+        >
           {selectedRegistration && (
             <>
-              <div className="space-y-3 sm:space-y-4 flex-1 overflow-y-auto pr-4">
-                {/* Status */}
-                <div className="flex items-center justify-between p-2 sm:p-3 rounded-lg bg-muted">
-                  <span className="font-medium text-sm">Status:</span>
-                  {getStatusBadge(selectedRegistration.registration_status)}
-                </div>
-
-                {/* Personal Info */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">First Name</p>
-                    <p className="font-medium text-sm">{selectedRegistration.first_name}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Last Name</p>
-                    <p className="font-medium text-sm">{selectedRegistration.last_name}</p>
-                  </div>
-                </div>
-
-                {/* Contact Info */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Email</p>
-                    <p className="font-medium break-all text-sm">{selectedRegistration.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Phone</p>
-                    <p className="font-medium text-sm">{selectedRegistration.phone}</p>
-                  </div>
-                </div>
-
-                {/* Account Info */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Username</p>
-                    <p className="font-medium text-sm">@{selectedRegistration.username}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Program</p>
-                    <p className="font-medium text-sm truncate">{selectedRegistration.program?.name}</p>
+              {/* Apple-style Hero Header */}
+              <div 
+                className="border-b border-border/60 bg-muted/20 apple-modal-header"
+                style={{ padding: '1.5rem 1.5rem 1rem 1.5rem' }}
+              >
+                <div className="flex items-start justify-between gap-4 pr-8">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Registration Details
+                      </span>
+                      {getStatusBadge(selectedRegistration.registration_status)}
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground truncate">
+                      {selectedRegistration.first_name} {selectedRegistration.last_name}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
+                      <span>@{selectedRegistration.username}</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="size-3" />
+                        {new Date(selectedRegistration.created_at).toLocaleDateString(undefined, { 
+                          month: 'short', 
+                          day: 'numeric', 
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </p>
                   </div>
                 </div>
+              </div>
 
-                {/* Submission Date */}
-                <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Submitted On</p>
-                  <p className="font-medium text-sm">
-                    {new Date(selectedRegistration.created_at).toLocaleString()}
-                  </p>
+              {/* Scrollable Inset Grouped Content */}
+              <div 
+                className="space-y-4 overflow-y-auto flex-1 apple-modal-body"
+                style={{ padding: '1.5rem', maxHeight: 'calc(92vh - 180px)' }}
+              >
+                {/* Inset Group 1: Personal & Contact Information */}
+                <div className="rounded-xl border border-border/70 bg-muted/30 dark:bg-muted/15 p-4 space-y-3.5">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <User className="size-3.5 text-primary" />
+                    <span>Personal & Contact Info</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Full Name</p>
+                      <p className="text-sm font-semibold text-foreground mt-0.5">
+                        {selectedRegistration.first_name} {selectedRegistration.last_name}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Username</p>
+                      <p className="text-sm font-semibold text-foreground mt-0.5">
+                        @{selectedRegistration.username}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Email Address</p>
+                      <a 
+                        href={`mailto:${selectedRegistration.email}`}
+                        className="text-sm font-semibold text-primary hover:underline break-all mt-0.5 inline-flex items-center gap-1.5"
+                      >
+                        <Mail className="size-3.5 shrink-0" />
+                        <span>{selectedRegistration.email}</span>
+                      </a>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Phone Number</p>
+                      <p className="text-sm font-semibold text-foreground mt-0.5 inline-flex items-center gap-1.5">
+                        <Phone className="size-3.5 text-muted-foreground shrink-0" />
+                        <span>{selectedRegistration.phone || 'None provided'}</span>
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Submitted Requirements */}
-                <div className="pt-2 border-t">
-                  <p className="text-xs sm:text-sm font-semibold mb-2">Submitted Requirements</p>
+                {/* Inset Group 2: Program Enrollment */}
+                <div className="rounded-xl border border-border/70 bg-muted/30 dark:bg-muted/15 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <GraduationCap className="size-4 text-primary" />
+                    <span>Program Enrollment</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-background/80">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground">Applying for</p>
+                      <p className="text-sm font-bold text-foreground capitalize mt-0.5 truncate">
+                        {selectedRegistration.program?.name || 'Selected Program'}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="border-primary/20 bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 shrink-0">
+                      Target Course
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Inset Group 3: Submitted Requirements */}
+                <div className="rounded-xl border border-border/70 bg-muted/30 dark:bg-muted/15 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      <FileCheck className="size-3.5 text-primary" />
+                      <span>Submitted Documents</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {requirementFiles.length} file{requirementFiles.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
                   {loadingReqs ? (
-                    <p className="text-xs text-muted-foreground">Loading requirements...</p>
+                    <div className="p-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                      <Loader className="size-3.5 animate-spin" />
+                      <span>Loading documents...</span>
+                    </div>
                   ) : requirementFiles.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No documents uploaded</p>
+                    <div className="flex flex-col items-center justify-center p-5 rounded-lg border border-dashed border-border/70 bg-background/50 text-center">
+                      <FileText className="size-6 text-muted-foreground/60 mb-1" />
+                      <p className="text-xs font-semibold text-foreground">No documents uploaded</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Trainee submitted application without digital attachments.
+                      </p>
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {requirementFiles.map((rf: any) => (
-                        <div key={rf.id} className="flex items-center justify-between p-2 rounded-md bg-muted/40 border text-xs">
-                          <div className="min-w-0 flex-1 mr-2">
-                            <p className="font-medium truncate">{rf.file_name || rf.requirement_type}</p>
-                            <p className="text-[11px] text-muted-foreground capitalize">
-                              {rf.requirement_type?.replace(/_/g, ' ')}
-                            </p>
+                        <div 
+                          key={rf.id} 
+                          className="flex items-center justify-between p-3 rounded-lg border border-border/60 bg-background/80 hover:bg-background transition-colors text-xs"
+                        >
+                          <div className="min-w-0 flex-1 mr-3 flex items-center gap-2.5">
+                            <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                              <FileText className="size-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-foreground truncate">{rf.file_name || rf.requirement_type}</p>
+                              <p className="text-[11px] text-muted-foreground capitalize">
+                                {rf.requirement_type?.replace(/_/g, ' ')}
+                              </p>
+                            </div>
                           </div>
                           <a
                             href={`/api/trainees/${selectedRegistration.id}/requirements/${rf.requirement_type}/download?file_id=${rf.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-primary hover:underline font-medium text-xs shrink-0"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-colors shrink-0 active:scale-95"
                           >
-                            <Download className="size-3" /> Download
+                            <Download className="size-3.5" />
+                            <span>Download</span>
                           </a>
                         </div>
                       ))}
@@ -477,8 +581,11 @@ export default function RegistrationsPage() {
 
                 {/* Rejection Reason (if applicable) */}
                 {selectedRegistration.registration_status === 'rejected' && selectedRegistration.registration_rejection_reason && (
-                  <div className="p-2 sm:p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
-                    <p className="text-xs sm:text-sm font-medium text-red-800 dark:text-red-300 mb-1">Rejection Reason:</p>
+                  <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-red-800 dark:text-red-300">
+                      <AlertCircle className="size-3.5" />
+                      <span>Rejection Reason</span>
+                    </div>
                     <p className="text-xs sm:text-sm text-red-700 dark:text-red-400">
                       {selectedRegistration.registration_rejection_reason}
                     </p>
@@ -486,32 +593,37 @@ export default function RegistrationsPage() {
                 )}
               </div>
 
-              {/* Actions */}
+              {/* Apple Balanced Action Footer */}
               {selectedRegistration.registration_status === 'pending' && (
-                <DialogFooter className="flex flex-col gap-2 mt-4 flex-shrink-0">
-                  <Button
-                    onClick={() => {
-                      setActionType('approve');
-                      setActionDialogOpen(true);
-                    }}
-                    className="w-full h-9 text-sm"
-                  >
-                    <Check className="size-4 mr-2" />
-                    Approve Registration
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      setActionType('reject');
-                      setRejectionReason('');
-                      setActionDialogOpen(true);
-                    }}
-                    className="w-full h-9 text-sm"
-                  >
-                    <X className="size-4 mr-2" />
-                    Reject Registration
-                  </Button>
-                </DialogFooter>
+                <div 
+                  className="border-t border-border/60 bg-muted/20 shrink-0 apple-modal-footer"
+                  style={{ padding: '1.25rem 1.5rem' }}
+                >
+                  <div className="flex flex-col sm:flex-row gap-3 w-full">
+                    <Button
+                      onClick={() => {
+                        setActionType('approve');
+                        setActionDialogOpen(true);
+                      }}
+                      className="flex-1 h-11 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center gap-2"
+                    >
+                      <Check className="size-4.5 stroke-[2.5]" />
+                      <span>Approve Registration</span>
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setActionType('reject');
+                        setRejectionReason('');
+                        setActionDialogOpen(true);
+                      }}
+                      style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
+                      className="notif-badge-red flex-1 h-11 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] bg-red-600 hover:bg-red-700 text-white flex items-center justify-center gap-2 border-none"
+                    >
+                      <X className="size-4.5 stroke-[2.5]" />
+                      <span>Reject Registration</span>
+                    </Button>
+                  </div>
+                </div>
               )}
             </>
           )}
@@ -520,56 +632,70 @@ export default function RegistrationsPage() {
 
       {/* Action Dialog (Approve/Reject) */}
       <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
-        <DialogContent className="w-[92vw] max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">
+        <DialogContent 
+          className="w-[92vw] max-w-sm rounded-2xl sm:rounded-3xl border border-border/80 shadow-2xl apple-modal-dialog"
+          style={{ padding: '1.5rem', backgroundColor: 'var(--card)' }}
+        >
+          <DialogHeader className="text-center sm:text-center pb-1">
+            <div className={`mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl ${
+              actionType === 'approve' 
+                ? 'bg-primary/10 text-primary' 
+                : 'bg-red-500/10 text-red-600 dark:text-red-400'
+            }`}>
+              {actionType === 'approve' ? <Check className="size-6 stroke-[2.5]" /> : <X className="size-6 stroke-[2.5]" />}
+            </div>
+            <DialogTitle className="text-lg font-bold">
               {actionType === 'approve' ? 'Approve Registration' : 'Reject Registration'}
             </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
+            <DialogDescription className="text-xs sm:text-sm mt-1">
               {selectedRegistration && (
                 <>
                   {actionType === 'approve'
-                    ? `Approve ${selectedRegistration.first_name} ${selectedRegistration.last_name}'s registration?`
-                    : `Reject ${selectedRegistration.first_name} ${selectedRegistration.last_name}'s registration?`}
+                    ? `Are you sure you want to approve ${selectedRegistration.first_name} ${selectedRegistration.last_name}'s registration?`
+                    : `Please provide a reason for rejecting ${selectedRegistration.first_name} ${selectedRegistration.last_name}'s registration.`}
                 </>
               )}
             </DialogDescription>
           </DialogHeader>
 
           {actionType === 'reject' && (
-            <div className="space-y-2">
-              <label htmlFor="rejection-reason" className="text-xs sm:text-sm font-medium">
-                Rejection Reason *
+            <div className="space-y-1.5 my-2">
+              <label htmlFor="rejection-reason" className="text-xs font-semibold text-foreground">
+                Rejection Reason <span className="text-red-500">*</span>
               </label>
               <textarea
                 id="rejection-reason"
                 placeholder="Explain why you're rejecting this registration..."
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs sm:text-sm placeholder-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-20 sm:min-h-24"
+                className="w-full rounded-xl border border-input bg-background p-3 text-xs sm:text-sm placeholder-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-24 resize-none transition-shadow"
               />
             </div>
           )}
 
-          <DialogFooter className="flex flex-col gap-2">
-            <Button
-              variant={actionType === 'approve' ? 'default' : 'destructive'}
-              onClick={actionType === 'approve' ? handleApprove : handleReject}
-              disabled={processing || (actionType === 'reject' && !rejectionReason.trim())}
-              className="w-full h-9 text-sm"
-            >
-              {processing && <Loader className="size-4 mr-2 animate-spin" />}
-              {actionType === 'approve' ? 'Approve' : 'Reject'}
-            </Button>
+          <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
             <Button
               variant="outline"
               onClick={() => setActionDialogOpen(false)}
               disabled={processing}
-              className="w-full h-9 text-sm"
+              className="flex-1 h-10 rounded-xl text-sm font-medium order-2 sm:order-1"
             >
               Cancel
             </Button>
-          </DialogFooter>
+            <Button
+              onClick={actionType === 'approve' ? handleApprove : handleReject}
+              disabled={processing || (actionType === 'reject' && !rejectionReason.trim())}
+              style={actionType === 'reject' ? { backgroundColor: '#FF3B30', color: '#ffffff' } : undefined}
+              className={`flex-1 h-10 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] order-1 sm:order-2 ${
+                actionType === 'approve' 
+                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground' 
+                  : 'notif-badge-red bg-red-600 hover:bg-red-700 text-white'
+              }`}
+            >
+              {processing && <Loader className="size-4 mr-2 animate-spin" />}
+              {actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

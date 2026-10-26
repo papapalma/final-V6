@@ -133,8 +133,8 @@ class TraineeService {
   /**
    * Create new trainee
    */
-  async createTrainee(data: CreateTraineeData): Promise<Trainee> {
-    const response = await api.post<Trainee>('/trainees', data);
+  async createTrainee(data: CreateTraineeData): Promise<Trainee & { temp_password?: string; default_password?: string }> {
+    const response = await api.post<Trainee & { temp_password?: string; default_password?: string }>('/trainees', data);
     return response.data;
   }
 
@@ -151,6 +151,14 @@ class TraineeService {
    */
   async deleteTrainee(id: string): Promise<void> {
     await api.delete(`/trainees/${id}`);
+  }
+
+  /**
+   * Reset trainee password to default Admin123
+   */
+  async resetTraineePassword(id: string): Promise<{ email: string; default_password: string; message: string }> {
+    const response = await api.post<{ email: string; default_password: string; message: string }>(`/trainees/${id}/reset-password`);
+    return response.data;
   }
 
   /**

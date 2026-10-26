@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Checkbox } from '../components/ui/checkbox';
 import { Separator } from '../components/ui/separator';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Save, X, Plus, Trash2, AlertCircle, Upload, Image as ImageIcon, Award, Building2, ShieldCheck, User, MapPin, GraduationCap, Briefcase, BookOpen, Camera } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, X, Plus, Trash2, AlertCircle, Upload, Image as ImageIcon, Award, Building2, ShieldCheck, User, MapPin, GraduationCap, Briefcase, BookOpen, Camera, Copy, Check } from 'lucide-react';
 import traineeService from '../services/traineeService';
 import programService from '../services/programService';
 import api, { getFileUrl } from '../services/api';
@@ -66,6 +67,12 @@ export default function TraineeFormPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [programs, setPrograms] = useState<any[]>([]);
   const [isDraggingPhoto, setIsDraggingPhoto] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    email: string;
+    password: string;
+    fullName: string;
+  } | null>(null);
+  const [copiedCredentials, setCopiedCredentials] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<{
@@ -829,10 +836,21 @@ export default function TraineeFormPage() {
         setIsVerifying(false);
       }
       
-      // Navigate back to trainee list
-      setTimeout(() => {
-        navigate('/trainees');
-      }, 2000);
+      if (!id) {
+        // Show created credentials modal for newly added trainee
+        const accountEmail = traineeData.email || formData.email;
+        const accountPassword = (savedTrainee as any)?.default_password || (savedTrainee as any)?.temp_password || 'Admin123';
+        setCreatedCredentials({
+          fullName: `${formData.firstName} ${formData.lastName}`.trim(),
+          email: accountEmail,
+          password: accountPassword,
+        });
+      } else {
+        // Navigate back to trainee list for updates
+        setTimeout(() => {
+          navigate('/trainees');
+        }, 1500);
+      }
     } catch (error: any) {
       logger.error('Failed to save trainee', {
         action: id ? 'update' : 'create',
@@ -1855,6 +1873,91 @@ export default function TraineeFormPage() {
           )}
         </div>
       </div>
+
+      {/* Credentials Dialog for newly created trainee */}
+      <Dialog
+        open={!!createdCredentials}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreatedCredentials(null);
+            navigate('/trainees');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="size-6" />
+            </div>
+            <DialogTitle className="text-center text-xl font-bold">
+              Trainee Account Created
+            </DialogTitle>
+            <DialogDescription className="text-center text-sm">
+              The trainee account has been pre-confirmed and activated. No OTP verification or approval is required.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdCredentials && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Trainee</span>
+                  <p className="text-sm font-semibold text-foreground">{createdCredentials.fullName}</p>
+                </div>
+                <Separator />
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Login Email</span>
+                  <p className="font-mono text-sm font-semibold text-primary">{createdCredentials.email}</p>
+                </div>
+                <Separator />
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Default Password</span>
+                  <p className="font-mono text-sm font-bold tracking-wide text-foreground">{createdCredentials.password}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    const text = `Trainee Account Credentials\nName: ${createdCredentials.fullName}\nEmail: ${createdCredentials.email}\nDefault Password: ${createdCredentials.password}`;
+                    navigator.clipboard.writeText(text);
+                    setCopiedCredentials(true);
+                    toast.success('Credentials copied to clipboard');
+                    setTimeout(() => setCopiedCredentials(false), 2000);
+                  }}
+                >
+                  {copiedCredentials ? (
+                    <>
+                      <Check className="mr-2 size-4 text-emerald-600" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 size-4" />
+                      Copy Credentials
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              onClick={() => {
+                setCreatedCredentials(null);
+                navigate('/trainees');
+              }}
+            >
+              Done & Return to Trainees
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -74,6 +75,7 @@ export default function RegistrationModal({
   onRegistrationComplete
 }: RegistrationModalProps) {
   const [step, setStep] = useState(1);
+  const [direction, setDirection] = useState(1);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [programs, setPrograms] = useState<Program[]>([]);
@@ -148,6 +150,7 @@ export default function RegistrationModal({
   useEffect(() => {
     if (!open) {
       setStep(1);
+      setDirection(1);
       setForm(EMPTY_FORM);
       setErrors({});
       setSubmitted(false);
@@ -479,6 +482,7 @@ export default function RegistrationModal({
       if (step === 5 && form.tenant_id) {
         loadPrograms(form.tenant_id);
       }
+      setDirection(1);
       setStep(s => s + 1);
     }
   };
@@ -495,6 +499,7 @@ export default function RegistrationModal({
       setResendCountdown(0);
       setCanResend(true);
     }
+    setDirection(-1);
     setStep(s => s - 1);
   };
 
@@ -558,9 +563,14 @@ export default function RegistrationModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col p-0">
           <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
-            <div className="mb-6 flex size-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <CheckCircle2 className="size-10 text-green-600 dark:text-green-400" />
-            </div>
+            <motion.div
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: [0.6, 1.15, 1], opacity: 1 }}
+              transition={{ type: "spring", stiffness: 350, damping: 20 }}
+              className="mb-6 flex size-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 shadow-sm"
+            >
+              <CheckCircle2 className="size-10" />
+            </motion.div>
             <h2 className="mb-2 text-2xl font-bold">Registration Submitted!</h2>
             <p className="mb-6 text-muted-foreground">
               Your registration is now pending review by our staff. You will be able to log in once your account is approved.
@@ -619,9 +629,19 @@ export default function RegistrationModal({
           })}
         </div>
 
-        <div className="space-y-4">
-          {/* STEP 1 – Account Credentials */}
-          {step === 1 && (
+        <div className="relative overflow-hidden min-h-[360px]">
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={step}
+              custom={direction}
+              initial={{ opacity: 0, x: direction * 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -direction * 24 }}
+              transition={{ type: "spring", stiffness: 350, damping: 28 }}
+              className="space-y-4"
+            >
+              {/* STEP 1 – Account Credentials */}
+              {step === 1 && (
             <>
               <div className="space-y-2">
                 <Label htmlFor="username">Username *</Label>
@@ -1099,6 +1119,8 @@ export default function RegistrationModal({
               </div>
             </>
           )}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Navigation */}

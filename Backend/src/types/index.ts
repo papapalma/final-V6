@@ -34,6 +34,7 @@ export interface Item {
 
 export interface Trainee {
   id: string;
+  tenant_id?: string;
   first_name: string;
   last_name: string;
   middle_name: string;

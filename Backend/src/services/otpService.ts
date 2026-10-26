@@ -17,6 +17,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { logger } from '@/utils/logger';
+import { isAuthRateLimitDisabled } from '@/utils/rateLimit';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -291,7 +292,7 @@ if (isExpired(record.expires_at)) {
 
   // Check if max attempts exceeded
 
-if (record.attempt_count >= record.max_attempts) {
+  if (!isAuthRateLimitDisabled() && record.attempt_count >= record.max_attempts) {
     logger.warn('[OTP] Maximum OTP attempts exceeded', {
       email,
       type,
@@ -333,7 +334,9 @@ const newAttemptCount = record.attempt_count + 1;
 if (code !== record.code) {
     logger.warn('[OTP] Invalid OTP code provided', { email, type, attempt: newAttemptCount });
 
-    const remainingAttempts = record.max_attempts - newAttemptCount;
+    const remainingAttempts = isAuthRateLimitDisabled()
+      ? 999
+      : Math.max(0, record.max_attempts - newAttemptCount);
 
     await logOTPOperation({
       action: 'otp.validate_failed',
@@ -351,7 +354,9 @@ if (code !== record.code) {
       valid: false,
       error:
         remainingAttempts > 0
-          ? `Invalid verification code. ${remainingAttempts} attempt(s) remaining.`
+          ? (isAuthRateLimitDisabled()
+              ? 'Invalid verification code.'
+              : `Invalid verification code. ${remainingAttempts} attempt(s) remaining.`)
           : 'Maximum verification attempts exceeded.',
       remainingAttempts,
     };

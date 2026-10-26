@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Bell } from 'lucide-react';
@@ -71,16 +72,38 @@ export default function OverdueBellNotification() {
           className="relative hover:bg-primary/10"
           title={`${notificationCount} notification${notificationCount !== 1 ? 's' : ''}`}
         >
-          <Bell className={`size-5 ${notificationCount > 0 || hasOverdue ? 'text-destructive' : ''}`} />
-          <Badge
-            variant="destructive"
-            className="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full p-0 text-[10px] font-bold"
+          <motion.div
+            animate={notificationCount > 0 ? { rotate: [0, -10, 10, -8, 8, -4, 0] } : { rotate: 0 }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
           >
-            {notificationCount > 99 ? '99+' : notificationCount}
-          </Badge>
-          {hasOverdue && notificationCount > 0 && (
-            <span className="absolute -top-1 -right-1 size-5 rounded-full bg-destructive animate-ping opacity-75" />
-          )}
+            <Bell className={`size-5 transition-colors ${notificationCount > 0 || hasOverdue ? 'text-[#FF3B30] dark:text-[#FF453A]' : ''}`} />
+          </motion.div>
+          <AnimatePresence>
+            {notificationCount > 0 && (
+              <motion.div
+                key={`badge-${notificationCount}`}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 24 }}
+                className="absolute -top-1 -right-1 flex items-center justify-center"
+              >
+                {hasOverdue && (
+                  <motion.span
+                    animate={{ scale: [1, 1.45, 1], opacity: [0.65, 0, 0.65] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute inset-0 size-full rounded-full bg-[#FF3B30] pointer-events-none"
+                  />
+                )}
+                <Badge
+                  style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
+                  className="notif-badge-red relative flex h-5 min-w-5 items-center justify-center rounded-full border-none bg-red-600 px-1 text-[10px] font-semibold tabular-nums text-white ring-2 ring-card shadow-[0_2px_6px_rgba(255,59,48,0.45)]"
+                >
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </Badge>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </Button>
       </div>
 
