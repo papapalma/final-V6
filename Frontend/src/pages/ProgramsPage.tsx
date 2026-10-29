@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrograms } from '../contexts/ProgramsContext';
@@ -36,6 +36,10 @@ import {
   TableIcon,
   Building2,
   BarChart3,
+  Search,
+  X,
+  RotateCcw,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import programService from '../services/programService';
@@ -73,6 +77,9 @@ export default function ProgramsPage() {
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterFunding, setFilterFunding] = useState('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [tablePage, setTablePage] = useState(1);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
@@ -80,6 +87,29 @@ export default function ProgramsPage() {
   const [statsLoading, setStatsLoading] = useState<Set<string>>(new Set());
   const tableRowsPerPage = 10;
   const location = useLocation();
+
+  // Apple-style Keyboard Shortcut: Press '/' to focus search, 'Escape' to clear and blur
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl?.getAttribute('role') === 'combobox';
+
+      if (e.key === '/' && !isInput && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'Escape' && activeEl === searchInputRef.current) {
+        e.preventDefault();
+        setSearchTerm('');
+        searchInputRef.current?.blur();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Sync context programs to local state
   useEffect(() => {
@@ -97,13 +127,11 @@ export default function ProgramsPage() {
     contextRefetch();
   }, [location.pathname, isAuthReady, contextRefetch]);
 
-
-  // Refetch when filters change
-  useEffect(() => {
-    if (!loading) {
-      contextRefetch();
-    }
-  }, [searchTerm, filterStatus, contextRefetch]);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await contextRefetch();
+    setRefreshing(false);
+  };
 
   const handleEdit = (program: Program) => {
     navigate(`/programs/${program.id}/edit`);
@@ -129,13 +157,45 @@ export default function ProgramsPage() {
     setDeleteDialogOpen(true);
   };
 
-  // Filter programs
+  // Instant In-Memory Multi-Field Filter
   const filteredPrograms = programs.filter(program => {
-    const matchesSearch = program.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          program.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || program.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const q = searchTerm.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      program.name?.toLowerCase().includes(q) ||
+      program.description?.toLowerCase().includes(q) ||
+      program.type_of_funding?.toLowerCase().includes(q) ||
+      program.duration?.toLowerCase().includes(q) ||
+      program.instructor?.toLowerCase().includes(q);
+
+    const actualStatus = getProgramStatus(program);
+    const matchesStatus = filterStatus === 'all' || actualStatus === filterStatus;
+
+    const matchesFunding = filterFunding === 'all' || program.type_of_funding === filterFunding;
+
+    return matchesSearch && matchesStatus && matchesFunding;
   });
+
+  // Dynamic status counts for Apple HIG capsules (expiration aware)
+  const statusCounts = {
+    all: programs.length,
+    active: programs.filter(p => getProgramStatus(p) === 'active').length,
+    inactive: programs.filter(p => getProgramStatus(p) === 'inactive').length,
+  };
+
+  // Distinct sorted funding options
+  const fundingOptions = Array.from(
+    new Set(programs.map(p => p.type_of_funding).filter(Boolean))
+  ).sort();
+
+  const isFiltered = searchTerm.trim() !== '' || filterStatus !== 'all' || filterFunding !== 'all';
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setFilterStatus('all');
+    setFilterFunding('all');
+    searchInputRef.current?.focus();
+  };
 
   const tableTotalPages = Math.ceil(filteredPrograms.length / tableRowsPerPage);
   const tableStartIndex = (tablePage - 1) * tableRowsPerPage;
@@ -143,7 +203,7 @@ export default function ProgramsPage() {
 
   useEffect(() => {
     setTablePage(1);
-  }, [searchTerm, filterStatus, viewMode]);
+  }, [searchTerm, filterStatus, filterFunding, viewMode]);
 
   const canManage = hasPermission('canManagePrograms');
 
@@ -208,45 +268,164 @@ export default function ProgramsPage() {
           )}
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row">
-          <div className="flex-1">
-            <Input
-              placeholder="Search programs..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-9 text-sm"
-            />
-          </div>
-          <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
-            <SelectTrigger className="w-full sm:w-[180px] h-9 text-sm">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Programs</SelectItem>
-              <SelectItem value="active">Active Only</SelectItem>
-              <SelectItem value="inactive">Inactive Only</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="hidden sm:flex gap-1 border rounded-md p-1">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'ghost'}
-              size="icon"
-              onClick={() => setViewMode('grid')}
-              className="size-8"
-            >
-              <LayoutGrid className="size-4" />
-            </Button>
-            <Button
-              variant={viewMode === 'table' ? 'default' : 'ghost'}
-              size="icon"
-              onClick={() => setViewMode('table')}
-              className="size-8"
-            >
-              <TableIcon className="size-4" />
-            </Button>
-          </div>
-        </div>
+        {/* Search and Filters Card (Apple HIG Design) */}
+        <Card className="rounded-2xl border border-border/60 bg-card shadow-sm backdrop-blur-sm">
+          <CardContent className="p-4 space-y-3">
+            {/* Row 1: Search Input (flex-1) + Funding Dropdown + Controls */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search
+                  className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                  style={{ left: '0.75rem' }}
+                />
+                <Input
+                  ref={searchInputRef}
+                  placeholder="Search programs by name, description, funding, duration, or instructor..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ paddingLeft: '2.35rem', paddingRight: '2.5rem', height: '2.5rem' }}
+                  className="rounded-xl bg-background border-input text-sm focus-visible:ring-2 focus-visible:ring-primary/20"
+                />
+
+                {/* Clear Button (✕) when typing, or Shortcut Badge (/) when empty */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 flex items-center gap-1.5"
+                  style={{ right: '0.75rem' }}
+                >
+                  {searchTerm ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchTerm('');
+                        searchInputRef.current?.focus();
+                      }}
+                      aria-label="Clear search"
+                      className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80 active:scale-95 transition-all"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : (
+                    <div className="hidden sm:flex items-center gap-1 pointer-events-none">
+                      <kbd className="inline-flex h-5 select-none items-center gap-0.5 rounded border border-border/70 bg-muted/60 px-1.5 font-mono text-[10px] font-medium text-muted-foreground shadow-xs">
+                        /
+                      </kbd>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Funding Type Filter Dropdown (Locked to 2.5rem / 40px) */}
+              <div className="flex items-center gap-2">
+                <Select value={filterFunding} onValueChange={setFilterFunding}>
+                  <SelectTrigger
+                    style={{ height: '2.5rem' }}
+                    className="w-full sm:w-[190px] rounded-xl border border-input bg-background text-sm"
+                  >
+                    <SelectValue placeholder="All Funding Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Funding Types</SelectItem>
+                    {fundingOptions.map(funding => (
+                      <SelectItem key={funding} value={funding}>
+                        {funding}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Refresh Button */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleRefresh}
+                  style={{ height: '2.5rem', width: '2.5rem' }}
+                  className={`rounded-xl border border-input bg-background text-foreground hover:bg-muted shrink-0 ${refreshing ? 'animate-spin' : ''}`}
+                  title="Refresh programs"
+                >
+                  <RefreshCw className="size-4" />
+                </Button>
+
+                {/* View Mode Toggle */}
+                <div
+                  style={{ height: '2.5rem' }}
+                  className="hidden sm:flex items-center gap-1 border border-input rounded-xl p-1 bg-muted/20"
+                >
+                  <Button
+                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                    size="icon"
+                    onClick={() => setViewMode('grid')}
+                    className="size-7 rounded-lg"
+                    title="Grid View"
+                  >
+                    <LayoutGrid className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'table' ? 'default' : 'ghost'}
+                    size="icon"
+                    onClick={() => setViewMode('table')}
+                    className="size-7 rounded-lg"
+                    title="Table View"
+                  >
+                    <TableIcon className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Status Capsule Filter Pills & Live Feedback */}
+            <div className="pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mr-1 select-none">
+                  Status:
+                </span>
+
+                {[
+                  { key: 'all', label: 'All', count: statusCounts.all },
+                  { key: 'active', label: 'Active', count: statusCounts.active },
+                  { key: 'inactive', label: 'Inactive', count: statusCounts.inactive },
+                ].map((status) => {
+                  const isActive = filterStatus === status.key;
+                  return (
+                    <button
+                      key={status.key}
+                      type="button"
+                      onClick={() => setFilterStatus(status.key as any)}
+                      className={`program-pill-base ${isActive ? `program-pill-${status.key}-active` : `program-pill-${status.key}`}`}
+                    >
+                      <span>{status.label}</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-semibold transition-colors ${
+                          isActive ? 'bg-white/25 text-white' : 'bg-black/5 dark:bg-white/10 text-muted-foreground'
+                        }`}
+                      >
+                        {status.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Live Match Counter & Reset Action */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground select-none">
+                <span>
+                  Showing <strong className="font-semibold text-foreground">{filteredPrograms.length}</strong> of {programs.length}
+                </span>
+                {isFiltered && (
+                  <>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="text-primary hover:underline font-medium cursor-pointer"
+                    >
+                      Reset filters
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {loading && (
           <>
@@ -374,17 +553,30 @@ export default function ProgramsPage() {
           </div>
         )}
 
-        {/* Programs Grid */}
+        {/* Programs Grid / Empty State */}
         {!loading && (filteredPrograms.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-8 sm:py-12">
-              <GraduationCap className="size-8 sm:size-12 text-muted-foreground mb-4" />
-              <h3 className="mb-2 text-base sm:text-lg">No Programs Found</h3>
-              <p className="text-xs sm:text-sm text-muted-foreground text-center mb-4">
-                {searchTerm || filterStatus !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'Get started by adding your first program'}
+          <Card className="rounded-2xl border-dashed border-border/80 bg-card/50 backdrop-blur-sm">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground mb-4 shadow-xs">
+                <GraduationCap className="size-7" />
+              </div>
+              <h3 className="text-base font-semibold text-foreground">No programs found</h3>
+              <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                {isFiltered
+                  ? 'No training programs match your current search query or active filter criteria. Try adjusting or clearing your filters.'
+                  : 'No training programs have been created yet.'}
               </p>
+              {isFiltered && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={resetFilters}
+                  className="mt-5 rounded-xl border-input text-xs font-medium"
+                >
+                  <RotateCcw className="mr-1.5 size-3.5" />
+                  Reset all filters
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : filteredPrograms.length > 0 && (

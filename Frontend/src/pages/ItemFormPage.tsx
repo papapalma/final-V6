@@ -53,6 +53,8 @@ export default function ItemFormPage() {
   // Raw relative path stored in DB (e.g. /uploads/images/items/photo.jpg)
   // Kept separate from formData.photoUrl which holds the full display URL
   const [existingImagePath, setExistingImagePath] = useState<string>('');
+  const [borrowedCount, setBorrowedCount] = useState<number>(0);
+  const [availableQuantity, setAvailableQuantity] = useState<number | null>(null);
 
   // Define steps
   const steps = [
@@ -101,6 +103,9 @@ export default function ItemFormPage() {
           });
           // Keep the original relative path for re-saving without re-upload
           setExistingImagePath(item.image_path ?? '');
+          const borrowed = Math.max(0, (item.quantity ?? 0) - (item.available_quantity ?? 0));
+          setBorrowedCount(borrowed);
+          setAvailableQuantity(item.available_quantity ?? null);
         })
         .catch(() => {
           toast.error('Failed to load item from server');
@@ -132,6 +137,10 @@ export default function ItemFormPage() {
         if (!formData.unit) { toast.error('Please select a unit'); return false; }
         if (!formData.category) { toast.error('Please select a category'); return false; }
         if (!formData.quantity || Number(formData.quantity) < 1) { toast.error('Please enter a valid quantity (minimum 1)'); return false; }
+        if (id && Number(formData.quantity) < borrowedCount) {
+          toast.error(`Quantity cannot be less than ${borrowedCount} because ${borrowedCount} unit(s) are currently on loan`);
+          return false;
+        }
         return true;
       case 3:
         if (!formData.location.trim()) {
@@ -500,17 +509,26 @@ export default function ItemFormPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="quantity">Total Quantity *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="quantity">Total Quantity *</Label>
+                    {id && borrowedCount > 0 && (
+                      <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded px-2 py-0.5">
+                        {borrowedCount} currently borrowed ({availableQuantity ?? 0} available)
+                      </span>
+                    )}
+                  </div>
                   <Input
                     id="quantity"
                     type="number"
                     value={formData.quantity}
                     onChange={(e) => handleInputChange('quantity', e.target.value)}
                     placeholder="0"
-                    min="1"
+                    min={id && borrowedCount > 0 ? borrowedCount : 1}
                   />
                   <p className="text-xs text-muted-foreground">
-                    How many units of this item do you have in stock?
+                    {id && borrowedCount > 0
+                      ? `Minimum allowed is ${borrowedCount} because ${borrowedCount} unit(s) are currently on loan.`
+                      : 'How many units of this item do you have in stock?'}
                   </p>
                 </div>
 

@@ -110,10 +110,25 @@ const { data, error } = await supabaseAdmin
 
 const updateData: any = { ...itemData };
     
+    // Calculate active borrowings
+    const borrowedCount = Math.max(0, (existingItem.quantity || 0) - (existingItem.available_quantity || 0));
+
     if (itemData.quantity !== undefined) {
+      if (itemData.quantity < borrowedCount) {
+        throw new Error(`Cannot reduce quantity to ${itemData.quantity}. There are currently ${borrowedCount} item(s) on loan.`);
+      }
+
+      // Automatically adjust available quantity while respecting active loans
+      const newAvailableQuantity = Math.max(0, Math.min(itemData.quantity, itemData.quantity - borrowedCount));
+      updateData.available_quantity = newAvailableQuantity;
       updateData.status = this.calculateItemStatus(
-        itemData.quantity,
+        newAvailableQuantity,
         itemData.minimum_quantity || existingItem.minimum_quantity
+      );
+    } else if (itemData.minimum_quantity !== undefined) {
+      updateData.status = this.calculateItemStatus(
+        existingItem.available_quantity,
+        itemData.minimum_quantity
       );
     }
 

@@ -70,6 +70,8 @@ if (error && typeof error === 'object' && 'code' in error && 'message' in error)
       /^Associated user account not found.+$/,
       /^Trainee is already enrolled in this program$/,
       /^Failed to create enrollment.+$/,
+      /^Cannot reduce quantity.+$/,
+      /^Insufficient quantity.+$/,
     ];
     const isSafe = safeMessagePatterns.some(p => p.test(error.message));
     return errorResponse(isSafe ? error.message : 'An unexpected error occurred', 400);

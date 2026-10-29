@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog';
@@ -11,7 +11,7 @@ import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Search, UserPlus, Edit, MoreVertical, RefreshCw, Download, LayoutGrid, TableIcon, QrCode, Eye, Building2, Trash2, Save, KeyRound, ShieldCheck, Copy, Check } from 'lucide-react';
+import { Search, UserPlus, Edit, MoreVertical, RefreshCw, Download, LayoutGrid, TableIcon, QrCode, Eye, Building2, Trash2, Save, KeyRound, ShieldCheck, Copy, Check, X, RotateCcw } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Separator } from '../components/ui/separator';
 import PaginationWrapper from '../components/PaginationWrapper';
@@ -38,9 +38,34 @@ type ViewMode = 'table' | 'card';
 export default function TraineesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterProgram, setFilterProgram] = useState('all');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Apple-style Keyboard Shortcut: Press '/' to focus search, 'Escape' to clear and blur
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl?.getAttribute('role') === 'combobox';
+
+      if (e.key === '/' && !isInput && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'Escape' && activeEl === searchInputRef.current) {
+        e.preventDefault();
+        setSearchQuery('');
+        searchInputRef.current?.blur();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   const [selectedTrainee, setSelectedTrainee] = useState<any | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [detailsInitialTab, setDetailsInitialTab] = useState<TraineeDetailsTab>('info');
@@ -451,11 +476,56 @@ export default function TraineesPage() {
   };
 
   const filteredTrainees = trainees.filter(trainee => {
-    const matchesSearch = trainee.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         trainee.trainings.some((training: {program: string}) => training.program.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesStatus = filterStatus === 'all' || trainee.status.toLowerCase() === filterStatus.toLowerCase();
-    return matchesSearch && matchesStatus;
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      trainee.name?.toLowerCase().includes(q) ||
+      trainee.traineeId?.toLowerCase().includes(q) ||
+      trainee.id?.toString().toLowerCase().includes(q) ||
+      trainee.email?.toLowerCase().includes(q) ||
+      trainee.contact?.toLowerCase().includes(q) ||
+      trainee.phone?.toLowerCase().includes(q) ||
+      trainee.programName?.toLowerCase().includes(q) ||
+      trainee.trainings?.some((training: { program: string }) =>
+        training.program?.toLowerCase().includes(q)
+      );
+
+    const matchesStatus =
+      filterStatus === 'all' || trainee.status?.toLowerCase() === filterStatus.toLowerCase();
+
+    const matchesProgram =
+      filterProgram === 'all' ||
+      trainee.programName === filterProgram ||
+      trainee.programId === filterProgram ||
+      trainee.trainings?.some((training: { program: string }) => training.program === filterProgram);
+
+    return matchesSearch && matchesStatus && matchesProgram;
   });
+
+  // Dynamic status counts for Apple HIG capsules
+  const statusCounts = {
+    all: trainees.length,
+    active: trainees.filter(t => t.status?.toLowerCase() === 'active').length,
+    completed: trainees.filter(t => t.status?.toLowerCase() === 'completed').length,
+    inactive: trainees.filter(t => t.status?.toLowerCase() === 'inactive').length,
+  };
+
+  // Distinct sorted program options for the program dropdown
+  const programOptions = Array.from(
+    new Set([
+      ...Object.values(programMap),
+      ...trainees.map(t => t.programName).filter(Boolean),
+    ])
+  ).sort();
+
+  const isFiltered = searchQuery.trim() !== '' || filterStatus !== 'all' || filterProgram !== 'all';
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setFilterStatus('all');
+    setFilterProgram('all');
+    searchInputRef.current?.focus();
+  };
 
   const getTraineeStatusClass = (status: string) =>
     status === 'Active'
@@ -471,7 +541,7 @@ export default function TraineesPage() {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterStatus]);
+  }, [searchQuery, filterStatus, filterProgram]);
   
   // Log search when query changes
   useEffect(() => {
@@ -525,57 +595,161 @@ export default function TraineesPage() {
           </div>
         </div>
 
-        {/* Search and Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row">
+        {/* Search and Filters Card (Apple HIG Design) */}
+        <Card className="rounded-2xl border border-border/60 bg-card shadow-sm backdrop-blur-sm">
+          <CardContent className="p-4 space-y-3">
+            {/* Row 1: Search Input (flex-1) + Program Dropdown + Controls */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Search
+                  className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                  style={{ left: '0.75rem' }}
+                />
                 <Input
-                  placeholder="Search trainees..."
+                  ref={searchInputRef}
+                  placeholder="Search trainees by name, ID, email, program, or contact..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  style={{ paddingLeft: '2.35rem', paddingRight: '2.5rem', height: '2.5rem' }}
+                  className="rounded-xl bg-background border-input text-sm focus-visible:ring-2 focus-visible:ring-primary/20"
                 />
+
+                {/* Clear Button (✕) when typing, or Shortcut Badge (/) when empty */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 flex items-center gap-1.5"
+                  style={{ right: '0.75rem' }}
+                >
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        searchInputRef.current?.focus();
+                      }}
+                      aria-label="Clear search"
+                      className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80 active:scale-95 transition-all"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : (
+                    <div className="hidden sm:flex items-center gap-1 pointer-events-none">
+                      <kbd className="inline-flex h-5 select-none items-center gap-0.5 rounded border border-border/70 bg-muted/60 px-1.5 font-mono text-[10px] font-medium text-muted-foreground shadow-xs">
+                        /
+                      </kbd>
+                    </div>
+                  )}
+                </div>
               </div>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="flex gap-2">
+
+              {/* Program Filter Dropdown (Locked to 2.5rem / 40px) */}
+              <div className="flex items-center gap-2">
+                <Select value={filterProgram} onValueChange={setFilterProgram}>
+                  <SelectTrigger
+                    style={{ height: '2.5rem' }}
+                    className="w-full sm:w-[200px] rounded-xl border border-input bg-background text-sm"
+                  >
+                    <SelectValue placeholder="All Programs" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Programs</SelectItem>
+                    {programOptions.map(progName => (
+                      <SelectItem key={progName} value={progName}>
+                        {progName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Refresh Button */}
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={handleRefresh}
-                  className={refreshing ? 'animate-spin' : ''}
+                  style={{ height: '2.5rem', width: '2.5rem' }}
+                  className={`rounded-xl border border-input bg-background text-foreground hover:bg-muted shrink-0 ${refreshing ? 'animate-spin' : ''}`}
+                  title="Refresh trainees"
                 >
                   <RefreshCw className="size-4" />
                 </Button>
-                <div className="hidden sm:flex gap-1 border rounded-md p-1">
+
+                {/* View Mode Toggle */}
+                <div
+                  style={{ height: '2.5rem' }}
+                  className="hidden sm:flex items-center gap-1 border border-input rounded-xl p-1 bg-muted/20"
+                >
                   <Button
                     variant={viewMode === 'table' ? 'default' : 'ghost'}
                     size="icon"
                     onClick={() => handleViewModeChange('table')}
-                    className="size-8"
+                    className="size-7 rounded-lg"
+                    title="Table View"
                   >
-                    <TableIcon className="size-4" />
+                    <TableIcon className="size-3.5" />
                   </Button>
                   <Button
                     variant={viewMode === 'card' ? 'default' : 'ghost'}
                     size="icon"
                     onClick={() => handleViewModeChange('card')}
-                    className="size-8"
+                    className="size-7 rounded-lg"
+                    title="Grid View"
                   >
-                    <LayoutGrid className="size-4" />
+                    <LayoutGrid className="size-3.5" />
                   </Button>
                 </div>
+              </div>
+            </div>
+
+            {/* Row 2: Status Capsule Filter Pills & Live Feedback */}
+            <div className="pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mr-1 select-none">
+                  Status:
+                </span>
+
+                {[
+                  { key: 'all', label: 'All', count: statusCounts.all },
+                  { key: 'active', label: 'Active', count: statusCounts.active },
+                  { key: 'completed', label: 'Completed', count: statusCounts.completed },
+                  { key: 'inactive', label: 'Inactive', count: statusCounts.inactive },
+                ].map((status) => {
+                  const isActive = filterStatus === status.key;
+                  return (
+                    <button
+                      key={status.key}
+                      type="button"
+                      onClick={() => setFilterStatus(status.key)}
+                      className={`trainee-pill-base ${isActive ? `trainee-pill-${status.key}-active` : `trainee-pill-${status.key}`}`}
+                    >
+                      <span>{status.label}</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-semibold transition-colors ${
+                          isActive ? 'bg-white/25 text-white' : 'bg-black/5 dark:bg-white/10 text-muted-foreground'
+                        }`}
+                      >
+                        {status.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Live Match Counter & Reset Action */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground select-none">
+                <span>
+                  Showing <strong className="font-semibold text-foreground">{filteredTrainees.length}</strong> of {trainees.length}
+                </span>
+                {isFiltered && (
+                  <>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="text-primary hover:underline font-medium cursor-pointer"
+                    >
+                      Reset filters
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </CardContent>
@@ -1067,9 +1241,30 @@ export default function TraineesPage() {
         </div>}
 
         {!loading && filteredTrainees.length === 0 && (
-          <div className="py-12 text-center">
-            <p className="text-muted-foreground">No trainees found</p>
-          </div>
+          <Card className="rounded-2xl border-dashed border-border/80 bg-card/50 backdrop-blur-sm">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground mb-4 shadow-xs">
+                <Search className="size-6" />
+              </div>
+              <h3 className="text-base font-semibold text-foreground">No trainees found</h3>
+              <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                {isFiltered
+                  ? 'No trainees match your current search query or active filter criteria. Try adjusting or clearing your filters.'
+                  : 'No trainees have been registered yet.'}
+              </p>
+              {isFiltered && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={resetFilters}
+                  className="mt-5 rounded-xl border-input text-xs font-medium"
+                >
+                  <RotateCcw className="mr-1.5 size-3.5" />
+                  Reset all filters
+                </Button>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {/* Pagination */}

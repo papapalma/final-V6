@@ -15,6 +15,7 @@ import {
 import { useState } from 'react';
 import { toast } from 'sonner';
 import inventoryService from '../services/inventoryService';
+import StockStatusBadge from './StockStatusBadge';
 
 interface Item {
   id: string;
@@ -130,9 +131,7 @@ export default function ItemDetailsModal({
               <CheckCircle2 className="size-4 text-secondary shrink-0" />
               <div className="flex-1 flex justify-between items-center gap-2">
                 <span className="text-xs text-muted-foreground">Available</span>
-                <span className={`font-semibold text-sm ${item.available === 0 ? 'text-destructive' : 'text-secondary'}`}>
-                  {item.available}
-                </span>
+                <StockStatusBadge available={item.available} total={item.quantity} />
               </div>
             </div>
 

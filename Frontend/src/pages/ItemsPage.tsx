@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import QRCodeModal from '../components/QRCodeModal';
 import ItemDetailsModal from '../components/ItemDetailsModal';
+import StockStatusBadge from '../components/StockStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -10,10 +11,9 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Search, PackagePlus, QrCode, Edit, Package, LayoutGrid, TableIcon, Download, Eye, Building2, AlertTriangle } from 'lucide-react';
+import { Search, PackagePlus, QrCode, Edit, Package, LayoutGrid, TableIcon, Download, Eye, Building2, AlertTriangle, X } from 'lucide-react';
 import PaginationWrapper from '../components/PaginationWrapper';
 import { generateItemsPDF } from '../utils/pdfGenerator';
-import { Alert, AlertDescription } from '../components/ui/alert';
 import { toast } from 'sonner';
 import inventoryService from '../services/inventoryService';
 import { getThumbnailUrl } from '../services/api';
@@ -50,18 +50,45 @@ export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<string[]>(['all']);
-  const [lowStockDismissed, setLowStockDismissed] = useState(false);
+  const [filterStockStatus, setFilterStockStatus] = useState<'all' | 'out' | 'low' | 'good'>('all');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Global Apple keyboard shortcut (/ or Cmd/Ctrl+K to focus search)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeElement = document.activeElement;
+      const isInputActive = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        (activeElement as HTMLElement).isContentEditable
+      );
+
+      if ((e.key === '/' && !isInputActive) || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      } else if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
+        if (searchQuery) {
+          setSearchQuery('');
+        } else {
+          searchInputRef.current?.blur();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchQuery]);
 
   // Fetch items from backend
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [filterCategory]);
 
   const fetchItems = async () => {
     try {
       setLoading(true);
       const response = await inventoryService.getInventoryItems({
-        search: searchQuery || undefined,
         category: filterCategory !== 'all' ? filterCategory : undefined
       });
       
@@ -123,11 +150,23 @@ export default function ItemsPage() {
   };
 
   const filteredItems = items.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         item.location.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = !query ||
+      item.name.toLowerCase().includes(query) ||
+      item.location.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query) ||
+      (item.description ? item.description.toLowerCase().includes(query) : false);
     const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
-    return matchesSearch && matchesCategory;
+    const matchesStock = filterStockStatus === 'all' ||
+      (filterStockStatus === 'out' && item.available <= 0) ||
+      (filterStockStatus === 'low' && item.available > 0 && item.available < 5) ||
+      (filterStockStatus === 'good' && item.available >= 5);
+    return matchesSearch && matchesCategory && matchesStock;
   });
+
+  const outOfStockCount = items.filter(item => item.available <= 0).length;
+  const lowStockCount = items.filter(item => item.available > 0 && item.available < 5).length;
+  const inStockCount = items.filter(item => item.available >= 5).length;
 
   // Pagination
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
@@ -135,11 +174,10 @@ export default function ItemsPage() {
   const endIndex = startIndex + itemsPerPage;
   const paginatedItems = filteredItems.slice(startIndex, endIndex);
 
-  // Reset to first page when filters change
+  // Reset to first page when client filters change (instant 0ms pagination update)
   useEffect(() => {
     setCurrentPage(1);
-    fetchItems();
-  }, [searchQuery, filterCategory]);
+  }, [searchQuery, filterStockStatus]);
 
   // Show loading state
   if (loading) {
@@ -216,79 +254,177 @@ export default function ItemsPage() {
           </div>
         </div>
 
-        {/* Low Stock Alert */}
-        {!lowStockDismissed && items.some(item => item.available === 0 || item.available < 5) && (
-          <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
-            <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
-            <AlertDescription className="flex items-start justify-between gap-2">
-              <div>
-                <span className="font-medium text-amber-800 dark:text-amber-300">Low stock alert: </span>
-                <span className="text-amber-700 dark:text-amber-400">
-                  {items
-                    .filter(item => item.available === 0 || item.available < 5)
-                    .map(item => item.name)
-                    .join(', ')}
-                </span>
-              </div>
-              <button
-                onClick={() => setLowStockDismissed(true)}
-                className="shrink-0 text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 text-xs underline"
-              >
-                Dismiss
-              </button>
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Search and Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row">
+        <Card className="border-border/60 shadow-sm backdrop-blur-sm">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 <Input
-                  placeholder="Search items..."
+                  ref={searchInputRef}
+                  placeholder="Search equipment by name, category, location, or description..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  style={{ paddingLeft: '2.35rem', paddingRight: '2.5rem', height: '2.5rem' }}
+                  className="rounded-xl bg-background border-input text-sm focus-visible:ring-2 focus-visible:ring-primary/20"
                 />
+                
+                {/* Clear Button (✕) when typing, or Shortcut Badge (/) when empty */}
+                <div
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5"
+                  style={{ right: '0.75rem' }}
+                >
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        searchInputRef.current?.focus();
+                      }}
+                      aria-label="Clear search"
+                      className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80 active:scale-95 transition-all"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : (
+                    <div className="hidden sm:flex items-center gap-1 pointer-events-none">
+                      <kbd className="inline-flex h-5 select-none items-center gap-0.5 rounded border border-border/70 bg-muted/60 px-1.5 font-mono text-[10px] font-medium text-muted-foreground shadow-xs">
+                        /
+                      </kbd>
+                    </div>
+                  )}
+                </div>
               </div>
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(cat => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat === 'all' ? 'All Categories' : cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="hidden sm:flex gap-1 border rounded-md p-1">
-                <Button
-                  variant={viewMode === 'card' ? 'default' : 'ghost'}
-                  size="icon"
-                  onClick={() => handleViewModeChange('card')}
-                  className="size-8"
+
+              <div className="flex items-center gap-2">
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger
+                    style={{ height: '2.5rem' }}
+                    className="w-full sm:w-[180px] rounded-xl border border-input bg-background text-sm"
+                  >
+                    <SelectValue placeholder="Filter by category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map(cat => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat === 'all' ? 'All Categories' : cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div
+                  style={{ height: '2.5rem' }}
+                  className="hidden sm:flex items-center gap-1 border border-input rounded-xl p-1 bg-muted/20"
                 >
-                  <LayoutGrid className="size-4" />
-                </Button>
-                <Button
-                  variant={viewMode === 'table' ? 'default' : 'ghost'}
-                  size="icon"
-                  onClick={() => handleViewModeChange('table')}
-                  className="size-8"
+                  <Button
+                    variant={viewMode === 'card' ? 'default' : 'ghost'}
+                    size="icon"
+                    onClick={() => handleViewModeChange('card')}
+                    className="size-8 rounded-lg"
+                  >
+                    <LayoutGrid className="size-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'table' ? 'default' : 'ghost'}
+                    size="icon"
+                    onClick={() => handleViewModeChange('table')}
+                    className="size-8 rounded-lg"
+                  >
+                    <TableIcon className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Apple-Style Quick Stock Filter Capsules + Live Match Counter */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-border/40">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-[11px] select-none inline-flex items-center">
+                  Stock:
+                </span>
+                
+                <button
+                  type="button"
+                  onClick={() => setFilterStockStatus('all')}
+                  className={`stock-pill-base ${
+                    filterStockStatus === 'all' ? 'stock-pill-all-active' : 'stock-pill-all'
+                  }`}
                 >
-                  <TableIcon className="size-4" />
-                </Button>
+                  All ({items.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStockStatus(filterStockStatus === 'out' ? 'all' : 'out')}
+                  className={`stock-pill-base ${
+                    filterStockStatus === 'out' ? 'stock-pill-out-active' : 'stock-pill-out'
+                  }`}
+                >
+                  <span
+                    className="size-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: filterStockStatus === 'out' ? '#FFFFFF' : '#FF3B30' }}
+                  />
+                  Out of Stock ({outOfStockCount})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStockStatus(filterStockStatus === 'low' ? 'all' : 'low')}
+                  className={`stock-pill-base ${
+                    filterStockStatus === 'low' ? 'stock-pill-low-active' : 'stock-pill-low'
+                  }`}
+                >
+                  <span
+                    className="size-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: filterStockStatus === 'low' ? '#FFFFFF' : '#FF9500' }}
+                  />
+                  Low Stock ({lowStockCount})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStockStatus(filterStockStatus === 'good' ? 'all' : 'good')}
+                  className={`stock-pill-base ${
+                    filterStockStatus === 'good' ? 'stock-pill-good-active' : 'stock-pill-good'
+                  }`}
+                >
+                  <span
+                    className="size-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: filterStockStatus === 'good' ? '#FFFFFF' : '#34C759' }}
+                  />
+                  In Stock ({inStockCount})
+                </button>
+              </div>
+
+              {/* Live search feedback counter & clear */}
+              <div className="flex items-center gap-2 text-xs">
+                {(searchQuery || filterStockStatus !== 'all' || filterCategory !== 'all') && (
+                  <span className="text-muted-foreground font-medium">
+                    {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'} found
+                  </span>
+                )}
+                {(searchQuery || filterStockStatus !== 'all' || filterCategory !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFilterStockStatus('all');
+                      setFilterCategory('all');
+                      searchInputRef.current?.focus();
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                  >
+                    Reset all
+                  </button>
+                )}
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Desktop Card View */}
-        {viewMode === 'card' && (
+        {filteredItems.length > 0 && viewMode === 'card' && (
           <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {paginatedItems.map((item) => (
               <Card key={item.id} className="group transition-all hover:shadow-lg overflow-hidden cursor-pointer" onClick={() => handleViewDetails(item)}>
@@ -314,20 +450,18 @@ export default function ItemsPage() {
                   
                   <h3 className="mb-2 line-clamp-2">{item.name}</h3>
                   
-                  <div className="mb-4 space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total:</span>
-                      <span>{item.quantity}</span>
+                  <div className="mb-4 space-y-2 text-sm">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground">Total Quantity:</span>
+                      <span className="font-medium">{item.quantity}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Available:</span>
-                      <span className={item.available === 0 ? 'text-destructive' : 'text-secondary'}>
-                        {item.available}
-                      </span>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground">Availability:</span>
+                      <StockStatusBadge available={item.available} />
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center text-xs">
                       <span className="text-muted-foreground">Location:</span>
-                      <span className="truncate ml-2">{item.location}</span>
+                      <span className="truncate ml-2 font-medium">{item.location}</span>
                     </div>
                   </div>
 
@@ -366,7 +500,7 @@ export default function ItemsPage() {
         )}
 
         {/* Desktop Table View */}
-        {viewMode === 'table' && (
+        {filteredItems.length > 0 && viewMode === 'table' && (
           <Card className="hidden sm:block">
             <CardContent className="p-0">
               <Table>
@@ -411,9 +545,7 @@ export default function ItemsPage() {
                       </TableCell>
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell>
-                        <span className={item.available === 0 ? 'text-destructive' : 'text-secondary'}>
-                          {item.available}
-                        </span>
+                        <StockStatusBadge available={item.available} />
                       </TableCell>
                       <TableCell className="text-muted-foreground">{item.location}</TableCell>
                       <TableCell>
@@ -452,7 +584,8 @@ export default function ItemsPage() {
         )}
 
         {/* Items List - Mobile */}
-        <div className="sm:hidden space-y-3">
+        {filteredItems.length > 0 && (
+          <div className="sm:hidden space-y-3">
           {paginatedItems.map((item) => (
             <Card key={item.id} className="cursor-pointer" onClick={() => handleViewDetails(item)}>
               <CardContent className="p-4">
@@ -510,12 +643,36 @@ export default function ItemsPage() {
               </CardContent>
             </Card>
           ))}
-        </div>
+          </div>
+        )}
 
+        {/* Apple-Style Search Empty State */}
         {filteredItems.length === 0 && (
-          <div className="py-12 text-center">
-            <Package className="mx-auto mb-4 size-12 text-muted-foreground" />
-            <p className="text-muted-foreground">No items found</p>
+          <div className="rounded-2xl border border-dashed border-border/80 bg-card/40 backdrop-blur-sm p-12 text-center my-6">
+            <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground shadow-inner mb-4">
+              <Search className="size-6 opacity-75" />
+            </div>
+            <h3 className="text-base font-semibold tracking-tight text-foreground">No equipment found</h3>
+            <p className="mt-1.5 text-xs text-muted-foreground max-w-sm mx-auto">
+              {searchQuery
+                ? `No items match "${searchQuery}". Try checking your spelling or clearing search filters.`
+                : 'No equipment items currently match the active filters.'}
+            </p>
+            <div className="mt-5 flex justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs"
+                onClick={() => {
+                  setSearchQuery('');
+                  setFilterStockStatus('all');
+                  setFilterCategory('all');
+                  searchInputRef.current?.focus();
+                }}
+              >
+                Clear search & filters
+              </Button>
+            </div>
           </div>
         )}
 
