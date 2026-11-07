@@ -2,8 +2,8 @@
 
 **Project:** BMDC 1.1 - Trainee Management & Attendance System  
 **Documentation Version:** 1.0  
-**Last Updated:** September 2026  
-**Total Documentation:** 5,650+ lines across 9 files
+**Last Updated:** November 2026  
+**Total Documentation:** 7,260+ lines across 13 files
 
 ---
 
@@ -108,6 +108,49 @@
    - Performance & scalability considerations
    - Disaster recovery procedures
    - ~600 lines
+
+10. **09-SYSTEM-ACTIVITY-DIAGRAM.md**
+   - Comprehensive whole-system operational lifecycle with full route coverage (UML 2.5)
+   - Unified 6-swimlane activity diagram (Super Admin, Local Admin, Coordinator, Inventory Manager, Trainee, System)
+   - Tenant onboarding, program setup, staff provisioning, registration approval, attendance, lending, and certification
+   - Dual Mermaid flowchart and PlantUML activity diagram specifications
+   - Written in ASD-STE100 Simplified Technical English
+   - ~490 lines
+
+11. **10-SYSTEM-ARCHITECTURE-DIAGRAM.md**
+   - Multi-tier system architecture diagram and infrastructure integration
+   - Unified 5-tier architecture (Client, Edge/Security, Core API Services, Database/Storage, External Services)
+   - Explicit role-based clients and services for Super Admin, Local Admin, Staff, Trainee, and Public
+   - 14 core nodes conforming to the 7-15 element architectural rule
+   - Labeled connections showing communication protocols (HTTPS/REST, SQL/RLS, S3 API, SMTP/TLS, W3C Device APIs)
+   - Dual Mermaid flowchart and PlantUML component diagram specifications
+   - Written in ASD-STE100 Simplified Technical English
+   - ~335 lines
+
+12. **11-SYSTEM-DATA-FLOW-DIAGRAM.md**
+   - System data flow specifications in Yourdon-DeMarco notation
+   - Level 0 Context Diagram modeling whole system boundary (Process 0) and 6 external entities
+   - Level 1 Diagram 0 decomposing into 6 core processes, 6 persistent data stores, and 6 external entities
+   - Fully balanced inputs and outputs across levels with no illegal flows (no black holes, miracles, or direct entity-store links)
+   - Comprehensive Data Dictionary defining all data stores and core data flows
+   - Dual Mermaid flowchart and PlantUML diagram specifications
+   - Written in ASD-STE100 Simplified Technical English
+   - ~410 lines
+
+13. **12-SYSTEM-ACTIVITY-DIAGRAM.md**
+   - Whole-system multi-role operational lifecycle with full route coverage in UML 2.5 notation
+   - Exhaustive Route Coverage Matrix covering all 16 execution routes (R0 to R15)
+   - Models Super Admin tenant onboarding, Local Admin program/staff setup, Coordinator attendance audits, Inventory Manager slip/damage tracking, and Trainee certification
+   - 6 dedicated swimlanes (Super Admin, Local Admin, Coordinator, Inventory Manager, Trainee/Public, System Backend)
+   - Standard UML shapes (initial node, rounded actions, diamonds, merge diamonds, fork/join thin bars, and double circles)
+   - Decision Gates and Invariant Checks table covering all guards and business constraints
+   - Dual Mermaid flowchart and PlantUML activity diagram specifications
+   - Written in ASD-STE100 Simplified Technical English
+   - ~540 lines
+   - Decision Gates and Invariant Checks table covering all guards and business constraints
+   - Dual Mermaid flowchart and PlantUML activity diagram specifications
+   - Written in ASD-STE100 Simplified Technical English
+   - ~480 lines
 
 ---
 

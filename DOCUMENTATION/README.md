@@ -24,6 +24,10 @@ The documentation is organized by **user role and by page/feature**, making it e
 7. **[Security & Authentication](./06-SECURITY-AUTHENTICATION.md)** - System security overview
 8. **[API Reference](./07-API-REFERENCE.md)** - Complete API endpoint documentation
 9. **[System Architecture](./08-SYSTEM-ARCHITECTURE.md)** - Technical architecture & data flows
+10. **[System Activity Diagrams](./09-SYSTEM-ACTIVITY-DIAGRAM.md)** - Whole system lifecycle & operational workflows
+11. **[System Architecture Diagram](./10-SYSTEM-ARCHITECTURE-DIAGRAM.md)** - Multi-tier system architecture & infrastructure integration
+12. **[Data Flow Diagram](./11-SYSTEM-DATA-FLOW-DIAGRAM.md)** - System data flow specifications in Yourdon notation
+13. **[Comprehensive Activity Diagram](./12-SYSTEM-ACTIVITY-DIAGRAM.md)** - Whole-system operational lifecycle with full route coverage (UML 2.5)
 
 ---
 
@@ -80,6 +84,10 @@ Start here: [Trainee Documentation](./05-TRAINEE-DOCUMENTATION.md)
 | [06-SECURITY-AUTHENTICATION.md](./06-SECURITY-AUTHENTICATION.md) | Security model, auth flows, best practices | All |
 | [07-API-REFERENCE.md](./07-API-REFERENCE.md) | Complete API endpoint reference | Developers |
 | [08-SYSTEM-ARCHITECTURE.md](./08-SYSTEM-ARCHITECTURE.md) | System design, database schema, flows | Developers, Architects |
+| [09-SYSTEM-ACTIVITY-DIAGRAM.md](./09-SYSTEM-ACTIVITY-DIAGRAM.md) | Whole system lifecycle & operational workflows | All Roles, Developers, Architects |
+| [10-SYSTEM-ARCHITECTURE-DIAGRAM.md](./10-SYSTEM-ARCHITECTURE-DIAGRAM.md) | Multi-tier architecture diagram & infrastructure integration | All Roles, Developers, Architects |
+| [11-SYSTEM-DATA-FLOW-DIAGRAM.md](./11-SYSTEM-DATA-FLOW-DIAGRAM.md) | System data flow specifications in Yourdon notation | All Roles, Developers, Architects |
+| [12-SYSTEM-ACTIVITY-DIAGRAM.md](./12-SYSTEM-ACTIVITY-DIAGRAM.md) | Whole-system operational lifecycle with full route coverage (UML 2.5) | All Roles, Developers, Architects |
 
 ---
 
