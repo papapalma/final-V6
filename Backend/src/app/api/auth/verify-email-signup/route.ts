@@ -71,7 +71,7 @@ const validation = verifyEmailSignupSchema.safeParse(body);
 
       return validationErrorResponse(
         Object.fromEntries(
-          validation.error.errors.map((err) => [
+          (validation.error.issues || (validation.error as any).errors || []).map((err: any) => [
             err.path.join('.'),
             [err.message],
           ])

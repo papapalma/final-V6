@@ -25,10 +25,11 @@
  * ```
  */
 
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import type { RequirementDefinition } from '../types/requirementDefinition';
 import logger from '../utils/logger';
+import { queryKeys } from '../services/queryClient';
 
 /**
  * Hook options interface
@@ -85,60 +86,86 @@ export function useRequirementDefinition(
   options: UseRequirementDefinitionOptions = {}
 ): UseRequirementDefinitionResult {
   const { enabled = true } = options;
-  const [data, setData] = useState<RequirementDefinition | null>(null);
-  const [isLoading, setIsLoading] = useState(Boolean(requirementId && enabled));
-  const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!requirementId || !enabled) {
-      setData(null);
-      setError(null);
-      setIsLoading(false);
-      return;
+  /**
+   * Query function to fetch the requirement definition from the API
+   */
+  const queryFn = async (): Promise<RequirementDefinition | null> => {
+    if (!requirementId) {
+      return null;
     }
 
-    setIsLoading(true);
-    setError(null);
-    logger.info('[useRequirementDefinition] Fetching from API', { requirementId });
+    try {
+      logger.info('[useRequirementDefinition] Fetching from API', { requirementId });
 
-    api
-      .get<RequirementDefinition>(`/requirement-definitions/${requirementId}`)
-      .then((response) => {
-        if (cancelled) return;
-        setData(response.data || null);
-        logger.info('[useRequirementDefinition] Fetch successful', {
-          requirementId,
-          hasDefinition: !!response.data,
-        });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        const fetchError = err instanceof Error
-          ? err
-          : new Error('Failed to load requirement definition');
+      // Fetch from API
+      const response = await api.get<RequirementDefinition>(
+        `/requirement-definitions/${requirementId}`
+      );
 
-        if (fetchError.message.includes('404') || (err as { status?: number })?.status === 404) {
-          logger.warn('[useRequirementDefinition] Requirement not found', { requirementId });
-          setData(null);
-          return;
-        }
+      // Extract the definition from response
+      // The API returns { success, data: RequirementDefinition | null }
+      const definition = response.data || null;
 
-        logger.error('[useRequirementDefinition] Fetch failed', {
-          requirementId,
-          error: fetchError.message,
-        });
-        setError(fetchError);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
+      logger.info('[useRequirementDefinition] Fetch successful', {
+        requirementId,
+        hasDefinition: !!definition,
       });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [requirementId, enabled]);
+      return definition;
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : 'Failed to load requirement definition';
 
-  return { data, isLoading, isError: error !== null, error };
+      // Handle 404 gracefully - return null instead of throwing
+      if (err instanceof Error && err.message.includes('404')) {
+        logger.warn('[useRequirementDefinition] Requirement not found', { requirementId });
+        return null;
+      }
+
+      logger.error('[useRequirementDefinition] Fetch failed', {
+        requirementId,
+        error: errorMessage,
+      });
+
+      throw err;
+    }
+  };
+
+  /**
+   * Use React Query to manage the query state
+   * Query key includes requirementId so each requirement gets its own cache entry
+   */
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+  } = useQuery<RequirementDefinition | null, Error>({
+    queryKey: queryKeys.requirementDefinitions.detail(requirementId || ''),
+    queryFn,
+    // Only query if requirementId exists AND query is enabled
+    enabled: !!requirementId && enabled,
+    // Data is fresh for 5 minutes
+    staleTime: STALE_TIME,
+    // Retry twice with exponential backoff (1000ms, 2000ms)
+    // Don't retry 4xx errors
+    retry: (failureCount, error: any) => {
+      if (error?.status >= 400 && error?.status < 500) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    // Refetch on window focus to keep data fresh
+    refetchOnWindowFocus: true,
+  });
+
+  return {
+    data: data ?? null,
+    isLoading,
+    isError,
+    error,
+  };
 }

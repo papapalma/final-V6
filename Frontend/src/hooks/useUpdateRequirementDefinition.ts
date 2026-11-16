@@ -60,6 +60,11 @@ export interface UseUpdateRequirementDefinitionResult {
     data: UpdateRequirementPayload
   ) => Promise<RequirementDefinition>;
 
+  mutateAsync?: (
+    id: string,
+    data: UpdateRequirementPayload
+  ) => Promise<RequirementDefinition>;
+
   /**
    * True if mutation is currently in progress (loading state)
    */
@@ -166,7 +171,7 @@ export function useUpdateRequirementDefinition(): UseUpdateRequirementDefinition
 
         logger.info('[useUpdateRequirementDefinition] Update successful', {
           requirementId: id,
-          updatedAt: updatedRequirement.updatedAt,
+          updatedAt: (updatedRequirement as any)?.updatedAt || (updatedRequirement as any)?.updated_at,
         });
 
         return updatedRequirement;
@@ -211,13 +216,13 @@ export function useUpdateRequirementDefinition(): UseUpdateRequirementDefinition
       // Using a targeted invalidation pattern to avoid unnecessary refetches
       queryClient.invalidateQueries({
         queryKey: ['requirementDefinitions'],
-        refetchType: 'stale',
+        refetchType: 'stale' as any,
       });
 
       // Also invalidate the specific requirement query if it exists
       queryClient.invalidateQueries({
         queryKey: ['requirementDefinition', updatedData.id],
-        refetchType: 'stale',
+        refetchType: 'stale' as any,
       });
     },
 
@@ -234,8 +239,15 @@ export function useUpdateRequirementDefinition(): UseUpdateRequirementDefinition
      * Update a requirement definition
      * Throws error if validation fails or API call fails
      */
-    mutate: (id: string, data: UpdateRequirementPayload) =>
-      mutation.mutateAsync({ id, data }),
+    mutate: (id: string, data: UpdateRequirementPayload) => {
+      const promise = mutation.mutateAsync({ id, data });
+      promise.catch(() => {});
+      return promise;
+    },
+
+    mutateAsync: (id: string, data: UpdateRequirementPayload) => {
+      return mutation.mutateAsync({ id, data });
+    },
 
     /**
      * Loading state: true if mutation is in progress

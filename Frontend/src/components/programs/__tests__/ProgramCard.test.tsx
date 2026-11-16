@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { ProgramCard } from '../ProgramCard';
+
+const render = (ui: React.ReactElement, options?: any) =>
+  rtlRender(ui, { wrapper: MemoryRouter, ...options });
 
 // Mock the useMediaQuery hook
 vi.mock('../../../hooks/useMediaQuery', () => ({

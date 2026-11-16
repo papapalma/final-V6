@@ -8,9 +8,13 @@ import { enrollmentService, Enrollment, ConnectionStatus } from '../../services/
 import { useEnrollmentUpdates } from '../../hooks/useEnrollmentUpdates';
 
 // Mock the useEnrollmentUpdates hook
-vi.mock('../../hooks/useEnrollmentUpdates', () => ({
-  useEnrollmentUpdates: vi.fn(),
-}));
+vi.mock('../../hooks/useEnrollmentUpdates', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../hooks/useEnrollmentUpdates')>();
+  return {
+    ...actual,
+    useEnrollmentUpdates: vi.fn((traineeId: string) => actual.useEnrollmentUpdates(traineeId)),
+  };
+});
 
 // Mock the enrollmentService
 vi.mock('../../services/enrollmentService', () => ({
@@ -133,6 +137,15 @@ describe('EnrollmentManagementSection - Integration Tests', () => {
   afterEach(() => {
     cleanup();
     mockUpdateHandler = null;
+  });
+
+  afterAll(async () => {
+    const actual = await vi.importActual<typeof import('../../hooks/useEnrollmentUpdates')>(
+      '../../hooks/useEnrollmentUpdates'
+    );
+    vi.mocked(useEnrollmentUpdates).mockImplementation((traineeId: string) =>
+      actual.useEnrollmentUpdates(traineeId)
+    );
   });
 
   /**
@@ -1167,8 +1180,14 @@ describe('EnrollmentManagementSection - useEffect Hook', () => {
     },
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const actual = await vi.importActual<typeof import('../../hooks/useEnrollmentUpdates')>(
+      '../../hooks/useEnrollmentUpdates'
+    );
+    vi.mocked(useEnrollmentUpdates).mockImplementation((traineeId: string) =>
+      actual.useEnrollmentUpdates(traineeId)
+    );
   });
 
   /**
@@ -1183,7 +1202,7 @@ describe('EnrollmentManagementSection - useEffect Hook', () => {
    */
   it('should set loading state and call fetchEnrollments on component mount', async () => {
     const mockRefetch = vi.fn();
-    vi.mocked(useEnrollmentUpdates).mockReturnValue({
+    vi.mocked(useEnrollmentUpdates).mockReturnValueOnce({
       enrollments: [mockEnrollment],
       connectionStatus: 'connected',
       loading: false,
@@ -1434,6 +1453,16 @@ describe(
         email: 'test@example.com',
       },
       ...overrides,
+    });
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      const actual = await vi.importActual<typeof import('../../hooks/useEnrollmentUpdates')>(
+        '../../hooks/useEnrollmentUpdates'
+      );
+      vi.mocked(useEnrollmentUpdates).mockImplementation((traineeId: string) =>
+        actual.useEnrollmentUpdates(traineeId)
+      );
     });
 
     afterEach(() => {

@@ -39,8 +39,8 @@ import {
 const gpsQuerySchema = z.object({
   trainee_id: z.string().uuid().optional(),
   includeGPS: z.enum(['true', 'false']).optional().default('false'),
-  limit: z.string().pipe(z.coerce.number().int().min(1).max(100)).optional().default('50'),
-  offset: z.string().pipe(z.coerce.number().int().min(0)).optional().default('0'),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
   reason: z.string().optional(), // required for admin access
 });
 

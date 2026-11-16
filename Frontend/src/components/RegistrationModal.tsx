@@ -503,7 +503,7 @@ export default function RegistrationModal({
     setStep(s => s - 1);
   };
 
-  const uploadRequirementFiles = async (traineeId: string): Promise<void> => {
+  const uploadRequirementFiles = async (traineeId: string, uploadToken?: string): Promise<void> => {
     for (const [key, file] of Object.entries(requirementFiles)) {
       if (file) {
         try {
@@ -511,7 +511,9 @@ export default function RegistrationModal({
           formDataToSend.append('file', file);
           formDataToSend.append('requirement_type', key);
           
-          await api.post(`/trainees/${traineeId}/requirements`, formDataToSend);
+          await api.post(`/trainees/${traineeId}/requirements`, formDataToSend, {
+            headers: uploadToken ? { 'X-Upload-Token': uploadToken } : undefined,
+          });
           logger.info('Uploaded requirement file:', { traineeId, fileName: file.name });
         } catch (error) {
           logger.error('Failed to upload requirement file:', { error });
@@ -536,8 +538,9 @@ export default function RegistrationModal({
       });
 
       const traineeId = (regResponse as any)?.id || (regResponse as any)?.data?.id;
+      const uploadToken = (regResponse as any)?.upload_token || (regResponse as any)?.data?.upload_token;
       if (traineeId && Object.keys(requirementFiles).length > 0) {
-        await uploadRequirementFiles(traineeId);
+        await uploadRequirementFiles(traineeId, uploadToken);
       }
 
       setSubmitted(true);
@@ -876,8 +879,8 @@ export default function RegistrationModal({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
                           <p className="font-semibold">{tenant.name}</p>
-                          {tenant.description && (
-                            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{tenant.description}</p>
+                          {(tenant as any).description && (
+                            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{(tenant as any).description}</p>
                           )}
                         </div>
                         <div className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 ${

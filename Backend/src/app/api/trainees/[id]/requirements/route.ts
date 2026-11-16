@@ -4,6 +4,7 @@ import { handleOptionsRequest } from '@/middleware/cors';
 import { logger } from '@/utils/logger';
 import { uploadRequirementFile, getTraineeRequirementFiles } from '@/services/trainingRequirementService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { verifyUploadToken } from '@/lib/auth/jwt';
 
 export async function OPTIONS(request: NextRequest) {
   return handleOptionsRequest(request);
@@ -48,10 +49,26 @@ export async function POST(
       tenantId = ctxResult.context.tenantId;
       userId = ctxResult.context.userId;
     } else {
-      // Allow unauthenticated upload if trainee is pending registration
-      if (trainee.registration_status !== 'pending') {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      // Require valid cryptographic upload token for unauthenticated registration upload
+      const uploadToken =
+        request.headers.get('x-upload-token') ||
+        request.headers.get('X-Upload-Token') ||
+        request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+      const verified = uploadToken ? verifyUploadToken(uploadToken) : null;
+
+      if (
+        !verified ||
+        verified.traineeId !== traineeId ||
+        verified.tenantId !== trainee.tenant_id ||
+        trainee.registration_status !== 'pending'
+      ) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Valid upload token required' },
+          { status: 401 }
+        );
       }
+      tenantId = verified.tenantId;
+      userId = trainee.user_id || undefined;
     }
 
     const { data: requirementDefinition } = await supabaseAdmin

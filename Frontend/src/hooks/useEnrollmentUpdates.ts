@@ -58,7 +58,13 @@ export interface UseEnrollmentUpdatesResult {
  */
 export function useEnrollmentUpdates(traineeId: string): UseEnrollmentUpdatesResult {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(() => {
+    try {
+      return enrollmentService.getConnectionStatus() || 'connecting';
+    } catch {
+      return 'connecting';
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,6 +105,13 @@ export function useEnrollmentUpdates(traineeId: string): UseEnrollmentUpdatesRes
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch enrollments';
       setError(errorMessage);
+      if (errorMessage.toLowerCase().includes('validation') || errorMessage.toLowerCase().includes('zod error')) {
+        console.error('[Validation Error] Enrollment data validation failed:', {
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+          traineeId,
+        });
+      }
       console.error('[useEnrollmentUpdates] Failed to fetch enrollments:', errorMessage);
     } finally {
       setLoading(false);

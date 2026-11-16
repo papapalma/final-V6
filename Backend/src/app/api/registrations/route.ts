@@ -7,6 +7,7 @@ import { withErrorHandler } from '@/middleware/errorHandler';
 import { handleOptionsRequest } from '@/middleware/cors';
 import { requireTenantContext } from '@/middleware/tenantContext';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { generateUploadToken } from '@/lib/auth/jwt';
 
 // OPTIONS /api/registrations
 export async function OPTIONS(request: NextRequest) {
@@ -76,8 +77,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       validatedData = traineeRegistrationSchema.parse(body);
       console.log('[Registration] Validation passed');
     } catch (validationError: any) {
+      const issues = validationError.issues || validationError.errors || [];
       console.error('[Registration] Schema validation failed:', {
-        errors: validationError.errors?.map((e: any) => ({
+        errors: issues.map((e: any) => ({
           path: e.path.join('.'),
           message: e.message,
           code: e.code,
@@ -145,10 +147,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       enrollmentSource
     );
 
-    // Omit password_hash from response
+    // Omit password_hash from response and attach upload_token for requirement files
     const { password_hash, ...safeReg } = registration as any;
+    const upload_token = generateUploadToken(safeReg.id, tenantId);
     return createdResponse(
-      safeReg,
+      { ...safeReg, upload_token },
       'Registration submitted successfully. Please wait for admin approval before logging in.'
     );
   } catch (error: any) {
@@ -166,7 +169,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     // Handle validation errors from Zod
     if (error.name === 'ZodError') {
-      const validationErrors = error.errors.map((e: any) => ({
+      const issues = error.issues || error.errors || [];
+      const validationErrors = issues.map((e: any) => ({
         field: e.path.join('.') || 'root',
         message: e.message,
         code: e.code,

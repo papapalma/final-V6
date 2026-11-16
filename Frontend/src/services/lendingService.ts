@@ -43,6 +43,7 @@ export interface ReturnLendingData {
 export interface LendingFilters {
   search?: string;
   status?: string;
+  item_id?: string;
   trainee_id?: string;
   start_date?: string;
   end_date?: string;

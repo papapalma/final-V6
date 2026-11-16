@@ -4,6 +4,8 @@
  * All errors support tenant context for audit logging
  */
 
+import { DatabaseError as DbDatabaseError } from '@/lib/db';
+
 /**
  * Base error class for all CMS errors
  */
@@ -89,8 +91,10 @@ export class ValidationError extends CMSError {
  *
  * Requirements: 14.4
  */
-export class DatabaseError extends CMSError {
-  public readonly code?: string;
+export class DatabaseError extends DbDatabaseError {
+  public readonly tenantId?: string;
+  public readonly adminId?: string;
+  public readonly statusCode: number;
   public readonly originalError?: Error;
 
   constructor(
@@ -103,9 +107,11 @@ export class DatabaseError extends CMSError {
     // Constraint violation errors should be 400, others 500
     const statusCode = code && ['UNIQUE', 'FK', '23505', '23503'].includes(code) ? 400 : 500;
 
-    super(message, statusCode, tenantId, adminId);
+    super(message, code);
     this.name = 'DatabaseError';
-    this.code = code;
+    this.statusCode = statusCode;
+    this.tenantId = tenantId;
+    this.adminId = adminId;
     this.originalError = originalError;
 
     Object.setPrototypeOf(this, DatabaseError.prototype);
@@ -157,6 +163,6 @@ export function isSanitizationError(error: unknown): error is SanitizationError 
   return error instanceof SanitizationError;
 }
 
-export function isCMSError(error: unknown): error is CMSError {
-  return error instanceof CMSError;
+export function isCMSError(error: unknown): error is CMSError | DatabaseError {
+  return error instanceof CMSError || error instanceof DatabaseError;
 }

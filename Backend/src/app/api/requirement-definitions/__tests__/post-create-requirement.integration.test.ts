@@ -439,6 +439,10 @@ describe('POST /api/requirement-definitions', () => {
     });
 
     it('should not allow specifying tenant_id in request body', async () => {
+      mockSingle.mockResolvedValue({
+        data: { id: 'req-001', tenant_id: 'tenant-001', display_name: 'Test Requirement' },
+        error: null,
+      });
       // Attempting to override tenant_id should be rejected or ignored
       (mockRequest.json as jest.Mock).mockResolvedValue({
         display_name: 'Test Requirement',
@@ -491,7 +495,7 @@ describe('POST /api/requirement-definitions', () => {
 
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
-      expect(data.data).toEqual({
+      expect(data.data).toMatchObject({
         id: 'req-001',
         display_name: 'Birth Certificate Copy',
         description: 'Photocopy of birth certificate from NSO or PSA',

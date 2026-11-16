@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createQueryClient } from '../services/queryClient';
@@ -99,7 +99,7 @@ describe('RequirementsManagementPage', () => {
         user: { id: '123', role: 'local_admin' },
         hasPermission: vi.fn(() => true),
       });
-      expect(screen.getByText(/Requirements Management/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Requirements Management/i)[0]).toBeInTheDocument();
       expect(screen.queryByText(/Access Denied/i)).not.toBeInTheDocument();
     });
 
@@ -108,7 +108,7 @@ describe('RequirementsManagementPage', () => {
         user: { id: '123', role: 'super_admin' },
         hasPermission: vi.fn(() => true),
       });
-      expect(screen.getByText(/Requirements Management/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Requirements Management/i)[0]).toBeInTheDocument();
       expect(screen.queryByText(/Access Denied/i)).not.toBeInTheDocument();
     });
 
@@ -133,11 +133,11 @@ describe('RequirementsManagementPage', () => {
       const breadcrumb = screen.getByRole('navigation');
       expect(breadcrumb).toBeInTheDocument();
       expect(screen.getByText(/Dashboard/i)).toBeInTheDocument();
-      expect(screen.getByText(/Requirements Management/i)).toBeInTheDocument();
+      expect(within(breadcrumb).getByText(/Requirements Management/i)).toBeInTheDocument();
     });
 
     it('should render page title with icon', () => {
-      expect(screen.getByText(/Requirements Management/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Requirements Management/i);
       expect(screen.getByText(/Configure and manage training enrollment requirements/i)).toBeInTheDocument();
     });
 
@@ -163,7 +163,7 @@ describe('RequirementsManagementPage', () => {
     });
 
     it('should render ErrorBoundary', () => {
-      expect(screen.getByTestId('error-boundary')).toBeInTheDocument();
+      expect(screen.getAllByTestId('error-boundary').length).toBeGreaterThan(0);
     });
   });
 
@@ -230,7 +230,7 @@ describe('RequirementsManagementPage', () => {
     });
 
     it('should apply responsive classes to header', () => {
-      const header = screen.getByText(/Requirements Management/i).closest('h1');
+      const header = screen.getByRole('heading', { level: 1 });
       expect(header?.className).toContain('sm:');
     });
 
@@ -240,7 +240,7 @@ describe('RequirementsManagementPage', () => {
     });
 
     it('should apply responsive spacing', () => {
-      const container = screen.getByTestId('dashboard-layout').firstChild;
+      const container = screen.getByTestId('dashboard-layout').querySelector('[class*="space-y"]') as HTMLElement;
       expect(container?.className).toContain('space-y');
       expect(container?.className).toContain('md:');
     });

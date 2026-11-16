@@ -40,6 +40,7 @@
  * ```
  */
 
+import { useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import type { TraineeStatusRecord, TraineeStatusFilters, TraineeStatusSort, PaginationInfo } from '../types/traineeStatus';
@@ -284,9 +285,9 @@ export function useResetPaginationOnFilterChange(
   const filterSortKey = JSON.stringify({ filters, sort });
 
   // Use a ref to track previous value
-  const prevKeyRef = require('react').useRef<string>('');
+  const prevKeyRef = useRef<string>('');
 
-  require('react').useEffect(() => {
+  useEffect(() => {
     if (prevKeyRef.current && prevKeyRef.current !== filterSortKey) {
       // Filters or sort changed, reset to page 1
       onReset();

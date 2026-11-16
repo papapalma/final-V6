@@ -104,7 +104,7 @@ export default function RegistrationsPage() {
   const loadTraineeRequirements = async (traineeId: string) => {
     try {
       setLoadingReqs(true);
-      const res = await api.get(`/trainees/${traineeId}/requirements`);
+      const res: any = await api.get(`/trainees/${traineeId}/requirements`);
       const files = res?.files || res?.data?.files || res?.data || [];
       setRequirementFiles(Array.isArray(files) ? files : []);
     } catch (err) {
@@ -126,7 +126,7 @@ export default function RegistrationsPage() {
       }
 
       const response = await registrationService.getRegistrations(filters);
-      setRegistrations(response || []);
+      setRegistrations((response as any) || []);
       setTotal(response?.length || 0);
     } catch (error) {
       logger.error('Failed to fetch registrations', { error });
@@ -143,7 +143,7 @@ export default function RegistrationsPage() {
       setSearching(true);
       try {
         const response = await registrationService.getRegistrations({ search: query });
-        setRegistrations(response || []);
+        setRegistrations((response as any) || []);
         setTotal(response?.length || 0);
       } catch (error) {
         logger.error('Search failed', { error });
@@ -407,8 +407,7 @@ export default function RegistrationsPage() {
         {registrations.length > pageSize && (
           <PaginationWrapper
             currentPage={page}
-            totalItems={total}
-            pageSize={pageSize}
+            totalPages={Math.ceil(total / pageSize)}
             onPageChange={setPage}
           />
         )}

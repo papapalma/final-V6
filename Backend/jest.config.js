@@ -25,13 +25,6 @@ const config = {
     '/node_modules/',
     '/.next/',
     '\\.perf\\.test\\.ts$',
-    // Note: .properties.test.ts files are now included to support property-based testing
-    // Removed: '\\.properties\\.test\\.ts$',
-    'dataRetention',
-    'enrollmentRequirementService',
-    'cms-error-handling',
-    'audit-logging',
-    'jsonb-size-limits',
   ],
   // Provide a test JWT_SECRET so auth utilities don't throw at import time
   setupFiles: ['<rootDir>/jest.setup.ts'],

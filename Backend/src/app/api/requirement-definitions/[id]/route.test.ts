@@ -46,6 +46,7 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
   let mockRequest: Partial<NextRequest>;
   let mockTenantContext: any;
   let mockExistingRequirement: any;
+  let mockSelectChain: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -72,6 +73,13 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
       deleted_at: null,
+    };
+
+    mockSelectChain = {
+      select: jest.fn(function() { return mockSelectChain; }),
+      eq: jest.fn(function() { return mockSelectChain; }),
+      is: jest.fn(function() { return mockSelectChain; }),
+      single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
     };
 
     // Mock NextRequest
@@ -145,20 +153,13 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
       };
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       // Mock update query
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, display_name: 'Updated' },
@@ -254,19 +255,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
       } as any;
 
       // Mock database queries
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, display_name: 'Updated Birth Certificate' },
@@ -291,19 +285,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ description: 'Updated description' }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, description: 'Updated description' },
@@ -328,19 +315,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ is_mandatory: false }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, is_mandatory: false },
@@ -365,19 +345,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ is_active: false }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, is_active: false },
@@ -407,19 +380,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: {
@@ -450,19 +416,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({}),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: mockExistingRequirement,
@@ -487,6 +446,7 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             is: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({ data: null, error: null }),
             }),
@@ -515,6 +475,7 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
             }
             return this;
           }).mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             is: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({ data: null, error: null }),
             }),
@@ -536,6 +497,7 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             is: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({ data: null, error: null }),
             }),
@@ -557,19 +519,17 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ display_name: 'Updated' }),
       } as any;
 
-      const selectChain = {
-        select: jest.fn().mockReturnValue(selectChain),
-        eq: jest.fn().mockReturnValue(selectChain),
-        is: jest.fn().mockReturnValue(selectChain),
-        single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-      };
+      const selectChain: any = {};
+      selectChain.select = jest.fn().mockReturnValue(selectChain);
+      selectChain.eq = jest.fn().mockReturnValue(selectChain);
+      selectChain.is = jest.fn().mockReturnValue(selectChain);
+      selectChain.single = jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null });
 
-      const updateChain = {
-        update: jest.fn().mockReturnValue(updateChain),
-        eq: jest.fn().mockReturnValue(updateChain),
-        select: jest.fn().mockReturnValue(updateChain),
-        single: jest.fn().mockResolvedValue({ data: { ...mockExistingRequirement, display_name: 'Updated' }, error: null }),
-      };
+      const updateChain: any = {};
+      updateChain.update = jest.fn().mockReturnValue(updateChain);
+      updateChain.eq = jest.fn().mockReturnValue(updateChain);
+      updateChain.select = jest.fn().mockReturnValue(updateChain);
+      updateChain.single = jest.fn().mockResolvedValue({ data: { ...mockExistingRequirement, display_name: 'Updated' }, error: null });
 
       (supabaseAdmin.from as jest.Mock)
         .mockReturnValueOnce(selectChain)
@@ -595,32 +555,23 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ display_name: 'New Name' }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
-      const updateChain = {
-        update: jest.fn(function(payload) {
-          // Verify only display_name is in payload
-          expect(payload.display_name).toBe('New Name');
-          expect(payload.description).toBeUndefined();
-          expect(payload.is_mandatory).toBeUndefined();
-          expect(payload.is_active).toBeUndefined();
-          return this;
-        }).mockReturnValue(updateChain),
-        eq: jest.fn().mockReturnValue(updateChain),
-        select: jest.fn().mockReturnValue(updateChain),
-        single: jest.fn().mockResolvedValue({
-          data: { ...mockExistingRequirement, display_name: 'New Name' },
-          error: null,
-        }),
-      };
+      const updateChain: any = {};
+      updateChain.update = jest.fn(function(payload) {
+        // Verify only display_name is in payload
+        expect(payload.display_name).toBe('New Name');
+        expect(payload.description).toBeUndefined();
+        expect(payload.is_mandatory).toBeUndefined();
+        expect(payload.is_active).toBeUndefined();
+        return updateChain;
+      });
+      updateChain.eq = jest.fn().mockReturnValue(updateChain);
+      updateChain.select = jest.fn().mockReturnValue(updateChain);
+      updateChain.single = jest.fn().mockResolvedValue({
+        data: { ...mockExistingRequirement, display_name: 'New Name' },
+        error: null,
+      });
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(updateChain);
 
@@ -639,29 +590,20 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ display_name: 'New Name' }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
-      const updateChain = {
-        update: jest.fn(function(payload) {
-          expect(payload.updated_at).toBeDefined();
-          expect(typeof payload.updated_at).toBe('string');
-          return this;
-        }).mockReturnValue(updateChain),
-        eq: jest.fn().mockReturnValue(updateChain),
-        select: jest.fn().mockReturnValue(updateChain),
-        single: jest.fn().mockResolvedValue({
-          data: { ...mockExistingRequirement, display_name: 'New Name' },
-          error: null,
-        }),
-      };
+      const updateChain: any = {};
+      updateChain.update = jest.fn(function(payload) {
+        expect(payload.updated_at).toBeDefined();
+        expect(typeof payload.updated_at).toBe('string');
+        return updateChain;
+      });
+      updateChain.eq = jest.fn().mockReturnValue(updateChain);
+      updateChain.select = jest.fn().mockReturnValue(updateChain);
+      updateChain.single = jest.fn().mockResolvedValue({
+        data: { ...mockExistingRequirement, display_name: 'New Name' },
+        error: null,
+      });
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(updateChain);
 
@@ -681,19 +623,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ display_name: 'Updated Name' }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, display_name: 'Updated Name' },
@@ -727,19 +662,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         is_active: false,
       };
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({ data: updatedData, error: null }),
             }),
@@ -765,19 +693,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ display_name: 'Updated Name' }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, display_name: 'Updated Name' },
@@ -804,19 +725,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ display_name: 'Updated Name' }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: { ...mockExistingRequirement, display_name: 'Updated Name' },
@@ -848,6 +762,7 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             is: jest.fn().mockReturnValue({
               single: jest.fn().mockResolvedValue({
                 data: null,
@@ -873,19 +788,12 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
         json: jest.fn().mockResolvedValue({ display_name: 'Updated Name' }),
       } as any;
 
-      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            is: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({ data: mockExistingRequirement, error: null }),
-            }),
-          }),
-        }),
-      });
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
 
       (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
             select: jest.fn().mockReturnValue({
               single: jest.fn().mockRejectedValue(new Error('Database error')),
             }),

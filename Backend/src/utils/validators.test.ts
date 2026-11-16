@@ -131,6 +131,7 @@ describe('Task 3.4: Validation Refinements - Employment Status and Unemployment 
           graduation_status: 'pending',
           employment_status: 'employed',
           job_title: 'Engineer',
+          employer_name: 'Tech Corp',
         };
 
         const result = validators.createTraineeStatusSchema.safeParse(input);
@@ -172,6 +173,7 @@ describe('Task 3.4: Validation Refinements - Employment Status and Unemployment 
           graduation_status: 'pending',
           employment_status: 'self_employed',
           job_title: 'Freelancer',
+          employer_name: 'Self',
         };
 
         const result = validators.createTraineeStatusSchema.safeParse(input);
@@ -222,6 +224,7 @@ describe('Task 3.4: Validation Refinements - Employment Status and Unemployment 
         const input = {
           employment_status: 'employed',
           job_title: 'Engineer',
+          employer_name: 'Tech Corp',
         };
 
         const result = validators.updateTraineeStatusSchema.safeParse(input);
@@ -259,6 +262,7 @@ describe('Task 3.4: Validation Refinements - Employment Status and Unemployment 
         const input = {
           employment_status: 'employed',
           job_title: 'Engineer',
+          employer_name: 'Tech Corp',
         };
 
         const result = validators.updateTraineeStatusSchema.safeParse(input);
@@ -323,6 +327,7 @@ describe('Task 3.4: Validation Refinements - Employment Status and Unemployment 
           graduation_status: 'pending',
           employment_status: 'employed',
           job_title: 'Engineer',
+          employer_name: 'Tech Corp',
         };
 
         const result = validators.createTraineeStatusSchema.safeParse(input);
@@ -356,6 +361,7 @@ describe('Task 3.4: Validation Refinements - Employment Status and Unemployment 
         const input = {
           employment_status: 'employed',
           job_title: 'Software Engineer',
+          employer_name: 'Tech Corp',
         };
 
         const result = validators.updateTraineeStatusSchema.safeParse(input);

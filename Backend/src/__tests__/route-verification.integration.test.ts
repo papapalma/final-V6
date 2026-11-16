@@ -17,7 +17,6 @@ describe('Route Verification - Endpoint Definitions', () => {
       { method: 'POST', path: '/api/auth/verify-email-signup', public: true, description: 'Email verification' },
       { method: 'POST', path: '/api/auth/verify-login-2fa', protected: true, description: '2FA verification' },
       { method: 'POST', path: '/api/auth/refresh', protected: true, description: 'Refresh token' },
-      { method: 'GET', path: '/api/auth/debug', protected: true, description: 'Debug endpoint' },
     ];
 
     authRoutes.forEach(({ method, path, public: isPublic, protected: isProtected, description }) => {
@@ -39,7 +38,6 @@ describe('Route Verification - Endpoint Definitions', () => {
       { method: 'GET', path: '/api/admin/data-breach', requireRole: 'super_admin' },
       { method: 'GET', path: '/api/admin/feature-flags', requireRole: 'super_admin' },
       { method: 'GET', path: '/api/admin/performance', requireRole: 'super_admin' },
-      { method: 'POST', path: '/api/admin/migrate-cms', requireRole: 'super_admin' },
       { method: 'GET', path: '/api/admin/pilot', requireRole: 'super_admin' },
     ];
 

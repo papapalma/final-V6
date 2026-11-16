@@ -103,8 +103,9 @@ export async function GET(request: NextRequest) {
 
     // Handle validation errors
     if (error.name === 'ZodError') {
+      const issues = error.issues || error.errors || [];
       return NextResponse.json(
-        { statusCode: 400, error: 'Invalid query parameters', details: error.errors },
+        { statusCode: 400, error: 'Invalid query parameters', details: issues },
         { status: 400 }
       );
     }

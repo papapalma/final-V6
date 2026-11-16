@@ -39,6 +39,20 @@ vi.mock('../contexts/AuthContext', () => ({
 // Mock dependencies
 vi.mock('../services/traineeService');
 vi.mock('../services/programService');
+vi.mock('../services/enrollmentService', () => ({
+  enrollmentService: {
+    fetchEnrollments: vi.fn().mockResolvedValue([]),
+  },
+}));
+vi.mock('../services/api', () => ({
+  default: {
+    get: vi.fn().mockResolvedValue({ data: [] }),
+    post: vi.fn().mockResolvedValue({ data: {} }),
+    put: vi.fn().mockResolvedValue({ data: {} }),
+    delete: vi.fn().mockResolvedValue({ data: {} }),
+  },
+  getThumbnailUrl: vi.fn((path: any) => path),
+}));
 vi.mock('sonner');
 vi.mock('../utils/activityLogger');
 vi.mock('../utils/pdfGenerator');

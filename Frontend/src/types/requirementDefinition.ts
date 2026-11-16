@@ -170,4 +170,7 @@ export interface UpdateRequirementPayload {
   isMandatory?: boolean;
   /** Whether this requirement is currently active (optional update field) */
   isActive?: boolean;
+  is_active?: boolean;
+  is_mandatory?: boolean;
+  display_name?: string;
 }

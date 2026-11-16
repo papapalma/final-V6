@@ -8,6 +8,7 @@
  */
 
 import { logger } from './logger';
+import { programSharingService } from '../services/programSharingService';
 
 interface PostAuthHandlerResult {
   targetPath: string;
@@ -40,8 +41,6 @@ export async function handlePostAuth(
   try {
     // Step 1: Check LocalStorage for stored program_id
     const storedProgramId = localStorage.getItem('selected_program_id');
-    console.log('[postAuthHandler] storedProgramId from localStorage:', storedProgramId);
-    console.log('[postAuthHandler] localStorage keys:', Object.keys(localStorage));
 
     if (!storedProgramId) {
       logger.debug('No program context found in LocalStorage during post-auth', { userId, context });
@@ -56,17 +55,44 @@ export async function handlePostAuth(
       programId: storedProgramId,
     });
 
-    // Step 2: Redirect to program page (validation already done by LinkHandlerPage)
-    logger.debug('User accessing program from social shared link', {
-      userId,
-      programId: storedProgramId,
-    });
+    try {
+      const accessResult = await programSharingService.verifyProgramAccess(storedProgramId, userId);
+      if (!accessResult.canAccess) {
+        logger.warn('User denied access to program during post-auth', {
+          userId,
+          programId: storedProgramId,
+          reason: accessResult.reason,
+        });
+        cleanupProgramReference(true);
+        return {
+          targetPath: '/dashboard',
+          programId: storedProgramId,
+          permissionDenied: true,
+        };
+      }
 
-    return {
-      targetPath: /programs/,
-      programId: storedProgramId,
-      permissionDenied: false,
-    };
+      logger.debug('User accessing program from social shared link', {
+        userId,
+        programId: storedProgramId,
+      });
+
+      return {
+        targetPath: `/programs/${storedProgramId}`,
+        programId: storedProgramId,
+        permissionDenied: false,
+      };
+    } catch (verifyError) {
+      logger.error('Error verifying program access during post-auth', {
+        userId,
+        programId: storedProgramId,
+        error: verifyError,
+      });
+      return {
+        targetPath: '/dashboard',
+        programId: storedProgramId,
+        permissionDenied: false,
+      };
+    }
   } catch (error) {
     logger.error('Unexpected error in post-auth handler', { error });
     return {

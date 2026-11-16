@@ -34,7 +34,7 @@ import ImageUpload from '../components/ImageUpload';
 // Zod validation schema
 const featureSchema = z.object({
   icon: z.enum(['Wrench', 'Award', 'Users2', 'Compass'], {
-    errorMap: () => ({ message: 'Please select a valid icon' }),
+    message: 'Please select a valid icon',
   }),
   title: z.string().max(100, 'Title must be less than 100 characters'),
   description: z.string().max(500, 'Description must be less than 500 characters'),
@@ -43,7 +43,7 @@ const featureSchema = z.object({
 const cmsContentSchema = z.object({
   hero: z.object({
     badge: z.string().max(100, 'Badge must be less than 100 characters'),
-    heading: z.string().max(200, 'Heading must be less than 200 characters'),
+    heading: z.string().min(1, 'Hero heading is required').max(200, 'Heading must be less than 200 characters'),
     subheading: z.string().max(500, 'Subheading must be less than 500 characters'),
     ctaText: z.string().max(50, 'CTA text must be less than 50 characters'),
   }),
@@ -172,10 +172,10 @@ export default function LandingContentEditorPage() {
     const loadCmsSettings = async () => {
       setIsLoading(true);
       try {
-        const response = await api.get<CMSSettingsResponse>('/landing-content');
+        const response = await api.get<CMSSettingsResponse>('/cms-settings');
         if (isCancelled) return;
         if (response.success && response.data) {
-          const content = response.data.content;
+          const content = (response.data as any)?.settingsData?.content || (response.data as any)?.content;
                     if (content) {
             // Convert file paths to URLs for preview in ImageUpload
             const contentWithUrls = {
@@ -211,7 +211,7 @@ export default function LandingContentEditorPage() {
   const onSubmit = async (data: CMSContentFormData) => {
     setIsSaving(true);
     try {
-      const response = await api.post<CMSSettingsResponse>('/landing-content', {
+      const response = await api.post<CMSSettingsResponse>('/cms-settings', {
         content: data,
       });
 

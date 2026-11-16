@@ -2,6 +2,8 @@ import { z } from 'zod';
 import api from './api';
 import { websocketClient, type ConnectionStatus } from './websocket-client';
 
+export type { ConnectionStatus };
+
 /**
  * Enrollment Management Service with Real-Time WebSocket Synchronization
  * 
@@ -202,8 +204,9 @@ class EnrollmentService {
 
       // Setup handler for enrollment removals
       const unsubscribeRemoved = websocketClient.onEnrollmentRemoved(
-        ({ enrollmentId }) => {
-          this.handleEnrollmentRemoved(enrollmentId);
+        (data: any) => {
+          const id = typeof data === 'string' ? data : data?.enrollmentId;
+          this.handleEnrollmentRemoved(id);
         }
       );
       this.subscriptionCleanupFunctions.set('removed', unsubscribeRemoved);
@@ -331,7 +334,7 @@ class EnrollmentService {
       return validatedData;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errorMessage = error.errors?.[0]?.message || 'Unknown validation error';
+        const errorMessage = (error.issues || (error as any).errors)?.[0]?.message || 'Unknown validation error';
         const message = `Enrollment data validation failed: ${errorMessage}`;
         console.error(message, error);
         throw new Error(message);
@@ -389,7 +392,7 @@ class EnrollmentService {
       return validatedData;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errorMessage = error.errors?.[0]?.message || 'Unknown validation error';
+        const errorMessage = (error.issues || (error as any).errors)?.[0]?.message || 'Unknown validation error';
         const message = `Enrollment data validation failed: ${errorMessage}`;
         console.error(message, error);
         throw new Error(message);
@@ -433,7 +436,7 @@ class EnrollmentService {
       return validatedData;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errorMessage = error.errors?.[0]?.message || 'Unknown validation error';
+        const errorMessage = (error.issues || (error as any).errors)?.[0]?.message || 'Unknown validation error';
         const message = `Enrollment data validation failed: ${errorMessage}`;
         console.error(message, error);
         throw new Error(message);
@@ -478,13 +481,29 @@ class EnrollmentService {
       return validatedData;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errorMessage = error.errors?.[0]?.message || 'Unknown validation error';
+        const errorMessage = (error.issues || (error as any).errors)?.[0]?.message || 'Unknown validation error';
         const message = `Enrollment data validation failed: ${errorMessage}`;
         console.error(message, error);
         throw new Error(message);
       }
       throw error;
     }
+  }
+
+  /**
+   * Create a new enrollment
+   * 
+   * @param data - The enrollment payload
+   */
+  async createEnrollment(data: {
+    trainee_id?: string;
+    traineeId?: string;
+    program_id?: string;
+    programId?: string;
+    source?: string;
+  }): Promise<any> {
+    const response = await api.post('/enrollments', data);
+    return response.data;
   }
 
   /**

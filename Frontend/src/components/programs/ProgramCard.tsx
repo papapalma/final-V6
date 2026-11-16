@@ -233,7 +233,7 @@ export function ProgramCard({
             <div className="flex items-center gap-2 pt-1.5 border-t border-gray-200 dark:border-gray-700 mt-2 font-medium text-xs sm:text-sm">
               <Users className="size-3.5 shrink-0" />
               <span className={isAtCapacity ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
-                {enrollmentCount} / {enrollmentCapacity} enrolled
+                {enrollmentCount} / {enrollmentCapacity} trainees
               </span>
             </div>
           )}

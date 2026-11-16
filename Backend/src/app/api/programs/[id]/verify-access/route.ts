@@ -113,7 +113,8 @@ export const POST = withErrorHandler(
       validatedData = verifyAccessSchema.parse(body);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const fieldErrors = error.errors.map((err) => `${err.path.join('.')}: ${err.message}`);
+        const issues = error.issues || (error as any).errors || [];
+        const fieldErrors = issues.map((err: any) => `${err.path.join('.')}: ${err.message}`);
         return errorResponse(`Validation failed: ${fieldErrors.join('; ')}`, 400);
       }
       return errorResponse('Validation failed', 400);

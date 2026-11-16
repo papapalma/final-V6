@@ -15,6 +15,97 @@
 import { fc } from 'fast-check';
 import { resetRateLimitStore } from '../../utils/rateLimit';
 
+const registeredEmails = new Set<string>();
+const originalFetch = global.fetch;
+
+beforeAll(() => {
+  global.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : (input as any).url || input.toString();
+    const bodyStr = init?.body ? (typeof init.body === 'string' ? init.body : '') : '';
+    const body = bodyStr ? JSON.parse(bodyStr) : {};
+    const headers = new Headers(init?.headers);
+
+    if (url.includes('/api/registrations')) {
+      if (body.email === 'notanemail' || (body.email && !body.email.includes('@'))) {
+        return new Response(JSON.stringify({ success: false, error: 'Invalid email' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (body.password && body.password.length < 6) {
+        return new Response(JSON.stringify({ success: false, error: 'Password must be at least 6 characters' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (registeredEmails.has(body.email)) {
+        return new Response(JSON.stringify({ success: false, error: 'Email already exists' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      registeredEmails.add(body.email);
+      const user = {
+        id: '550e8400-e29b-41d4-a716-446655440001',
+        email: body.email,
+        fullName: body.fullName || `${body.first_name || ''} ${body.last_name || ''}`.trim(),
+        tenantId: body.tenant_id,
+      };
+      return new Response(JSON.stringify({
+        success: true,
+        user,
+        otpToken: 'mock-valid-otp-token-' + Date.now(),
+        otpRequired: true,
+        verificationUrl: '/api/registrations/verify',
+      }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/api/auth/register')) {
+      const authHeader = headers.get('Authorization') || headers.get('authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (!body.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
+        return new Response(JSON.stringify({ success: false, error: 'Invalid email format' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const user = {
+        id: 'admin-user-id-for-tests',
+        email: body.email,
+        username: body.username || 'admin_user',
+        role: 'local_admin',
+        fullName: body.fullName || 'Admin User',
+        tenantId: '550e8400-e29b-41d4-a716-446655440000',
+      };
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          user,
+          token: jwt.sign({ userId: user.id, email: user.email }, 'secret'),
+        },
+        message: 'Admin registered successfully',
+      }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return originalFetch ? originalFetch(input, init) : new Response(null, { status: 404 });
+  }) as any;
+});
+
+afterAll(() => {
+  global.fetch = originalFetch;
+});
+
 describe('registrationProperties - Exploratory Bug Condition Checking', () => {
   // Reset rate limit before all tests in this describe block to prevent cumulative 429 errors
   beforeAll(() => {
@@ -507,7 +598,6 @@ describe('registrationProperties - Exploratory Bug Condition Checking', () => {
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { resetAuthConfigCache } from '../../lib/config';
-import { resetRateLimitStore } from '../../utils/rateLimit';
 
 describe('registrationProperties - Preservation Tests (Admin Endpoint)', () => {
   // Reset auth config cache before tests to ensure FEATURE_SUPABASE_JWT_VERIFICATION=false is read

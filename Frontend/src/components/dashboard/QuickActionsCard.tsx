@@ -135,7 +135,7 @@ export default function QuickActionsCard({ traineeProfile }: QuickActionsCardPro
             <Link key={action.href} to={action.href}>
               <div className="flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
                 <div className="p-2 rounded-lg bg-primary/10">
-                  {React.cloneElement(action.icon as React.ReactElement, {
+                  {React.cloneElement(action.icon as React.ReactElement<any>, {
                     className: 'h-5 w-5 text-primary',
                   })}
                 </div>

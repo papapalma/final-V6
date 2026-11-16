@@ -320,76 +320,7 @@ export default function EnrollmentManagementSection({
     };
   };
 
-  // LOADING STATE
-  if (loading && enrollments.length === 0) {
-    return (
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <Card key={i} className="animate-pulse">
-            <CardHeader className="space-y-2">
-              <div className="h-5 bg-muted rounded w-1/3" />
-              <div className="h-4 bg-muted rounded w-1/4" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="h-4 bg-muted rounded w-full" />
-                <div className="h-4 bg-muted rounded w-5/6" />
-                <div className="flex gap-2 pt-2">
-                  <div className="h-9 bg-muted rounded w-24" />
-                  <div className="h-9 bg-muted rounded w-24" />
-                  <div className="h-9 bg-muted rounded w-24" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  }
-
-  // ERROR STATE
-  if (error) {
-    const { title, description } = getErrorMessage(error);
-
-    return (
-      <Card className="border-destructive bg-destructive/5">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-4">
-            <AlertCircle className="h-6 w-6 text-destructive mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-destructive">{title}</p>
-              <p className="text-sm text-muted-foreground mt-2">{description}</p>
-              <div className="flex gap-3 mt-4">
-                <Button variant="outline" size="sm" onClick={handleRetry} className="gap-2">
-                  <AlertCircle className="h-4 w-4" />
-                  Retry
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // EMPTY STATE
-  if (enrollments.length === 0) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
-            <Calendar className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <p className="font-semibold text-lg text-foreground">No Enrollments</p>
-          <p className="text-sm text-muted-foreground mt-2 max-w-xs">
-            This trainee does not have any active or past enrollments at this time.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // ENROLLMENTS LIST WITH REAL-TIME INDICATOR
+  // RENDER COMPONENT
   return (
     <>
       {/* Connection Status Indicator */}
@@ -398,89 +329,150 @@ export default function EnrollmentManagementSection({
         <ConnectionStatusIndicator connectionStatus={connectionStatus} showLabel={true} size="sm" />
       </div>
 
-      <div className="space-y-4">
-        {enrollments.map((enrollment) => {
-          const statusStyles = getStatusStyles(enrollment.status);
-          const availableActions = getAvailableActions(enrollment.status);
-
+      {/* LOADING STATE */}
+      {loading && enrollments.length === 0 ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="animate-pulse" role="status">
+              <CardHeader className="space-y-2">
+                <div className="h-5 bg-muted rounded w-1/3" />
+                <div className="h-4 bg-muted rounded w-1/4" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="h-4 bg-muted rounded w-full" />
+                  <div className="h-4 bg-muted rounded w-5/6" />
+                  <div className="flex gap-2 pt-2">
+                    <div className="h-9 bg-muted rounded w-24" />
+                    <div className="h-9 bg-muted rounded w-24" />
+                    <div className="h-9 bg-muted rounded w-24" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : error ? (
+        /* ERROR STATE */
+        (() => {
+          const { title, description } = getErrorMessage(error);
           return (
-            <Card key={enrollment.id} className="overflow-hidden">
-              <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6">
-                {/* Header row with program name and status badge */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-2 sm:gap-4 mb-3 sm:mb-4">
-                  <div className="flex-1 w-full sm:w-auto">
-                    <h3 className="font-semibold text-sm sm:text-base leading-tight">
-                      {enrollment.program?.name || 'Unknown Program'}
-                    </h3>
-                  </div>
-                  <Badge
-                    className={`${statusStyles.bg} ${statusStyles.text} border-0 whitespace-nowrap text-xs`}
-                  >
-                    {statusStyles.label}
-                  </Badge>
-                </div>
-
-                {/* Metadata grid - dates and grade */}
-                <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4 sm:mb-6 text-xs sm:text-sm">
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <p className="text-muted-foreground font-medium text-[10px] sm:text-xs">Enrollment Date</p>
-                    <p className="font-semibold text-xs sm:text-sm">{formatDate(enrollment.enrollment_date)}</p>
-                  </div>
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <p className="text-muted-foreground font-medium text-[10px] sm:text-xs">Completion Date</p>
-                    <p className="font-semibold text-xs sm:text-sm">{formatDate(enrollment.completion_date)}</p>
-                  </div>
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <p className="text-muted-foreground font-medium text-[10px] sm:text-xs">Final Grade</p>
-                    <p className="font-semibold text-xs sm:text-sm">{formatGrade(enrollment.final_grade)}</p>
+            <Card className="border-destructive bg-destructive/5">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-4">
+                  <AlertCircle className="h-6 w-6 text-destructive mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-destructive">{title}</p>
+                    <p className="text-sm text-muted-foreground mt-2">{description}</p>
+                    <div className="flex gap-3 mt-4">
+                      <Button variant="outline" size="sm" onClick={handleRetry} className="gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        Retry
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                {/* Action buttons - only shown for non-terminal statuses */}
-                {(availableActions.complete || availableActions.fail || availableActions.drop) && (
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    {availableActions.complete && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleActionClick(enrollment, 'complete')}
-                        disabled={confirming || updating}
-                        className="text-green-700 border-green-200 hover:bg-green-50 w-full sm:w-auto text-xs"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
-                        Mark as Complete
-                      </Button>
-                    )}
-                    {availableActions.fail && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleActionClick(enrollment, 'fail')}
-                        disabled={confirming || updating}
-                        className="text-red-700 border-red-200 hover:bg-red-50 w-full sm:w-auto text-xs"
-                      >
-                        <XCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
-                        Mark as Failed
-                      </Button>
-                    )}
-                    {availableActions.drop && (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleActionClick(enrollment, 'drop')}
-                        disabled={confirming || updating}
-                        className="w-full sm:w-auto text-xs"
-                      >
-                        Drop Program
-                      </Button>
-                    )}
-                  </div>
-                )}
               </CardContent>
             </Card>
           );
-        })}
-      </div>
+        })()
+      ) : enrollments.length === 0 ? (
+        /* EMPTY STATE */
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+              <Calendar className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <p className="font-semibold text-lg text-foreground">No Enrollments</p>
+            <p className="text-sm text-muted-foreground mt-2 max-w-xs">
+              This trainee does not have any active or past enrollments at this time.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        /* ENROLLMENTS LIST */
+        <div className="space-y-4">
+          {enrollments.map((enrollment) => {
+            const statusStyles = getStatusStyles(enrollment.status);
+            const availableActions = getAvailableActions(enrollment.status);
+
+            return (
+              <Card key={enrollment.id} className="overflow-hidden">
+                <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6">
+                  {/* Header row with program name and status badge */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-2 sm:gap-4 mb-3 sm:mb-4">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-base sm:text-lg font-semibold text-foreground truncate">
+                        {enrollment.program?.name || 'Program Name Unavailable'}
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Enrollment ID: <span className="font-mono">{enrollment.id.slice(0, 8)}...</span>
+                      </p>
+                    </div>
+                    <Badge variant={(statusStyles as any).badgeVariant} className="shrink-0 text-xs">
+                      {statusStyles.label}
+                    </Badge>
+                  </div>
+
+                  {/* Metadata grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 py-3 border-y border-border/50 text-xs sm:text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Enrolled: </span>
+                      <span className="font-medium text-foreground">{formatDate(enrollment.enrollment_date)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Completed: </span>
+                      <span className="font-medium text-foreground">{formatDate(enrollment.completion_date)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Final Grade: </span>
+                      <span className="font-medium text-foreground">{formatGrade(enrollment.final_grade)}</span>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  {(availableActions.complete || availableActions.fail || availableActions.drop) && (
+                    <div className="flex flex-wrap items-center gap-2 mt-3 sm:mt-4 pt-1">
+                      {availableActions.complete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleActionClick(enrollment, 'complete')}
+                          className="text-green-700 border-green-200 hover:bg-green-50 w-full sm:w-auto text-xs"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
+                          Mark as Complete
+                        </Button>
+                      )}
+                      {availableActions.fail && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleActionClick(enrollment, 'fail')}
+                          className="text-red-700 border-red-200 hover:bg-red-50 w-full sm:w-auto text-xs"
+                        >
+                          <XCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
+                          Mark as Failed
+                        </Button>
+                      )}
+                      {availableActions.drop && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleActionClick(enrollment, 'drop')}
+                          className="w-full sm:w-auto text-xs"
+                        >
+                          Drop Program
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Confirmation Dialog */}
       <AlertDialog open={confirming} onOpenChange={handleCancelConfirmation}>

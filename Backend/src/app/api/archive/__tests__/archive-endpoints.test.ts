@@ -87,9 +87,10 @@ describe('Archive API Endpoints (Task 2 & Task 6)', () => {
       const entityTypes = Object.keys(ARCHIVE_TABLES);
       expect(entityTypes).toContain('trainee');
       expect(entityTypes).toContain('program');
+      expect(entityTypes).toContain('item');
       expect(entityTypes).toContain('trainee_status');
       expect(entityTypes).toContain('training_requirement_file');
-      expect(entityTypes.length).toBe(4);
+      expect(entityTypes.length).toBe(5);
     });
   });
 

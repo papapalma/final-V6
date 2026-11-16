@@ -69,9 +69,9 @@ class PerformanceLogger {
           dns: navigation.domainLookupEnd - navigation.domainLookupStart,
           tcp: navigation.connectEnd - navigation.connectStart,
           ttfb: navigation.responseStart - navigation.requestStart,
-          domInteractive: navigation.domInteractive - navigation.navigationStart,
-          domComplete: navigation.domComplete - navigation.navigationStart,
-          pageLoadTime: navigation.loadEventEnd - navigation.navigationStart,
+          domInteractive: navigation.domInteractive - ((navigation as any).navigationStart || 0),
+          domComplete: navigation.domComplete - ((navigation as any).navigationStart || 0),
+          pageLoadTime: navigation.loadEventEnd - ((navigation as any).navigationStart || 0),
         },
       };
 
@@ -277,4 +277,3 @@ class PerformanceLogger {
 
 // Export singleton instance
 export const performanceLogger = new PerformanceLogger();
-export type { PerformanceMetrics };

@@ -30,7 +30,7 @@ const FileUploadSchema = z.object({
       { message: 'Invalid base64 encoding' }
     ),
   category: z.enum(['items', 'trainees', 'programs', 'cms', 'qrcodes', 'documents'], {
-    errorMap: () => ({ message: 'Category must be one of: items, trainees, programs, cms, qrcodes, documents' })
+    message: 'Category must be one of: items, trainees, programs, cms, qrcodes, documents'
   }),
   filename: z.string()
     .min(1, 'Filename is required')
@@ -91,7 +91,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   // Validate input with Zod schema
   const validationResult = FileUploadSchema.safeParse(body);
   if (!validationResult.success) {
-    const errors = validationResult.error.errors.map(e => e.message);
+    const issues = validationResult.error.issues || (validationResult.error as any).errors || [];
+    const errors = issues.map((e: any) => e.message);
     
     // Task 20.3: Log validation failures
     await activityLogService.logAction(

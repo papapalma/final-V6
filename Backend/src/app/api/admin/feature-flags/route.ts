@@ -14,7 +14,7 @@ import { invalidateFeatureFlagCache, FeatureKey } from '@/lib/featureFlags';
 
 import { z } from 'zod';
 
-const createFlagSchema = z.object({ feature_key: z.string()  .min(1, 'Feature key is required')  .max(100)  .regex(/^[a-z_]+$/, 'Feature key must be lowercase letters and underscores only'),  enabled: z.boolean().default(false),  configuration: z.record(z.unknown()).optional().nullable(),});
+const createFlagSchema = z.object({ feature_key: z.string()  .min(1, 'Feature key is required')  .max(100)  .regex(/^[a-z_]+$/, 'Feature key must be lowercase letters and underscores only'),  enabled: z.boolean().default(false),  configuration: z.record(z.string(), z.unknown()).optional().nullable(),});
 
 export async function OPTIONS(request: NextRequest) { return handleOptionsRequest(request);}// GET /api/admin/feature-flags — list all feature flags for a tenant (Req 23.1)
 

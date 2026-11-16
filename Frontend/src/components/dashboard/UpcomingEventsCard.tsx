@@ -116,7 +116,7 @@ export default function UpcomingEventsCard({
       </CardHeader>
       <CardContent>
         <div className="space-y-2 sm:space-y-3">
-          {allEvents.map((event) => {
+          {allEvents.map((event: any) => {
             const isExcluded = event.type === 'excluded';
 
             return (

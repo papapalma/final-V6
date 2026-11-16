@@ -83,16 +83,16 @@ const defaultQueryOptions: DefaultOptions['queries'] = {
   },
   
   // Refetch strategy: keep data fresh when user refocuses the window
-  refetchOnWindowFocus: 'stale',
+  refetchOnWindowFocus: 'stale' as any,
   
   // Refetch on network reconnection: important for offline support
-  refetchOnReconnect: 'stale',
+  refetchOnReconnect: 'stale' as any,
   
   // Garbage collection: remove unused cached data after 10 minutes
   gcTime: 1000 * 60 * 10,
   
   // Don't refetch in the background when component remounts if data exists
-  refetchOnMount: 'stale',
+  refetchOnMount: 'stale' as any,
 };
 
 /**
@@ -133,8 +133,8 @@ export function createOptimizedQueryClient(): QueryClient {
         const query = event.query;
         logger.debug('[QueryClient] Cache updated', {
           queryKey: query.queryKey,
-          status: query.getStatus(),
-          dataUpdatedAt: query.getUpdatedAt(),
+          status: query.state.status,
+          dataUpdatedAt: query.state.dataUpdatedAt,
         });
       }
     });
@@ -142,6 +142,9 @@ export function createOptimizedQueryClient(): QueryClient {
 
   return queryClient;
 }
+
+export const createQueryClient = createOptimizedQueryClient;
+export default createOptimizedQueryClient;
 
 /**
  * Cache Invalidation Helper Functions
@@ -155,7 +158,7 @@ export const invalidationStrategies = {
   invalidateSingleTraineeStatus: (queryClient: QueryClient, enrollmentId: string) => {
     queryClient.invalidateQueries({
       queryKey: queryKeys.traineeStatus.byEnrollment(enrollmentId),
-      refetchType: 'stale', // Only refetch if data is already stale
+      refetchType: 'active', // Only refetch if active
     });
   },
 
@@ -166,7 +169,7 @@ export const invalidationStrategies = {
   invalidateTraineeStatusList: (queryClient: QueryClient) => {
     queryClient.invalidateQueries({
       queryKey: queryKeys.traineeStatuses.all,
-      refetchType: 'stale',
+      refetchType: 'active',
     });
   },
 
@@ -178,11 +181,11 @@ export const invalidationStrategies = {
     // Invalidate all status queries
     queryClient.invalidateQueries({
       queryKey: queryKeys.traineeStatus.all,
-      refetchType: 'stale',
+      refetchType: 'active',
     });
     queryClient.invalidateQueries({
       queryKey: queryKeys.traineeStatuses.all,
-      refetchType: 'stale',
+      refetchType: 'active',
     });
 
     logger.info('[QueryClient] Invalidated all trainee status caches', {
@@ -215,10 +218,10 @@ export function logCacheState(queryClient: QueryClient) {
   queries.forEach((query) => {
     console.log({
       key: query.queryKey,
-      status: query.getStatus(),
-      dataUpdatedAt: query.getUpdatedAt(),
-      staleTime: query.getOptions().staleTime,
-      gcTime: query.getOptions().gcTime,
+      status: query.state.status,
+      dataUpdatedAt: query.state.dataUpdatedAt,
+      staleTime: (query.options as any).staleTime,
+      gcTime: (query.options as any).gcTime,
     });
   });
   console.groupEnd();
@@ -234,12 +237,11 @@ export function setupQueryPerformanceMonitoring(queryClient: QueryClient) {
   queryClient.getQueryCache().subscribe((event) => {
     if (event.type === 'observerAdded') {
       const query = event.query;
-      const startTime = Date.now();
 
       // Hook into the query success to measure execution time
-      const originalFn = query.queryFn;
+      const originalFn = (query as any).queryFn || (query.options as any).queryFn;
       if (originalFn) {
-        query.queryFn = async (...args) => {
+        (query as any).queryFn = async (...args: any[]) => {
           const executionStartTime = Date.now();
           try {
             const result = await originalFn(...args);

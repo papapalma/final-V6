@@ -23,6 +23,7 @@ import {
   forbiddenResponse,
   validationErrorResponse,
   createdResponse,
+  serverErrorResponse,
 } from '@/utils/responses';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { z } from 'zod';
@@ -59,7 +60,7 @@ const createRequirementSchema = z.object({
     .boolean()
     .describe('Whether this requirement is mandatory for all applicable trainees'),
   applicability_rules: z
-    .record(z.any())
+    .record(z.string(), z.any())
     .nullable()
     .optional()
     .describe('JSONB rules for conditional requirements (e.g., marital_status)'),
@@ -71,7 +72,8 @@ const createRequirementSchema = z.object({
     .default(0)
     .describe('Display order in UI (lower numbers = higher priority)'),
   is_active: z.boolean().optional().default(true),
-}).strict();
+  tenant_id: z.any().optional(), // ignored in favor of authenticated tenant
+});
 
 type CreateRequirementInput = z.infer<typeof createRequirementSchema>;
 
@@ -97,7 +99,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       const fieldErrors: Record<string, string[]> = {};
-      error.errors.forEach((err) => {
+      const issues = error.issues || (error as any).errors || [];
+      issues.forEach((err: any) => {
         const field = err.path.join('.');
         if (!fieldErrors[field]) fieldErrors[field] = [];
         fieldErrors[field].push(err.message);
@@ -209,95 +212,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
  *   - description (required): Description/instructions for trainees
  *   - is_mandatory (required): Whether requirement is mandatory
  *   - applicability_rules (optional): JSONB for conditional requirements
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const fieldErrors: Record<string, string[]> = {};
-      error.errors.forEach((err) => {
-        const field = err.path.join('.');
-        if (!fieldErrors[field]) fieldErrors[field] = [];
-        fieldErrors[field].push(err.message);
-      });
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid query parameters',
-          errors: fieldErrors,
-        },
-        { status: 400 }
-      );
-    }
-    throw error;
-  }
-
-  // 3. Build query for requirement definitions
-  let query = supabaseAdmin
-    .from('requirement_definitions')
-    .select('*', { count: 'exact' })
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null);
-
-  // Apply is_active filter if specified
-  if (queryParams.is_active !== '') {
-    const isActive = queryParams.is_active === 'true';
-    query = query.eq('is_active', isActive);
-  }
-
-  // Apply ordering
-  query = query.order('display_order', { ascending: true });
-
-  // 4. Execute query
-  const { data: definitions, error, count } = await query;
-
-  if (error) throw error;
-
-  if (!definitions) {
-    return paginatedResponse([], queryParams.page, queryParams.limit, 0);
-  }
-
-  // 5. Enrich each requirement with submission statistics
-  const enrichedDefinitions = await Promise.all(
-    definitions.map(async (def) => {
-      const submission_stats = await calculateSubmissionStats(def.id, tenantId);
-      return {
-        ...def,
-        submission_stats,
-      };
-    })
-  );
-
-  // 6. Apply sorting
-  const sortedDefinitions = applySorting(
-    enrichedDefinitions,
-    queryParams.sort_by
-  );
-
-  // 7. Apply pagination
-  const total = sortedDefinitions.length;
-  const startIndex = (queryParams.page - 1) * queryParams.limit;
-  const endIndex = startIndex + queryParams.limit;
-  const paginatedData = sortedDefinitions.slice(startIndex, endIndex);
-
-  // 8. Return paginated response
-  return paginatedResponse(
-    paginatedData,
-    queryParams.page,
-    queryParams.limit,
-    total
-  );
-});
-
-/**
- * POST /api/requirement-definitions
- * 
- * Create a new requirement definition (admin only)
- * 
- * Requirements: FR1.1, FR2.3, NFR4 (Security - role-based access)
- * 
- * Request body:
- *   - display_name (required): Display name for the requirement
- *   - description (required): Description/instructions for trainees
- *   - is_mandatory (required): Whether requirement is mandatory
- *   - applicability_rules (optional): JSONB for conditional requirements
  *   - display_order (optional): UI sort order
  * 
  * Authorization: Admin role required (local_admin or super_admin)
@@ -317,25 +231,56 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   // 2. Check if user has admin role
   if (role !== 'local_admin' && role !== 'super_admin') {
-    return forbiddenResponse('Only admins can create requirement definitions');
+    return forbiddenResponse('Only administrators can create requirement definitions');
   }
 
   // 3. Parse and validate request body
   let createData: CreateRequirementInput;
   try {
     const body = await request.json();
+    const allowedKeys = new Set([
+      'requirement_type',
+      'display_name',
+      'description',
+      'is_mandatory',
+      'is_active',
+      'applicability_rules',
+      'display_order',
+      'tenant_id',
+    ]);
+    const unknownKeys = Object.keys(body).filter((k) => !allowedKeys.has(k));
+    if (unknownKeys.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          errors: {
+            [unknownKeys[0]]: [`Unrecognized key: ${unknownKeys[0]}`],
+          },
+        },
+        { status: 422 }
+      );
+    }
     createData = createRequirementSchema.parse(body);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const fieldErrors: Record<string, string[]> = {};
-      error.errors.forEach((err) => {
+      const issues = error.issues || (error as any).errors || [];
+      issues.forEach((err: any) => {
         const field = err.path.join('.');
         if (!fieldErrors[field]) fieldErrors[field] = [];
         fieldErrors[field].push(err.message);
       });
-      return validationErrorResponse(fieldErrors);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          errors: fieldErrors,
+        },
+        { status: 422 }
+      );
     }
-    throw error;
+    return errorResponse((error as Error).message || 'Invalid JSON', 400);
   }
 
   const baseRequirementType = (createData.requirement_type || createData.display_name)
@@ -357,8 +302,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       {
         tenant_id: tenantId,
         requirement_type: requirementType,
-        display_name: createData.display_name,
-        description: createData.description,
+        display_name: createData.display_name.trim(),
+        description: createData.description.trim(),
         is_mandatory: createData.is_mandatory,
         is_active: createData.is_active,
         applicability_rules: createData.applicability_rules || null,
@@ -385,8 +330,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         409
       );
     }
-    throw createError;
+    return serverErrorResponse(`Failed to create requirement definition: ${createError.message}`);
   }
+
+  if (!newRequirement) {
+    return serverErrorResponse('Failed to create requirement definition');
+  }
+
+  const submission_stats = await calculateSubmissionStats(newRequirement.id, tenantId).catch(() => ({
+    total_trainees: 0,
+    pending_count: 0,
+    submitted_count: 0,
+    verified_count: 0,
+    rejected_count: 0,
+    waived_count: 0,
+    completion_rate: 0,
+  }));
 
   // 5. Return 201 Created with newly created requirement
   return createdResponse(
@@ -399,6 +358,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       is_active: newRequirement.is_active,
       applicability_rules: newRequirement.applicability_rules,
       display_order: newRequirement.display_order,
+      submission_stats,
     },
     'Requirement definition created successfully'
   );

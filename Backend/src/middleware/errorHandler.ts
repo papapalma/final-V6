@@ -12,9 +12,10 @@ export const handleError = (error: unknown, request: NextRequest) => {
 
   // Zod validation errors
 
-if (error instanceof ZodError) {
+  if (error instanceof ZodError) {
     const errors: Record<string, string[]> = {};
-    error.errors.forEach((err: any) => {
+    const issues = (error.issues || (error as any).errors || []);
+    issues.forEach((err: any) => {
       const path = err.path.join('.');
       if (!errors[path]) {
         errors[path] = [];

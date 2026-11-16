@@ -24,6 +24,7 @@ export interface ExtensionRequest {
   review_notes?: string | null;
   created_at: string;
   updated_at: string;
+  tenant_name?: string;
   tenant?: { name: string };
   requested_by_user?: { username: string; email: string };
   reviewed_by_user?: { username: string; email: string };

@@ -189,13 +189,12 @@ export default function RequirementDetailPage() {
 
   const handleDelete = async (deletingId: string) => {
     try {
-      // Soft delete by setting is_active to false
-      await updateRequirement({
-        id: deletingId,
-        updates: {
-          is_active: false,
-        },
-      });
+      // Soft delete by setting isActive to false
+      if (updateRequirement) {
+        await updateRequirement(deletingId, {
+          isActive: false,
+        });
+      }
       // Navigate back to requirements list
       setIsNavigating(true);
       navigate('/admin/requirements', { state: { deletedId: deletingId } });

@@ -106,16 +106,7 @@ beforeEach(() => {
       mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
       
       vi.mocked(programSharingService.validateProgramShare).mockImplementation(
-        () => new Promise(resolve => {
-          setTimeout(() => {
-            resolve({
-              isValid: true,
-              isActive: true,
-              isPublic: true,
-              program: { id: validProgramId, name: 'Test Program', description: 'Test' },
-            });
-          }, 100);
-        })
+        () => new Promise(() => {})
       );
 
       renderWithProviders(<LinkHandlerPage />);
@@ -160,6 +151,7 @@ beforeEach(() => {
       await waitFor(() => {
         // Should have called validation with the program_id
         expect(programSharingService.validateProgramShare).toHaveBeenCalledWith(validProgramId);
+        expect(localStorage.getItem('selected_program_id')).toBe(validProgramId);
       });
     });
 
@@ -252,6 +244,7 @@ beforeEach(() => {
 
       await waitFor(() => {
         expect(programSharingService.validateProgramShare).toHaveBeenCalledWith(validProgramId);
+        expect(localStorage.getItem('selected_program_id')).toBe(validProgramId);
       });
     });
 
@@ -597,15 +590,7 @@ beforeEach(() => {
       mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
 
       vi.mocked(programSharingService.validateProgramShare).mockImplementation(
-        () => new Promise(resolve => {
-          setTimeout(() => {
-            resolve({
-              isValid: true,
-              isActive: true,
-              isPublic: true,
-            });
-          }, 500);
-        })
+        () => new Promise(() => {})
       );
 
       renderWithProviders(<LinkHandlerPage />);
@@ -891,6 +876,7 @@ beforeEach(() => {
 
       await waitFor(() => {
         expect(programSharingService.validateProgramShare).toHaveBeenCalledWith(validProgramId);
+        expect(localStorage.getItem('selected_program_id')).toBe(validProgramId);
       });
 
       unmount1();
@@ -903,6 +889,7 @@ beforeEach(() => {
 
       await waitFor(() => {
         expect(programSharingService.validateProgramShare).toHaveBeenCalledWith(validProgramId);
+        expect(localStorage.getItem('selected_program_id')).toBe(validProgramId);
       });
     });
 

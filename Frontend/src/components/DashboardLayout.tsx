@@ -180,7 +180,13 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
           }`} />
         </button>
         {openDropdown === item.name && (
-          <ul className="mt-1 space-y-1 pl-4">
+          <motion.ul
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="mt-1 space-y-1 pl-4 overflow-hidden"
+          >
             {item.children.map((child: NavItem) => (
               <li key={child.name}>
                 <Link
@@ -196,7 +202,7 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
                 </Link>
               </li>
             ))}
-          </ul>
+          </motion.ul>
         )}
       </div>
     );

@@ -157,3 +157,66 @@ export function extractTokenFromHeader(authHeader?: string | null): string | nul
   if (!authHeader?.startsWith('Bearer ')) return null;
   return authHeader.substring(7);
 }
+
+// ---------------------------------------------------------------------------
+// Trainee requirement upload token helpers
+// ---------------------------------------------------------------------------
+
+export interface UploadTokenPayload {
+  traineeId: string;
+  tenantId: string;
+  purpose: 'requirement_upload';
+  type: 'registration_upload';
+}
+
+/** Token lifetime for requirement uploads: 15 minutes */
+const UPLOAD_TOKEN_EXPIRY_SECONDS = 15 * 60; // 900 s
+
+/**
+ * Generate a short-lived signed JWT for trainee requirement file uploads during self-registration.
+ *
+ * @param traineeId - Newly created trainee ID.
+ * @param tenantId - Tenant ID the trainee belongs to.
+ * @returns Signed JWT string valid for 15 minutes.
+ */
+export function generateUploadToken(traineeId: string, tenantId: string): string {
+  const claims: UploadTokenPayload = {
+    traineeId,
+    tenantId,
+    purpose: 'requirement_upload',
+    type: 'registration_upload',
+  };
+
+  return jwt.sign(claims, JWT_SECRET as string, {
+    expiresIn: UPLOAD_TOKEN_EXPIRY_SECONDS,
+  } as jwt.SignOptions);
+}
+
+/**
+ * Verify a requirement upload token and return the decoded claims.
+ *
+ * @param token - Raw JWT string.
+ * @returns Decoded UploadTokenPayload if valid, null if invalid/expired.
+ */
+export function verifyUploadToken(token: string): UploadTokenPayload | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET as string) as any;
+    if (
+      !decoded ||
+      !decoded.traineeId ||
+      !decoded.tenantId ||
+      (decoded.purpose !== 'requirement_upload' && decoded.type !== 'registration_upload')
+    ) {
+      return null;
+    }
+    return {
+      traineeId: decoded.traineeId,
+      tenantId: decoded.tenantId,
+      purpose: 'requirement_upload',
+      type: 'registration_upload',
+    };
+  } catch {
+    return null;
+  }
+}
+

@@ -12,8 +12,156 @@
  * 6. GET /api/requirements/analytics - Get analytics (admin only)
  */
 
-import { db } from '@/lib/database';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+
+const inMemoryTables: Record<string, any[]> = {};
+let mockClock = Date.now();
+
+jest.mock('@/lib/supabase-admin', () => {
+  return {
+    supabaseAdmin: {
+      from: jest.fn((table: string) => {
+        if (!inMemoryTables[table]) inMemoryTables[table] = [];
+        let rows = [...inMemoryTables[table]];
+        let pendingInsert: any[] | null = null;
+        let pendingUpdate: any = null;
+        let isDelete = false;
+
+        let isDistinct = false;
+
+        const chain: any = {
+          insert: jest.fn((data: any) => {
+            const items = Array.isArray(data) ? data : [data];
+            if (table === 'requirement_definitions') {
+              for (const item of items) {
+                const existing = inMemoryTables[table].find(
+                  (r) => r.tenant_id === item.tenant_id && r.requirement_type === item.requirement_type && !r.deleted_at
+                );
+                if (existing) {
+                  const error = { message: 'duplicate key value violates unique constraint', code: '23505' };
+                  const errChain: any = {
+                    select: jest.fn(() => errChain),
+                    single: jest.fn().mockResolvedValue({ data: null, error }),
+                    then: (resolve: any, reject: any) => Promise.resolve({ data: null, error, count: 0 }).then(resolve, reject),
+                  };
+                  return errChain;
+                }
+              }
+            }
+            const inserted = items.map((item) => {
+              const res = {
+                deleted_at: null,
+                ...item,
+              };
+              if (!res.id) {
+                res.id = `mock-${table}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+              }
+              if (!res.created_at) res.created_at = new Date(mockClock).toISOString();
+              if (!res.updated_at) res.updated_at = new Date(mockClock).toISOString();
+              return res;
+            });
+            inMemoryTables[table].push(...inserted);
+            rows = inserted;
+            pendingInsert = inserted;
+            return chain;
+          }),
+          update: jest.fn((data: any) => {
+            mockClock += 1000;
+            pendingUpdate = {
+              ...data,
+              updated_at: new Date(mockClock).toISOString(),
+            };
+            return chain;
+          }),
+          delete: jest.fn(() => {
+            isDelete = true;
+            return chain;
+          }),
+          select: jest.fn(() => chain),
+          distinct: jest.fn(() => {
+            isDistinct = true;
+            return chain;
+          }),
+          eq: jest.fn((col: string, val: any) => {
+            rows = rows.filter((r) => r[col] === val);
+            return chain;
+          }),
+          neq: jest.fn((col: string, val: any) => {
+            rows = rows.filter((r) => r[col] !== val);
+            return chain;
+          }),
+          is: jest.fn((col: string, val: any) => {
+            rows = rows.filter((r) => r[col] === val);
+            return chain;
+          }),
+          in: jest.fn((col: string, vals: any[]) => {
+            rows = rows.filter((r) => vals.includes(r[col]));
+            return chain;
+          }),
+          order: jest.fn((col: string, opts?: { ascending?: boolean }) => {
+            const asc = opts?.ascending ?? true;
+            rows.sort((a, b) => (a[col] < b[col] ? (asc ? -1 : 1) : a[col] > b[col] ? (asc ? 1 : -1) : 0));
+            return chain;
+          }),
+          limit: jest.fn((n: number) => {
+            rows = rows.slice(0, n);
+            return chain;
+          }),
+          range: jest.fn((from: number, to: number) => {
+            rows = rows.slice(from, to + 1);
+            return chain;
+          }),
+          single: jest.fn().mockImplementation(() => {
+            if (pendingUpdate) {
+              rows.forEach((r) => {
+                Object.assign(r, pendingUpdate);
+                const orig = inMemoryTables[table].find((x) => x.id === r.id);
+                if (orig) Object.assign(orig, pendingUpdate);
+              });
+            }
+            const data = rows[0] ? { ...rows[0] } : null;
+            return Promise.resolve({ data, error: data ? null : { message: 'Row not found', code: 'PGRST116' } });
+          }),
+          maybeSingle: jest.fn().mockImplementation(() => {
+            if (pendingUpdate) {
+              rows.forEach((r) => {
+                Object.assign(r, pendingUpdate);
+                const orig = inMemoryTables[table].find((x) => x.id === r.id);
+                if (orig) Object.assign(orig, pendingUpdate);
+              });
+            }
+            const data = rows[0] ? { ...rows[0] } : null;
+            return Promise.resolve({ data, error: null });
+          }),
+          then: (resolve: any, reject: any) => {
+            if (isDelete) {
+              const idsToDelete = new Set(rows.map((r) => r.id));
+              inMemoryTables[table] = inMemoryTables[table].filter((r) => !idsToDelete.has(r.id));
+            } else if (pendingUpdate) {
+              rows.forEach((r) => {
+                Object.assign(r, pendingUpdate);
+                const orig = inMemoryTables[table].find((x) => x.id === r.id);
+                if (orig) Object.assign(orig, pendingUpdate);
+              });
+            }
+            let resRows = rows.map((r) => ({ ...r }));
+            if (isDistinct) {
+              const seen = new Set();
+              resRows = resRows.filter((r) => {
+                const key = r.requirement_type || JSON.stringify(r);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+              });
+            }
+            return Promise.resolve({ data: resRows, error: null, count: resRows.length }).then(resolve, reject);
+          },
+        };
+        return chain;
+      }),
+    },
+  };
+});
 
 describe('Comprehensive Integration Tests: Requirement Definitions API', () => {
   let testTenant: any;

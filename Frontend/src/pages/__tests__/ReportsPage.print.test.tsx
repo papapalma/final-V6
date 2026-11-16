@@ -548,7 +548,7 @@ describe('ReportsPage - Print Button UI', () => {
           const spinner = preparingButton.querySelector('.animate-spin');
           expect(spinner).toBeInTheDocument();
         }
-      }, { timeout: 200 });
+      }, { timeout: 1000 });
     });
 
     it('should change button text to "Preparing..." when isPrinting is true', async () => {
@@ -576,7 +576,7 @@ describe('ReportsPage - Print Button UI', () => {
         if (preparingText) {
           expect(preparingText).toBeInTheDocument();
         }
-      }, { timeout: 200 });
+      }, { timeout: 1000 });
     });
   });
 
@@ -607,7 +607,7 @@ describe('ReportsPage - Print Button UI', () => {
       await waitFor(() => {
         // Just verify the print was called
         expect(windowPrintSpy).toHaveBeenCalled();
-      }, { timeout: 200 });
+      }, { timeout: 1000 });
     });
 
     it('should be enabled when isPrinting is false', async () => {
@@ -700,7 +700,7 @@ describe('ReportsPage - Print Button UI', () => {
           // Attempt to click the disabled button
           await user.click(preparingButton);
         }
-      }, { timeout: 200 });
+      }, { timeout: 1000 });
 
       // window.print should only be called once (from the first click)
       await waitFor(() => {

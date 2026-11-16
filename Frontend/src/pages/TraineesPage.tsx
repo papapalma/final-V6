@@ -781,7 +781,7 @@ export default function TraineesPage() {
 
         {/* Desktop Table View */}
         {!loading && viewMode === 'table' && (
-          <Card className="hidden sm:block">
+          <Card className="hidden sm:block animate-in fade-in-0 duration-200 ease-out">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
@@ -945,7 +945,7 @@ export default function TraineesPage() {
 
         {/* Desktop Card View */}
         {!loading && viewMode === 'card' && (
-          <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in-0 duration-200 ease-out">
             {paginatedTrainees.map((trainee) => (
               <Card 
                 key={trainee.id} 
@@ -1120,7 +1120,7 @@ export default function TraineesPage() {
         )}
 
         {/* Mobile Card View */}
-        {!loading && <div className="sm:hidden space-y-3">
+        {!loading && <div className="sm:hidden space-y-3 animate-in fade-in-0 duration-200 ease-out">
           {paginatedTrainees.map((trainee) => (
             <Card 
               key={trainee.id}

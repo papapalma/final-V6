@@ -133,7 +133,7 @@ export const GET = withErrorHandler(
     }
 
     // Generate shareable URL
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+    const baseUrl = getBaseUrl(request);
     
     // Build UTM parameters if provided (optional tracking)
     const utmParams = new URLSearchParams();

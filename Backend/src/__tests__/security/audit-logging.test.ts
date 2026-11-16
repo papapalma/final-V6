@@ -17,6 +17,95 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { activityLogService } from '@/services/activityLogService';
 import crypto from 'crypto';
 
+const tables: Record<string, any[]> = {
+  tenants: [],
+  users: [],
+  activity_logs: [],
+};
+
+jest.mock('@/lib/supabase-admin', () => {
+  return {
+    supabaseAdmin: {
+      from: jest.fn((tableName: string) => {
+        if (!tables[tableName]) {
+          tables[tableName] = [];
+        }
+        let rows = [...tables[tableName]];
+
+        const builder: any = {
+          select: jest.fn().mockImplementation(() => builder),
+          eq: jest.fn().mockImplementation((col: string, val: any) => {
+            rows = rows.filter((r) => r[col] === val);
+            return builder;
+          }),
+          is: jest.fn().mockImplementation((col: string, val: any) => {
+            rows = rows.filter((r) => r[col] === val);
+            return builder;
+          }),
+          gte: jest.fn().mockImplementation((col: string, val: any) => {
+            rows = rows.filter((r) => r[col] >= val);
+            return builder;
+          }),
+          lte: jest.fn().mockImplementation((col: string, val: any) => {
+            rows = rows.filter((r) => r[col] <= val);
+            return builder;
+          }),
+          order: jest.fn().mockImplementation((col: string, opts?: { ascending?: boolean }) => {
+            const asc = opts?.ascending ?? true;
+            rows.sort((a, b) => {
+              if (a[col] < b[col]) return asc ? -1 : 1;
+              if (a[col] > b[col]) return asc ? 1 : -1;
+              return 0;
+            });
+            return builder;
+          }),
+          limit: jest.fn().mockImplementation((n: number) => {
+            rows = rows.slice(0, n);
+            return builder;
+          }),
+          single: jest.fn().mockImplementation(() => {
+            return Promise.resolve({
+              data: rows[0] || null,
+              error: rows.length === 0 ? { code: 'PGRST116', message: 'no rows' } : null,
+            });
+          }),
+          maybeSingle: jest.fn().mockImplementation(() => {
+            return Promise.resolve({
+              data: rows[0] || null,
+              error: null,
+            });
+          }),
+          insert: jest.fn().mockImplementation((data: any) => {
+            const inserted = Array.isArray(data) ? data : [data];
+            const withMeta = inserted.map((r) => ({
+              id: r.id || crypto.randomUUID(),
+              created_at: new Date().toISOString(),
+              ...r,
+            }));
+            tables[tableName].push(...withMeta);
+            rows = withMeta;
+            return builder;
+          }),
+          delete: jest.fn().mockImplementation(() => {
+            const deleteBuilder: any = {
+              eq: jest.fn().mockImplementation((col: string, val: any) => {
+                tables[tableName] = tables[tableName].filter((r) => r[col] !== val);
+                return Promise.resolve({ data: null, error: null });
+              }),
+              then: (resolve: any, reject: any) =>
+                Promise.resolve({ data: null, error: null }).then(resolve, reject),
+            };
+            return deleteBuilder;
+          }),
+          then: (resolve: any, reject: any) =>
+            Promise.resolve({ data: rows, error: null }).then(resolve, reject),
+        };
+        return builder;
+      }),
+    },
+  };
+});
+
 // Simple UUID v4 generator to avoid import issues
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {

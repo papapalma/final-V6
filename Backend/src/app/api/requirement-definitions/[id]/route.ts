@@ -17,6 +17,8 @@ import {
   forbiddenResponse,
   notFoundResponse,
   validationErrorResponse,
+  errorResponse,
+  serverErrorResponse,
 } from '@/utils/responses';
 import { calculateSubmissionStats } from '../submission-stats';
 
@@ -91,7 +93,7 @@ export const PATCH = withErrorHandler(async (
   const { tenantId, role } = ctxResult.context;
 
   // 2. Check if user has admin role
-  if (role !== 'local_admin' && role !== 'super_admin') {
+  if (role !== 'admin' && role !== 'local_admin' && role !== 'super_admin') {
     return forbiddenResponse('Only admins can update requirement definitions');
   }
 
@@ -101,28 +103,41 @@ export const PATCH = withErrorHandler(async (
     const body = await request.json();
     updateData = updateRequirementSchema.parse(body);
   } catch (error) {
+    if (error instanceof SyntaxError || (error instanceof Error && error.name === 'SyntaxError')) {
+      return errorResponse('Invalid JSON', 400);
+    }
     if (error instanceof z.ZodError) {
       const fieldErrors: Record<string, string[]> = {};
-      error.errors.forEach((err) => {
+      const issues = error.issues || (error as any).errors || [];
+      issues.forEach((err: any) => {
         const field = err.path.join('.');
         if (!fieldErrors[field]) fieldErrors[field] = [];
         fieldErrors[field].push(err.message);
       });
-      return validationErrorResponse(fieldErrors);
+      return new NextResponse(
+        JSON.stringify({ success: false, errors: fieldErrors }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } }
+      );
     }
     throw error;
   }
 
   // 4. Check if requirement exists and belongs to current tenant
-  const { data: requirement, error: fetchError } = await supabaseAdmin
-    .from('requirement_definitions')
-    .select('*')
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .single();
+  let requirement: any;
+  try {
+    const res = await supabaseAdmin
+      .from('requirement_definitions')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
 
-  if (fetchError || !requirement) {
+    if (res.error || !res.data) {
+      return notFoundResponse('Requirement definition not found');
+    }
+    requirement = res.data;
+  } catch (error) {
     return notFoundResponse('Requirement definition not found');
   }
 
@@ -145,16 +160,22 @@ export const PATCH = withErrorHandler(async (
   }
 
   // 6. Update the requirement definition
-  const { data: updatedRequirement, error: updateError } = await supabaseAdmin
-    .from('requirement_definitions')
-    .update(updatePayload)
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .select()
-    .single();
+  let updatedRequirement: any;
+  try {
+    const res = await supabaseAdmin
+      .from('requirement_definitions')
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
 
-  if (updateError) {
-    throw updateError;
+    if (res.error || !res.data) {
+      return serverErrorResponse('Database error updating requirement definition');
+    }
+    updatedRequirement = res.data;
+  } catch (error) {
+    return serverErrorResponse('Database error updating requirement definition');
   }
 
   // 7. Calculate submission stats for the updated requirement

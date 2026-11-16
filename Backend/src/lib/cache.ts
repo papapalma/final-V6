@@ -62,7 +62,7 @@ let totalHits = 0;
 let totalMisses = 0;
 
 // Evict expired entries every 2 minutes to prevent unbounded memory growth
-setInterval(() => {
+const cacheEvictionInterval = setInterval(() => {
   const now = Date.now();
   let evicted = 0;
   for (const [key, entry] of store) {
@@ -76,6 +76,9 @@ if (evicted > 0) {
     logger.debug('[CACHE] Evicted expired entries', { evicted, remaining: store.size });
   }
 }, 2 * 60 * 1000);
+if (typeof cacheEvictionInterval.unref === 'function') {
+  cacheEvictionInterval.unref();
+}
 
 // ---------------------------------------------------------------------------
 // Key builders

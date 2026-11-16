@@ -33,8 +33,8 @@ interface ProgramDetailsForSharing {
   end_date: string;
   max_trainees?: number;
   current_enrollment?: number;
-  image_path?: string;
-  thumbnail_path?: string;
+  image_path?: string | null;
+  thumbnail_path?: string | null;
   instructor?: string;
   duration_weeks?: number;
 }
@@ -154,8 +154,8 @@ export const GET = withErrorHandler(
         end_date: program.end_date,
         max_trainees: program.max_trainees ?? undefined,
         current_enrollment: program.current_enrollment ?? undefined,
-        image_path: program.image_path ?? undefined,
-        thumbnail_path: program.thumbnail_path ?? undefined,
+        image_path: program.image_path !== undefined ? program.image_path : null,
+        thumbnail_path: program.thumbnail_path !== undefined ? program.thumbnail_path : null,
         instructor: program.instructor ?? undefined,
         duration_weeks: program.duration_weeks ?? undefined,
       };

@@ -105,7 +105,7 @@ export async function subscribeToPushNotifications(): Promise<string | null> {
     // Create push subscription
     const pushSubscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      applicationServerKey: urlBase64ToUint8Array(vapidKey) as unknown as BufferSource,
     });
 
     // Extract subscription keys
@@ -271,7 +271,7 @@ export async function syncPushSubscriptions(): Promise<void> {
  * Convert VAPID public key from base64url to Uint8Array
  * Required for PushManager.subscribe()
  */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding)
     .replace(/-/g, '+')
@@ -290,7 +290,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 /**
  * Generate a device identifier for distinguishing multiple devices per user
  */
-function getDeviceIdentifier(): string {
+export function getDeviceIdentifier(): string {
   const userAgent = navigator.userAgent;
   const platform = navigator.platform;
   const language = navigator.language;
@@ -306,11 +306,11 @@ function getDeviceIdentifier(): string {
 /**
  * Extract browser name from user agent
  */
-function getBrowserName(userAgent: string): string {
-  if (userAgent.includes('Chrome') && !userAgent.includes('Edge')) return 'chrome';
+export function getBrowserName(userAgent: string): string {
+  if (userAgent.includes('Edg') || userAgent.includes('Edge')) return 'edge';
+  if (userAgent.includes('Chrome') && !userAgent.includes('Edge') && !userAgent.includes('Edg')) return 'chrome';
   if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'safari';
   if (userAgent.includes('Firefox')) return 'firefox';
-  if (userAgent.includes('Edge')) return 'edge';
   return 'unknown';
 }
 

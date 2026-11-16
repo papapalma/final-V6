@@ -177,7 +177,7 @@ export const OTPInput = React.forwardRef<HTMLDivElement, OTPInputProps>(
                 aria-invalid={isErrorState}
                 placeholder={placeholder}
                 className={cn(
-                  'w-8 h-8 text-center text-sm font-semibold rounded border border-2 transition-all',
+                  'w-10 h-12 text-center text-sm font-semibold rounded border border-2 transition-all',
                   'bg-input-background dark:bg-input/30',
                   'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -216,7 +216,7 @@ export const OTPInput = React.forwardRef<HTMLDivElement, OTPInputProps>(
                 aria-invalid={isErrorState}
                 placeholder={placeholder}
                 className={cn(
-                  'w-8 h-8 text-center text-sm font-semibold rounded border border-2 transition-all',
+                  'w-10 h-12 text-center text-sm font-semibold rounded border border-2 transition-all',
                   'bg-input-background dark:bg-input/30',
                   'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -255,7 +255,7 @@ export const OTPInput = React.forwardRef<HTMLDivElement, OTPInputProps>(
                 aria-invalid={isErrorState}
                 placeholder={placeholder}
                 className={cn(
-                  'w-8 h-8 text-center text-sm font-semibold rounded border border-2 transition-all',
+                  'w-10 h-12 text-center text-sm font-semibold rounded border border-2 transition-all',
                   'bg-input-background dark:bg-input/30',
                   'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -282,6 +282,13 @@ export const OTPInput = React.forwardRef<HTMLDivElement, OTPInputProps>(
             </div>
           )}
         </div>
+
+        {/* Helper Text */}
+        {!isComplete && !error && (
+          <p className="text-xs text-muted-foreground text-center">
+            Enter the 6-digit code
+          </p>
+        )}
 
         {/* Error Message */}
         {error && (

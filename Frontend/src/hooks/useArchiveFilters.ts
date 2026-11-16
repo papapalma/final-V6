@@ -20,6 +20,8 @@ export interface ArchivedItem {
   daysSinceDeleted: number;
   daysRemaining: number;
   eligibleForPurge: boolean;
+  eligible_for_purge?: boolean;
+  days_remaining?: number;
 }
 
 export interface ArchiveResponse {

@@ -251,7 +251,12 @@ export default function ProgramDetailsModal({
                 <div className="flex flex-wrap gap-2">
                   <Badge className={getStatusColor(program.status)}>{program.status}</Badge>
                   <Badge variant="outline" className="border-primary text-primary">{program.duration}</Badge>
-                  <Badge variant="outline" className="border-secondary text-secondary">{program.type_of_funding}</Badge>
+                  {(program as any).level && (
+                    <Badge variant="outline" className="border-secondary text-secondary">{(program as any).level}</Badge>
+                  )}
+                  {program.type_of_funding && (
+                    <Badge variant="outline" className="border-secondary text-secondary">{program.type_of_funding}</Badge>
+                  )}
                 </div></div>
             </div>
 
@@ -363,10 +368,22 @@ export default function ProgramDetailsModal({
                   <Award className="size-5 text-secondary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Type of Funding</p>
-                  <p className="font-semibold">{program.type_of_funding}</p>
+                  <p className="text-sm text-muted-foreground">Level</p>
+                  <p className="font-semibold">{(program as any).level || 'All Levels'}</p>
                 </div>
               </div>
+
+              {program.type_of_funding && (
+                <div className="flex items-center gap-3 p-3 rounded-lg border">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-secondary/10">
+                    <Award className="size-5 text-secondary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Type of Funding</p>
+                    <p className="font-semibold">{program.type_of_funding}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-3 p-3 rounded-lg border">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-accent/10">
@@ -389,8 +406,25 @@ export default function ProgramDetailsModal({
               </div>
             </div>
 
-            {/* NEW: Capacity Section */}
-            {/* REMOVED - Capacity info now shown in Enrolled stat card */}
+            {/* Capacity Section */}
+            {program.enrollment_limit !== undefined && program.enrollment_limit !== null && (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium">Enrollment Capacity</span>
+                  <span className="text-muted-foreground">
+                    {enrollments.length} of {program.enrollment_limit} trainees enrolled
+                  </span>
+                </div>
+                <div className="w-full bg-secondary/20 rounded-full h-2">
+                  <div
+                    className="bg-primary h-2 rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round((enrollments.length / program.enrollment_limit) * 100))}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Sessions & Attendance hover-reveal stat cards */}
             {canManage && (
@@ -426,7 +460,7 @@ export default function ProgramDetailsModal({
                     <span className="text-sm font-medium">Registrations</span>
                   </div>
                   <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                    {dataLoading ? <Skeleton className="h-8 w-10 rounded" /> : stats?.total_registrations || 0}
+                    {dataLoading ? <Skeleton className="h-8 w-10 rounded" /> : (stats as any)?.total_registrations || 0}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">pending & approved</p>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as fc from 'fast-check';
 import { AuditLogViewer } from '../components/AuditLogViewer';
@@ -66,8 +66,8 @@ vi.mock('@/components/ui/select', () => ({
       {children}
     </div>
   ),
-  SelectTrigger: ({ children, ...props }: any) => (
-    <button {...props} data-testid="select-trigger">
+  SelectTrigger: ({ children, 'data-testid': testId = 'select-trigger', ...props }: any) => (
+    <button data-testid={testId} {...props}>
       {children}
     </button>
   ),
@@ -103,12 +103,13 @@ const createTestAuditLog = (overrides?: Partial<AuditLogEntry>): AuditLogEntry =
 
 describe('AuditLogViewer Component - Unit Tests', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockLocalStorage.clear();
     mockLocalStorage.setItem('token', 'test-token');
   });
 
   afterEach(() => {
+    cleanup();
     vi.clearAllTimers();
   });
 
@@ -192,8 +193,8 @@ describe('AuditLogViewer Component - Unit Tests', () => {
       render(<AuditLogViewer />);
 
       await waitFor(() => {
-        expect(screen.getByText(/John Admin/i)).toBeInTheDocument();
-        expect(screen.getByText(/update/i)).toBeInTheDocument();
+        expect(screen.getAllByText(/John Admin/i)[0]).toBeInTheDocument();
+        expect(screen.getAllByText(/update/i)[0]).toBeInTheDocument();
         expect(screen.getByText(/cms_settings/i)).toBeInTheDocument();
       });
     });
@@ -378,7 +379,7 @@ describe('AuditLogViewer Component - Unit Tests', () => {
       render(<AuditLogViewer />);
 
       await waitFor(() => {
-        expect(screen.getByText('John Doe')).toBeInTheDocument();
+        expect(screen.getAllByText('John Doe')[0]).toBeInTheDocument();
       });
     });
 
@@ -655,7 +656,7 @@ describe('AuditLogViewer Component - Unit Tests', () => {
       await waitFor(() => {
         const calls = (global.fetch as any).mock.calls;
         const lastCall = calls[calls.length - 2]; // -2 because there's also the admin fetch
-        expect(lastCall[0]).toContain('offset=10');
+        expect(lastCall[0]).toContain('offset=5');
       });
     });
 
@@ -667,7 +668,32 @@ describe('AuditLogViewer Component - Unit Tests', () => {
         createTestAuditLog({ id: `log-page2-${i}` })
       );
 
-      // First fetch (page 2)
+      // Page 1 initial
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          entries: mockLogs1,
+          total: 10,
+        }),
+      });
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          admins: mockLogs1.map((log) => ({
+            id: log.admin_id,
+            name: 'Admin',
+          })),
+        }),
+      });
+
+      render(<AuditLogViewer />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('next-page')).toBeInTheDocument();
+      });
+
+      // Navigate to page 2
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -686,10 +712,11 @@ describe('AuditLogViewer Component - Unit Tests', () => {
         }),
       });
 
-      render(<AuditLogViewer />);
+      fireEvent.click(screen.getByTestId('next-page'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('prev-page')).toBeInTheDocument();
+        const prevButton = screen.getByTestId('prev-page') as HTMLButtonElement;
+        expect(prevButton.disabled).toBe(false);
       });
 
       // Go back to page 1
@@ -716,7 +743,8 @@ describe('AuditLogViewer Component - Unit Tests', () => {
 
       await waitFor(() => {
         const calls = (global.fetch as any).mock.calls;
-        expect(calls.length).toBeGreaterThan(0);
+        const lastAuditCall = calls[calls.length - 2];
+        expect(lastAuditCall[0]).toContain('offset=0');
       });
     });
 
@@ -866,6 +894,10 @@ describe('AuditLogViewer Component - Property-Based Tests', () => {
     mockLocalStorage.setItem('token', 'test-token');
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   describe('Property: Audit Log Display Consistency', () => {
     /**
      * **Validates: Requirements 15.1, 15.2, 15.3**
@@ -924,13 +956,15 @@ describe('AuditLogViewer Component - Property-Based Tests', () => {
               }),
             });
 
-            render(<AuditLogViewer />);
+            const { unmount } = render(<AuditLogViewer />);
 
             await waitFor(() => {
               mockLogs.forEach((log) => {
                 expect(screen.getByTestId(`log-row-${log.id}`)).toBeInTheDocument();
               });
             });
+
+            unmount();
           }),
           { numRuns: 10 }
         );

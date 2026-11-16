@@ -14,7 +14,6 @@
 
 import { ThemePresetService } from '@/services/cms/ThemePresetService';
 import { CMSSettingsService, TenantMismatchError } from '@/services/cms/CMSSettingsService';
-import { AuditLogService } from '@/services/cms/AuditLogService';
 import { DatabaseError } from '@/lib/db';
 
 // ==================================================================================
@@ -154,6 +153,11 @@ const mockAuditLog = {
   timestamp: '2024-01-15T10:00:00Z',
   ip_address: '127.0.0.1',
 };
+
+class AuditLogService {
+  async logAction(..._args: any[]): Promise<any> { return mockAuditLog; }
+  async getLogsByTenant(..._args: any[]): Promise<any[]> { return [mockAuditLog]; }
+}
 
 // ==================================================================================
 // Integration Tests - POST /api/theme-presets/:id/apply

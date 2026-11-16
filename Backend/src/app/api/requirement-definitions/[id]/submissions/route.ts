@@ -106,7 +106,8 @@ export const GET = withErrorHandler(async (
   } catch (error) {
     if (error instanceof z.ZodError) {
       const fieldErrors: Record<string, string[]> = {};
-      error.errors.forEach((err) => {
+      const issues = error.issues || (error as any).errors || [];
+      issues.forEach((err: any) => {
         const field = err.path.join('.');
         if (!fieldErrors[field]) fieldErrors[field] = [];
         fieldErrors[field].push(err.message);
@@ -157,13 +158,14 @@ export const GET = withErrorHandler(async (
       { count: 'exact' }
     )
     .eq('requirement_id', id)
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null);
+    .eq('tenant_id', tenantId);
 
   // Apply status filter if provided
   if (queryParams.status) {
     query = query.eq('submission_status', queryParams.status);
   }
+
+  query = query.is('deleted_at', null);
 
   // 6. Execute query
   const { data: submissions, error: submissionError, count } = await query;

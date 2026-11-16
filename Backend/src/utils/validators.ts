@@ -163,22 +163,22 @@ export const createTraineeSchema = z.object({
     .regex(/^[0-9+\-\s()]+$/, 'Phone number can only contain digits, +, -, spaces, and parentheses'),
   sex: z.preprocess(
     val => typeof val === 'string' ? val.charAt(0).toUpperCase() + val.slice(1).toLowerCase() : val,
-    z.enum(['Male', 'Female'], { required_error: 'Sex is required' })
+    z.enum(['Male', 'Female'], { message: 'Sex is required' })
   ),
   birth_date: z.string().min(1, 'Birth date is required'),
   birth_place: z.string().min(1, 'Birth place is required').max(255, 'Birth place must not exceed 255 characters'),
   civil_status: z.preprocess(
     val => typeof val === 'string' ? val.charAt(0).toUpperCase() + val.slice(1).toLowerCase() : val,
-    z.enum(['Single', 'Married', 'Widowed', 'Separated'], { required_error: 'Civil status is required' })
+    z.enum(['Single', 'Married', 'Widowed', 'Separated'], { message: 'Civil status is required' })
   ),
   province: z.string().min(1, 'Province is required').max(100, 'Province must not exceed 100 characters'),
   municipality: z.string().min(1, 'Municipality is required').max(100, 'Municipality must not exceed 100 characters'),
   barangay: z.string().min(1, 'Barangay is required').max(100, 'Barangay must not exceed 100 characters'),
   street: z.string().min(1, 'Street is required'),
-  educational_attainment: z.enum(['Elementary', 'High School', 'Senior High School', 'Vocational', 'College', 'Post Graduate'], { required_error: 'Educational attainment is required' }),
+  educational_attainment: z.enum(['Elementary', 'High School', 'Senior High School', 'Vocational', 'College', 'Post Graduate'], { message: 'Educational attainment is required' }),
   course: z.string().min(1, 'Course is required').max(255, 'Course must not exceed 255 characters'),
   year_graduated: z.string().min(4, 'Year graduated is required').max(4, 'Year must be 4 digits').regex(/^\d{4}$/, 'Year must be a 4-digit number'),
-  classification: z.enum(['Out-of-School Youth', 'Student', 'Unemployed', 'Underemployed', '4Ps Beneficiary'], { required_error: 'Classification is required' }),
+  classification: z.enum(['Out-of-School Youth', 'Student', 'Unemployed', 'Underemployed', '4Ps Beneficiary'], { message: 'Classification is required' }),
   disability: z.string().max(255).optional().nullable().transform(val => val === '' ? null : val),
   employment_status: z.string().min(1, 'Employment status is required').max(100, 'Employment status must not exceed 100 characters').trim(),
   status: z.enum(['active', 'inactive', 'completed', 'dropped']).optional().nullable(),
@@ -270,7 +270,7 @@ const anomalyCategorySchema = z.enum(['trainee', 'inventory', 'lending', 'progra
 
 export const updateDetectionConfigSchema = z.object({
   config_key: z.string().min(1).max(100).optional().default('default'),
-  config_value: z.record(z.unknown()).optional(),
+  config_value: z.record(z.string(), z.unknown()).optional(),
   description: z.string().max(1000).optional().nullable(),
 });
 
@@ -423,7 +423,7 @@ export const completePasswordResetSchema = z.object({
   otp: z.string()
     .regex(/^\d{6}$/, 'OTP must be exactly 6 digits'),
   newPassword: z.string()
-    .min(10, 'Password must be at least 10 characters')
+    .min(6, 'Password must be at least 6 characters')
     .max(100, 'Password must not exceed 100 characters')
     .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
     .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
@@ -440,7 +440,7 @@ export const changePasswordSchema = z.object({
   currentPassword: z.string()
     .min(1, 'Current password is required'),
   newPassword: z.string()
-    .min(10, 'New password must be at least 10 characters')
+    .min(6, 'New password must be at least 6 characters')
     .max(100, 'New password must not exceed 100 characters')
     .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
     .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
@@ -575,12 +575,12 @@ const baseTraineeStatusSchema = z.object({
   enrollment_id: z.string().uuid('Invalid enrollment ID'),
   
   graduation_status: z.enum(['pending', 'graduated', 'not_completed', 'suspended'], 
-    { required_error: 'Graduation status is required' }),
+    { message: 'Graduation status is required' }),
   graduation_date: z.string().date('Invalid graduation date format (YYYY-MM-DD)').optional().nullable(),
   certificate_id: z.string().uuid('Invalid certificate ID').optional().nullable(),
   
   employment_status: z.enum(['pending', 'employed', 'unemployed', 'self_employed', 'pursuing_education', 'deceased'], 
-    { required_error: 'Employment status is required' }),
+    { message: 'Employment status is required' }),
   
   // Employment details (required if employed or self_employed)
   job_title: z.string().max(255, 'Job title must not exceed 255 characters').optional().nullable(),

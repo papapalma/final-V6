@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Skeleton } from './ui/skeleton';
+import { Calendar } from 'lucide-react';
 
 export function StatCardsSkeleton({ count = 4 }: { count?: number }) {
   return (

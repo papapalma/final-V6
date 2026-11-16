@@ -21,4 +21,21 @@ global.ResizeObserver = class ResizeObserver {
 // Cleanup after each test case
 afterEach(() => {
   cleanup();
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.innerHTML = '';
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.clear();
+    } catch {
+      // Ignore errors if localStorage is not accessible
+    }
+  }
+  if (typeof global.gc === 'function') {
+    try {
+      global.gc();
+    } catch {
+      // Ignore gc error
+    }
+  }
 });

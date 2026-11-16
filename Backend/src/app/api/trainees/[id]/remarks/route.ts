@@ -112,7 +112,7 @@ export const POST = withErrorHandler(
     const validation = createRemarkSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.error.errors },
+        { error: 'Validation failed', details: validation.error.issues || (validation.error as any).errors || [] },
         { status: 400 }
       );
     }

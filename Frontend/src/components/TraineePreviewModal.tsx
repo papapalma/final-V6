@@ -45,7 +45,7 @@ export default function TraineePreviewModal({
     try {
       setLoadingReqs(true);
       const res = await api.get(`/trainees/${traineeId}/requirements`);
-      const files = res?.files || res?.data?.files || res?.data || [];
+      const files = (res as any)?.files || res?.data?.files || res?.data || [];
       setRequirementFiles(Array.isArray(files) ? files : []);
     } catch {
       setRequirementFiles([]);

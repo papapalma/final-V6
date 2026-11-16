@@ -129,7 +129,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     return createdResponse(result, 'Push subscription registered');
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResponse(`Validation error: ${error.errors[0].message}`, 400);
+      const issues = error.issues || (error as any).errors || [];
+      return errorResponse(`Validation error: ${issues[0]?.message || 'Validation failed'}`, 400);
     }
     throw error;
   }

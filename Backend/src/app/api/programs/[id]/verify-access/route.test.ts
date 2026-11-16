@@ -30,6 +30,7 @@ import { POST, OPTIONS } from './route';
 const createMockQueryBuilder = () => ({
   select: jest.fn().mockReturnThis(),
   eq: jest.fn().mockReturnThis(),
+  is: jest.fn().mockReturnThis(),
   maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
 });
 
@@ -147,6 +148,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'cancelled', enrollment_limit: 30 },
@@ -180,6 +182,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -225,6 +228,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -258,6 +262,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -300,6 +305,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -340,6 +346,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -386,6 +393,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 10 },
@@ -425,6 +433,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 20 },
@@ -462,6 +471,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -500,6 +510,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: null },
@@ -543,6 +554,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -587,6 +599,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 50 },
@@ -633,6 +646,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 100 },
@@ -680,6 +694,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'completed', enrollment_limit: 30 },
@@ -717,6 +732,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -757,6 +773,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 25 },
@@ -795,6 +812,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },
@@ -835,6 +853,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 20 },
@@ -879,6 +898,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 50 },
@@ -922,6 +942,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'cancelled', enrollment_limit: 30 },
@@ -962,6 +983,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 10 },
@@ -1007,6 +1029,7 @@ describe('Request Validation', () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+    is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn()
           .mockResolvedValueOnce({
             data: { id: 'program-1', status: 'active', enrollment_limit: 30 },

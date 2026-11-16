@@ -159,7 +159,8 @@ export default function TraineeStatusTable({
 
   // Toggle filter value with memoized callback
   const toggleFilter = useCallback((filterType: keyof TraineeStatusFilters, value: string) => {
-    const currentValues = localFilters[filterType] || [];
+    const rawValue = localFilters[filterType];
+    const currentValues = Array.isArray(rawValue) ? rawValue : [];
     const newValues = currentValues.includes(value)
       ? currentValues.filter(v => v !== value)
       : [...currentValues, value];

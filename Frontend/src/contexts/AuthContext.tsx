@@ -47,6 +47,11 @@ const DEFAULT_PERMISSIONS: Permission = {
   canManagePrograms: false,
   canManageCMS: false,
   canManageAccounts: false,
+  canViewAnomalies: false,
+  canResolveAnomalies: false,
+  canConfigureDetection: false,
+  canExportAnomalies: false,
+  canTriggerDetection: false,
   canViewActivityLogs: false,
   canExportActivityLogs: false,
 };
@@ -152,8 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: response.user.username,
         email: response.user.email,
         role: response.user.role as UserRole,
-        tenantId: response.user.tenantId,
-        tenantName: response.user.tenantName,
+        tenantId: (response.user as any).tenantId,
+        tenantName: (response.user as any).tenantName,
       };
 
       setUser(userData);
@@ -189,8 +194,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: response.user.username,
         email: response.user.email,
         role: response.user.role as UserRole,
-        tenantId: response.user.tenantId,
-        tenantName: response.user.tenantName,
+        tenantId: (response.user as any).tenantId,
+        tenantName: (response.user as any).tenantName,
       };
 
       setUser(userData);

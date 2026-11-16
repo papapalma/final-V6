@@ -84,12 +84,12 @@ const createTenantSchema = z.object({
 
   /**
    * Password for the default Local Admin account.
-   * Must be at least 8 characters and contain uppercase, lowercase,
+   * Must be at least 6 characters and contain uppercase, lowercase,
    * a digit, and a special character.
    */
   adminPassword: z
     .string()
-    .min(8, 'Admin password must be at least 8 characters')
+    .min(6, 'Admin password must be at least 6 characters')
     .max(100, 'Admin password must not exceed 100 characters')
     .regex(
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).+$/,

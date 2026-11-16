@@ -80,7 +80,7 @@ export default function TraineeDetailsModal({ trainee, open, onOpenChange, onEdi
       console.log('Response data:', response.data);
       console.log('Files array:', response.data?.files);
       
-      const files = response?.data?.files || response?.files;
+      const files = response?.data?.files || (response as any)?.files;
       if (files && Array.isArray(files)) {
         console.log('Files is array, processing...');
         const reqMap: Record<string, any> = {};

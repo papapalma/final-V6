@@ -15,12 +15,15 @@ interface RateLimitEntry {
 const store = new Map<string, RateLimitEntry>();
 
 // Evict expired entries periodically to avoid unbounded memory growth
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of store) {
     if (entry.resetAt <= now) store.delete(key);
   }
 }, 60_000); // every minute
+if (typeof cleanupInterval.unref === 'function') {
+  cleanupInterval.unref();
+}
 
 export interface RateLimitOptions {
   /** Maximum requests allowed in the window */
@@ -36,11 +39,6 @@ export interface RateLimitOptions {
  *          the limit has been exceeded.
  */
 export function checkRateLimit(key: string, options: RateLimitOptions): Response | null {
-  // Bypass rate limiting in test environment
-  if (process.env.NODE_ENV === 'test') {
-    return null;
-  }
-
   const now = Date.now();
   const entry = store.get(key);
 

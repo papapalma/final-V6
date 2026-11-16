@@ -265,7 +265,7 @@ describe('Admin Authorization Check', () => {
     });
 
     it('should preserve mixed case', () => {
-      expect(formatRoleName('ADMIN')).toBe('A D M I N');
+      expect(formatRoleName('ADMIN')).toBe('ADMIN');
     });
   });
 

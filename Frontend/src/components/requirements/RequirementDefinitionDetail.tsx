@@ -40,9 +40,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../ui/alert-dialog';
-import { Edit2, Trash2, AlertCircle } from 'lucide-react';
+import { Edit2, Trash2, Eye, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RequirementDefinition } from '../../types/requirementDefinition';
+import { cn } from '../ui/utils';
 import { RequirementSubmittedTraineesList } from '../RequirementSubmittedTraineesList';
 
 interface RequirementDefinitionDetailProps {
@@ -52,6 +53,8 @@ interface RequirementDefinitionDetailProps {
   onEdit?: () => void;
   /** Callback when Delete button is clicked */
   onDelete?: (id: string) => void;
+  /** Callback when ViewSubmissions button is clicked */
+  onViewSubmissions?: (id: string) => void;
 }
 
 /**
@@ -61,6 +64,7 @@ export function RequirementDefinitionDetail({
   requirementId,
   onEdit,
   onDelete,
+  onViewSubmissions,
 }: RequirementDefinitionDetailProps) {
   const { data: requirement, isLoading, isError, error } = useRequirementDefinition(requirementId);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -186,6 +190,63 @@ export function RequirementDefinitionDetail({
         </CardContent>
       </Card>
 
+      {/* Submission Statistics Card */}
+      {requirement.submission_stats && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Submission Statistics</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Stats Overview */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <StatBox
+                label="Total Trainees"
+                value={requirement.submission_stats.total_trainees}
+                className="bg-gray-50"
+              />
+              <StatBox
+                label="Completion Rate"
+                value={`${requirement.submission_stats.completion_rate.toFixed(1)}%`}
+                className="bg-green-50"
+              />
+              <StatBox
+                label="Pending"
+                value={requirement.submission_stats.pending_count}
+                className="bg-yellow-50"
+              />
+              <StatBox
+                label="Submitted"
+                value={requirement.submission_stats.submitted_count}
+                className="bg-blue-50"
+              />
+              <StatBox
+                label="Verified"
+                value={requirement.submission_stats.verified_count}
+                className="bg-green-100"
+              />
+              <StatBox
+                label="Rejected"
+                value={requirement.submission_stats.rejected_count}
+                className="bg-red-50"
+              />
+              {requirement.submission_stats.waived_count !== undefined && (
+                <StatBox
+                  label="Waived"
+                  value={requirement.submission_stats.waived_count}
+                  className="bg-purple-50"
+                />
+              )}
+            </div>
+
+            {/* Visual Progress Bar */}
+            <div>
+              <h4 className="mb-3 text-sm font-semibold text-gray-600">Submission Breakdown</h4>
+              <SubmissionProgressBar stats={requirement.submission_stats} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2 sm:gap-3">
         <Button
@@ -196,6 +257,15 @@ export function RequirementDefinitionDetail({
         >
           <Edit2 className="h-4 w-4" />
           Edit
+        </Button>
+        <Button
+          onClick={() => onViewSubmissions?.(requirementId)}
+          disabled={!onViewSubmissions}
+          className="flex items-center gap-2"
+          variant="outline"
+        >
+          <Eye className="h-4 w-4" />
+          View Submissions
         </Button>
         <Button
           onClick={() => setDeleteDialogOpen(true)}
@@ -301,6 +371,124 @@ function RequirementDefinitionDetailSkeleton() {
         <Skeleton className="h-10 w-32" />
         <Skeleton className="h-10 w-24" />
       </div>
+    </div>
+  );
+}
+
+interface StatBoxProps {
+  label: string;
+  value: string | number;
+  className?: string;
+}
+
+function StatBox({ label, value, className }: StatBoxProps) {
+  return (
+    <div className={cn('rounded-lg p-3 text-center sm:p-4', className)}>
+      <p className="text-xs font-semibold text-gray-600 sm:text-sm">{label}</p>
+      <p className="mt-1 text-lg font-bold text-gray-900 sm:text-2xl">{value}</p>
+    </div>
+  );
+}
+
+interface SubmissionProgressBarProps {
+  stats: {
+    total_trainees: number;
+    pending_count: number;
+    submitted_count: number;
+    verified_count: number;
+    rejected_count: number;
+    waived_count?: number;
+  };
+}
+
+function SubmissionProgressBar({ stats }: SubmissionProgressBarProps) {
+  const total = stats.total_trainees || 1; // Avoid division by zero
+
+  const pending = (stats.pending_count / total) * 100;
+  const submitted = (stats.submitted_count / total) * 100;
+  const verified = (stats.verified_count / total) * 100;
+  const rejected = (stats.rejected_count / total) * 100;
+  const waived = ((stats.waived_count || 0) / total) * 100;
+
+  return (
+    <div>
+      <div className="flex h-8 overflow-hidden rounded-lg border border-gray-200">
+        {pending > 0 && (
+          <div
+            className="bg-yellow-400"
+            style={{ width: `${pending}%` }}
+            title={`Pending: ${stats.pending_count}`}
+          />
+        )}
+        {submitted > 0 && (
+          <div
+            className="bg-blue-400"
+            style={{ width: `${submitted}%` }}
+            title={`Submitted: ${stats.submitted_count}`}
+          />
+        )}
+        {verified > 0 && (
+          <div
+            className="bg-green-500"
+            style={{ width: `${verified}%` }}
+            title={`Verified: ${stats.verified_count}`}
+          />
+        )}
+        {rejected > 0 && (
+          <div
+            className="bg-red-400"
+            style={{ width: `${rejected}%` }}
+            title={`Rejected: ${stats.rejected_count}`}
+          />
+        )}
+        {waived > 0 && (
+          <div
+            className="bg-purple-400"
+            style={{ width: `${waived}%` }}
+            title={`Waived: ${stats.waived_count}`}
+          />
+        )}
+      </div>
+
+      {/* Legend */}
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
+        {stats.pending_count > 0 && (
+          <LegendItem color="bg-yellow-400" label="Pending" count={stats.pending_count} />
+        )}
+        {stats.submitted_count > 0 && (
+          <LegendItem color="bg-blue-400" label="Submitted" count={stats.submitted_count} />
+        )}
+        {stats.verified_count > 0 && (
+          <LegendItem color="bg-green-500" label="Verified" count={stats.verified_count} />
+        )}
+        {stats.rejected_count > 0 && (
+          <LegendItem color="bg-red-400" label="Rejected" count={stats.rejected_count} />
+        )}
+        {(stats.waived_count || 0) > 0 && (
+          <LegendItem
+            color="bg-purple-400"
+            label="Waived"
+            count={stats.waived_count || 0}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface LegendItemProps {
+  color: string;
+  label: string;
+  count: number;
+}
+
+function LegendItem({ color, label, count }: LegendItemProps) {
+  return (
+    <div className="flex items-center gap-1">
+      <div className={cn('h-3 w-3 rounded', color)} />
+      <span className="text-gray-600">
+        {label}: {count}
+      </span>
     </div>
   );
 }

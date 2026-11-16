@@ -135,7 +135,7 @@ describe('Browser Detection', () => {
   it('should detect Edge', () => {
     const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/91.0';
     
-    const isEdge = userAgent.includes('Edge');
+    const isEdge = userAgent.includes('Edg') || userAgent.includes('Edge');
     expect(isEdge).toBe(true);
   });
 });
@@ -231,7 +231,7 @@ describe('Data Privacy', () => {
     // Should truncate in logs
     const truncated = endpoint.substring(0, 50) + '...';
     expect(truncated.length).toBeLessThan(endpoint.length);
-    expect(truncated).toEndWith('...');
+    expect(truncated.endsWith('...')).toBe(true);
   });
 
   it('should protect keys in transmission', () => {

@@ -85,13 +85,11 @@ describe('Enrollment Source Tracking - Integration Tests', () => {
       expect(result.error?.issues).toContainEqual(
         expect.objectContaining({
           path: ['trainee_id'],
-          message: 'Required',
         })
       );
       expect(result.error?.issues).toContainEqual(
         expect.objectContaining({
           path: ['program_id'],
-          message: 'Required',
         })
       );
     });

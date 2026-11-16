@@ -10,6 +10,22 @@ vi.mock('../../../services/programSharingService', () => ({
   },
 }));
 
+// Mock AuthContext
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { tenantId: 'tenant-1' } }),
+  AuthProvider: ({ children }: any) => children,
+}));
+
+// Mock featureFlagService
+vi.mock('../../../services/featureFlagService', () => ({
+  default: {
+    isFeatureEnabled: vi.fn().mockResolvedValue(true),
+    FeatureKeys: {
+      SOCIAL_PROGRAM_SHARING: 'social_program_sharing',
+    },
+  },
+}));
+
 describe('ProgramLinkGenerator - Component Tests', () => {
   const mockShareableLinkResponse = {
     url: 'https://bmdc.online/share?program_id=a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6',
@@ -24,6 +40,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(programSharingService.getShareableLink).mockResolvedValue(mockShareableLinkResponse);
     // Mock clipboard API
     Object.assign(navigator, {
       clipboard: {
@@ -33,6 +50,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -50,7 +68,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
       );
 
       // Should show loader initially
-      expect(screen.getByRole('presentation', { hidden: true }) || document.querySelector('[class*="animate-spin"]')).toBeTruthy();
+      expect(document.querySelector('.animate-spin')).toBeTruthy();
 
       // Should eventually show the link
       await waitFor(() => {
@@ -176,7 +194,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
     });
 
     it('should reset "Copied!" feedback after 2 seconds', async () => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 
       render(
         <ProgramLinkGenerator
@@ -185,21 +203,21 @@ describe('ProgramLinkGenerator - Component Tests', () => {
         />
       );
 
-      await waitFor(() => {
+      await vi.waitFor(() => {
         expect(screen.getByTestId('copy-button')).toBeInTheDocument();
       });
 
       const copyButton = screen.getByTestId('copy-button');
       fireEvent.click(copyButton);
 
-      await waitFor(() => {
+      await vi.waitFor(() => {
         expect(screen.getByText('Copied!')).toBeInTheDocument();
       });
 
       // Advance time by 2 seconds
       vi.advanceTimersByTime(2000);
 
-      await waitFor(() => {
+      await vi.waitFor(() => {
         expect(screen.getByText('Copy')).toBeInTheDocument();
         expect(screen.queryByText('Copied!')).not.toBeInTheDocument();
       });
@@ -637,7 +655,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
         vi.mocked(programSharingService.getShareableLink).mockResolvedValue(mockResponse);
 
         // Second render (same program)
-        render(
+        const { unmount: unmount2 } = render(
           <ProgramLinkGenerator
             programId={programId}
             programName="Test Program"
@@ -653,6 +671,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
         // Assert: Both URLs should be identical
         expect(firstUrl).toBe(secondUrl);
         expect(firstUrl).toContain(programId);
+        unmount2();
       }
     });
 
@@ -661,7 +680,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
      * 
      * For any valid program_id, the URL format should always include /share endpoint and program_id parameter
      */
-    it('should maintain consistent URL format with required components', () => {
+    it('should maintain consistent URL format with required components', async () => {
       const testCases = [
         'uuid-1',
         'uuid-2',
@@ -693,20 +712,24 @@ describe('ProgramLinkGenerator - Component Tests', () => {
 
         vi.mocked(programSharingService.getShareableLink).mockResolvedValue(mockResponse);
 
-        render(
+        const { unmount } = render(
           <ProgramLinkGenerator
             programId={programId}
             programName="Test"
           />
         );
 
-        const urlInput = screen.getByTestId('shareable-url-input') as HTMLInputElement;
-        
-        // URL must contain required components
-        expect(urlInput.value).toMatch(/^https?:\/\//);
-        expect(urlInput.value).toContain('/share');
-        expect(urlInput.value).toContain('program_id=');
-        expect(urlInput.value).toContain(programId);
+        await waitFor(() => {
+          const urlInput = screen.getByTestId('shareable-url-input') as HTMLInputElement;
+          
+          // URL must contain required components
+          expect(urlInput.value).toMatch(/^https?:\/\//);
+          expect(urlInput.value).toContain('/share');
+          expect(urlInput.value).toContain('program_id=');
+          expect(urlInput.value).toContain(programId);
+        });
+
+        unmount();
       }
     });
   });
@@ -737,7 +760,7 @@ describe('ProgramLinkGenerator - Component Tests', () => {
 
         vi.mocked(programSharingService.getShareableLink).mockResolvedValue(mockResponse);
 
-        render(
+        const { unmount } = render(
           <ProgramLinkGenerator
             programId={programId}
             programName="Test"
@@ -756,6 +779,8 @@ describe('ProgramLinkGenerator - Component Tests', () => {
           expect(url.pathname).toBe('/share');
           expect(url.searchParams.get('program_id')).toBe(programId);
         });
+
+        unmount();
       }
     });
   });

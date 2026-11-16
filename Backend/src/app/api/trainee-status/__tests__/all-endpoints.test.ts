@@ -24,6 +24,30 @@ import { traineeStatusService } from '@/services/traineeStatusService';
 import { updateTraineeStatusSchema, createTraineeStatusSchema } from '@/utils/validators';
 import type { TraineeStatusRecord } from '@/types/database.types';
 
+jest.mock('@/lib/supabase-admin', () => {
+  const createMockChain = () => {
+    const chain: any = {
+      select: jest.fn().mockImplementation(() => chain),
+      eq: jest.fn().mockImplementation(() => chain),
+      is: jest.fn().mockImplementation(() => chain),
+      order: jest.fn().mockImplementation(() => chain),
+      limit: jest.fn().mockImplementation(() => chain),
+      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+      single: jest.fn().mockResolvedValue({ data: null, error: null }),
+      insert: jest.fn().mockResolvedValue({ data: null, error: null }),
+      update: jest.fn().mockResolvedValue({ data: null, error: null }),
+      delete: jest.fn().mockResolvedValue({ data: null, error: null }),
+      then: (resolve: any, reject: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject),
+    };
+    return chain;
+  };
+  return {
+    supabaseAdmin: {
+      from: jest.fn().mockImplementation(() => createMockChain()),
+    },
+  };
+});
+
 // Test UUIDs
 const TENANT_ID = '550e8400-e29b-41d4-a716-446655440001';
 const TENANT_ID_2 = '550e8400-e29b-41d4-a716-446655440002';

@@ -401,7 +401,7 @@ describe('GET /api/requirement-definitions/{id}/submissions - Integration Tests'
       );
 
       const body = await response.json();
-      const submission = body.data[0];
+      const submission = body.data.find((s: any) => s.trainee_name === 'John Doe') || body.data[0];
 
       expect(submission.trainee_name).toBeDefined();
       expect(submission.trainee_email).toBeDefined();

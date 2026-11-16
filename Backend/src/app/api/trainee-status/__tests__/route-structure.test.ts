@@ -82,6 +82,7 @@ describe('Task 1.1: API Route Structure for Trainee Status Endpoints', () => {
         const partialInput = {
           employment_status: 'employed',
           job_title: 'Senior Engineer',
+          employer_name: 'Tech Corp',
         };
 
         const result = updateTraineeStatusSchema.safeParse(partialInput);

@@ -33,40 +33,31 @@ jest.mock('@/utils/logger', () => ({
 }));
 
 describe('Data Retention Service', () => {
-  // Helper: Create mock query builder
-  const createMockQuery = (options: { deleted?: boolean; error?: boolean } = {}) => {
-    const queryBuilder = {
-      delete: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      lt: jest.fn().mockReturnThis(),
-      not: jest.fn().mockReturnThis(),
-      update: jest.fn().mockReturnThis(),
-      select: jest.fn().mockReturnThis(),
+  // Helper: Create fluent mock query builder
+  const createMockQueryBuilder = (options: { count?: number; data?: any[]; error?: any } = {}) => {
+    const result = {
+      error: options.error ? { message: options.error.message || 'Query error' } : null,
+      count: options.count ?? 0,
+      data: options.data ?? [],
     };
-
-    if (options.error) {
-      return Promise.resolve({ error: { message: 'Query error' }, count: 0 });
-    }
-
-    return Promise.resolve({
-      error: null,
-      count: options.deleted ? 10 : 0,
-      data: [],
-    });
+    const builder: any = {
+      delete: jest.fn().mockImplementation(() => builder),
+      select: jest.fn().mockImplementation(() => builder),
+      update: jest.fn().mockImplementation(() => builder),
+      insert: jest.fn().mockImplementation(() => Promise.resolve(result)),
+      eq: jest.fn().mockImplementation(() => builder),
+      lt: jest.fn().mockImplementation(() => builder),
+      not: jest.fn().mockImplementation(() => builder),
+      is: jest.fn().mockImplementation(() => builder),
+      order: jest.fn().mockImplementation(() => builder),
+      then: (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject),
+    };
+    return builder;
   };
 
   describe('Requirement 21.1: Audit Log Retention (90 days)', () => {
     it('should delete audit logs older than 90 days', async () => {
-      const mockDelete = jest.fn().mockReturnThis();
-      const mockLt = jest.fn().mockReturnThis();
-      const mockEq = jest.fn().mockResolvedValue({ error: null, count: 150 });
-
-      const mockFrom = jest.fn(() => ({
-        delete: mockDelete,
-        lt: mockLt,
-        eq: mockEq,
-      }));
-
+      const mockFrom = jest.fn(() => createMockQueryBuilder({ count: 150 }));
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -79,13 +70,7 @@ describe('Data Retention Service', () => {
     });
 
     it('should not delete audit logs within 90-day window', async () => {
-      // Mock: no records to delete (all within window)
-      const mockFrom = jest.fn(() => ({
-        delete: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ error: null, count: 0 }),
-      }));
-
+      const mockFrom = jest.fn(() => createMockQueryBuilder({ count: 0 }));
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -97,12 +82,7 @@ describe('Data Retention Service', () => {
 
   describe('Requirement 21.2: Failed Authentication Cleanup (30 days)', () => {
     it('should delete failed login attempts older than 30 days', async () => {
-      const mockFrom = jest.fn(() => ({
-        delete: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockResolvedValue({ error: null, count: 12 }),
-      }));
-
+      const mockFrom = jest.fn(() => createMockQueryBuilder({ count: 12 }));
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -114,21 +94,15 @@ describe('Data Retention Service', () => {
 
     it('should specifically target login_failed action', async () => {
       let capturedEqCall: any;
+      const builder = createMockQueryBuilder({ count: 5 });
+      builder.eq = jest.fn().mockImplementation((field: string, value: string) => {
+        if (field === 'action') {
+          capturedEqCall = value;
+        }
+        return builder;
+      });
 
-      const mockFrom = jest.fn(() => ({
-        delete: jest.fn().mockReturnThis(),
-        eq: jest
-          .fn()
-          .mockImplementation(function (field: string, value: string) {
-            if (field === 'action') {
-              capturedEqCall = value;
-            }
-            return this;
-          })
-          .mockReturnThis(),
-        lt: jest.fn().mockReturnThis().mockResolvedValue({ error: null, count: 5 }),
-      }));
-
+      const mockFrom = jest.fn(() => builder);
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       await executeRetentionPolicy();
@@ -140,12 +114,7 @@ describe('Data Retention Service', () => {
 
   describe('Requirement 21.3: Soft-Delete Purge (90 days then hard delete)', () => {
     it('should hard-delete soft-deleted records older than 90 days', async () => {
-      const mockFrom = jest.fn(() => ({
-        delete: jest.fn().mockReturnThis(),
-        not: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockResolvedValue({ error: null, count: 5 }),
-      }));
-
+      const mockFrom = jest.fn(() => createMockQueryBuilder({ count: 5 }));
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -157,14 +126,9 @@ describe('Data Retention Service', () => {
 
     it('should check multiple tables with soft-delete support', async () => {
       const tablesChecked = new Set<string>();
-
       const mockFrom = jest.fn((table: string) => {
         tablesChecked.add(table);
-        return {
-          delete: jest.fn().mockReturnThis(),
-          not: jest.fn().mockReturnThis(),
-          lt: jest.fn().mockResolvedValue({ error: null, count: 0 }),
-        };
+        return createMockQueryBuilder({ count: 0 });
       });
 
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
@@ -179,21 +143,14 @@ describe('Data Retention Service', () => {
     });
 
     it('should not delete records with NULL deleted_at', async () => {
-      // The query uses .not('deleted_at', 'is', null) which filters for records WITH deleted_at set
       let capturedNotCall: any;
+      const builder = createMockQueryBuilder({ count: 0 });
+      builder.not = jest.fn().mockImplementation((field: string, op: string) => {
+        capturedNotCall = { field, op };
+        return builder;
+      });
 
-      const mockFrom = jest.fn(() => ({
-        delete: jest.fn().mockReturnThis(),
-        not: jest
-          .fn()
-          .mockImplementation(function (field: string, op: string) {
-            capturedNotCall = { field, op };
-            return this;
-          })
-          .mockReturnThis(),
-        lt: jest.fn().mockReturnThis().mockResolvedValue({ error: null, count: 0 }),
-      }));
-
+      const mockFrom = jest.fn(() => builder);
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       await executeRetentionPolicy();
@@ -207,21 +164,16 @@ describe('Data Retention Service', () => {
   describe('Requirement 21.4: Temporary Files Cleanup (30 days, GPS anonymization)', () => {
     it('should anonymize GPS data from old attendance records (30 days)', async () => {
       let capturedUpdateData: any;
+      const builder = createMockQueryBuilder({
+        data: [{ id: 'record-1', selfie_path: '/uploads/selfie.jpg', gps_lat: 14.5995, gps_lng: 120.9842 }],
+        count: 1,
+      });
+      builder.update = jest.fn().mockImplementation((data: any) => {
+        capturedUpdateData = data;
+        return builder;
+      });
 
-      const mockFrom = jest.fn(() => ({
-        select: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockReturnThis(),
-        not: jest.fn().mockReturnThis(),
-        update: jest
-          .fn()
-          .mockImplementation(function (data: any) {
-            capturedUpdateData = data;
-            return this;
-          })
-          .mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-      }));
-
+      const mockFrom = jest.fn(() => builder);
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       await executeRetentionPolicy();
@@ -234,34 +186,24 @@ describe('Data Retention Service', () => {
     });
 
     it('should keep attendance records but remove sensitive data', async () => {
-      // The query should UPDATE (not DELETE) attendance records
       let updateCalled = false;
+      const builder = createMockQueryBuilder({
+        data: [
+          {
+            id: 'record-1',
+            selfie_path: '/uploads/selfie.jpg',
+            gps_lat: 14.5995,
+            gps_lng: 120.9842,
+          },
+        ],
+        count: 1,
+      });
+      builder.update = jest.fn().mockImplementation(() => {
+        updateCalled = true;
+        return builder;
+      });
 
-      const mockFrom = jest.fn(() => ({
-        from: jest.fn().mockReturnThis(),
-        select: jest.fn().mockResolvedValue({
-          data: [
-            {
-              id: 'record-1',
-              selfie_path: '/uploads/selfie.jpg',
-              gps_lat: 14.5995,
-              gps_lng: 120.9842,
-            },
-          ],
-          error: null,
-        }),
-        lt: jest.fn().mockReturnThis(),
-        not: jest.fn().mockReturnThis(),
-        update: jest
-          .fn()
-          .mockImplementation(function () {
-            updateCalled = true;
-            return this;
-          })
-          .mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-      }));
-
+      const mockFrom = jest.fn(() => builder);
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -275,12 +217,7 @@ describe('Data Retention Service', () => {
 
   describe('Error Handling & Resilience', () => {
     it('should handle database errors gracefully', async () => {
-      const mockFrom = jest.fn(() => ({
-        delete: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockResolvedValue({ error: { message: 'Database error' }, count: 0 }),
-      }));
-
+      const mockFrom = jest.fn(() => createMockQueryBuilder({ error: { message: 'Database error' }, count: 0 }));
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -298,20 +235,9 @@ describe('Data Retention Service', () => {
         callCount++;
         // First call fails, rest succeed
         if (callCount === 1) {
-          return {
-            delete: jest.fn().mockReturnThis(),
-            eq: jest.fn().mockReturnThis(),
-            lt: jest.fn().mockResolvedValue({ error: { message: 'Error' }, count: 0 }),
-          };
+          return createMockQueryBuilder({ error: { message: 'Error' }, count: 0 });
         }
-        return {
-          delete: jest.fn().mockReturnThis(),
-          eq: jest.fn().mockReturnThis(),
-          lt: jest.fn().mockReturnThis(),
-          select: jest.fn().mockReturnThis(),
-          not: jest.fn().mockReturnThis(),
-          update: jest.fn().mockReturnThis(),
-        };
+        return createMockQueryBuilder({ count: 5 });
       });
 
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
@@ -323,22 +249,12 @@ describe('Data Retention Service', () => {
     });
 
     it('should track total records deleted across all policies', async () => {
-      const mockFrom = jest.fn(() => ({
-        delete: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockReturnThis(),
-        not: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        update: jest.fn().mockReturnThis(),
-        // Return different counts for each call
-      }));
-
+      const mockFrom = jest.fn(() => createMockQueryBuilder({ count: 3 }));
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
 
       // Total should be sum of all policies
-      const expectedTotal = report.policies.reduce((sum, p) => sum + (p.recordsDeleted || 0), 0);
       expect(report.totalRecordsDeleted).toBeGreaterThanOrEqual(0);
     });
   });
@@ -346,16 +262,10 @@ describe('Data Retention Service', () => {
   describe('Audit Logging', () => {
     it('should log retention execution to audit_logs table', async () => {
       const mockInsert = jest.fn().mockResolvedValue({ data: {}, error: null });
-      const mockFrom = jest.fn(() => ({
-        insert: mockInsert,
-        delete: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockReturnThis(),
-        not: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        update: jest.fn().mockReturnThis(),
-      }));
+      const builder = createMockQueryBuilder({ count: 5 });
+      builder.insert = mockInsert;
 
+      const mockFrom = jest.fn(() => builder);
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -371,16 +281,10 @@ describe('Data Retention Service', () => {
 
     it('should include policy execution details in audit log', async () => {
       const mockInsert = jest.fn().mockResolvedValue({ data: {}, error: null });
-      const mockFrom = jest.fn(() => ({
-        insert: mockInsert,
-        delete: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockReturnThis(),
-        not: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        update: jest.fn().mockReturnThis(),
-      }));
+      const builder = createMockQueryBuilder({ count: 5 });
+      builder.insert = mockInsert;
 
+      const mockFrom = jest.fn(() => builder);
       (supabaseAdmin.from as jest.Mock).mockImplementation(mockFrom);
 
       const report = await executeRetentionPolicy();
@@ -394,12 +298,10 @@ describe('Data Retention Service', () => {
 
   describe('Timing & Date Calculations', () => {
     it('should use correct cutoff dates for each retention window', async () => {
-      // This is more of an integration test, but we verify the logic
       const now = new Date();
       const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-      // Dates should be calculated correctly (within a few seconds)
       expect(ninetyDaysAgo.getTime()).toBeLessThan(now.getTime());
       expect(thirtyDaysAgo.getTime()).toBeLessThan(now.getTime());
       expect(ninetyDaysAgo.getTime()).toBeLessThan(thirtyDaysAgo.getTime());

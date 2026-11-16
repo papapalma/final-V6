@@ -23,6 +23,51 @@ interface QR_Scanner_Modal_Props {
   initialSessionId?: string;
 }
 
+export function selectCameraStrategy(devices: MediaDeviceInfo[]): MediaTrackConstraints | { video: true } {
+  if (!devices || devices.length === 0) {
+    return { video: true };
+  }
+
+  const backCamera = devices.find(d =>
+    ['back', 'rear', 'environment'].some(kw =>
+      d.label && d.label.toLowerCase().includes(kw)
+    )
+  );
+
+  if (backCamera) {
+    return {
+      deviceId: { exact: backCamera.deviceId },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    };
+  }
+
+  return {
+    facingMode: 'environment',
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+  };
+}
+
+export function getCameraLabel(device: MediaDeviceInfo): string {
+  if (!device || !device.label) return 'Camera';
+  const label = device.label.toLowerCase();
+  if (label.includes('front') || label.includes('user')) {
+    return 'Front';
+  }
+  if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
+    return 'Back';
+  }
+  return 'Camera';
+}
+
+export function getCycledDeviceId(deviceIds: string[], currentDeviceId: string): string {
+  if (!deviceIds || deviceIds.length === 0) return currentDeviceId;
+  const index = deviceIds.indexOf(currentDeviceId);
+  if (index === -1) return deviceIds[0];
+  return deviceIds[(index + 1) % deviceIds.length];
+}
+
 export default function QR_Scanner_Modal({
   isOpen,
   onClose,
@@ -52,6 +97,7 @@ export default function QR_Scanner_Modal({
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
   const [scannedItem, setScannedItem] = useState<ScannedItemResult | null>(null);
   const [itemLoading, setItemLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<'borrow' | 'return'>('borrow');
@@ -89,10 +135,25 @@ export default function QR_Scanner_Modal({
         stream.getTracks().forEach(t => t.stop());
       }
 
+      let videoConstraint: any;
+      if (targetDeviceId) {
+        videoConstraint = { deviceId: { exact: targetDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } };
+      } else {
+        let cameraDevices: MediaDeviceInfo[] = [];
+        if (navigator.mediaDevices.enumerateDevices) {
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            cameraDevices = devices.filter(device => device.kind === 'videoinput');
+            setVideoDevices(cameraDevices);
+          } catch {
+            // ignore
+          }
+        }
+        videoConstraint = selectCameraStrategy(cameraDevices);
+      }
+
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: targetDeviceId
-          ? { deviceId: { exact: targetDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: videoConstraint,
         audio: false,
       });
 
@@ -121,6 +182,19 @@ export default function QR_Scanner_Modal({
       } else {
         setCameraError('Camera error');
       }
+    }
+  };
+
+  const handleSwitchCamera = async () => {
+    if (isSwitching || videoDevices.length <= 1) return;
+    setIsSwitching(true);
+    try {
+      const deviceIds = videoDevices.map(d => d.deviceId);
+      const nextId = getCycledDeviceId(deviceIds, selectedDeviceId);
+      setSelectedDeviceId(nextId);
+      await startCamera(nextId);
+    } finally {
+      setIsSwitching(false);
     }
   };
 
@@ -257,10 +331,12 @@ export default function QR_Scanner_Modal({
   useEffect(() => {
     if (isOpen && !jsQR) {
       import('jsqr').then(module => {
-        setJsQR(() => module.default);
+        const fn = module.default;
+        setJsQR(() => fn);
       }).catch(err => {
         console.error('Failed to load jsQR:', err);
         toast.error('Scanner unavailable');
+        setCameraError('Scanner unavailable');
       });
     }
   }, [isOpen, jsQR]);
@@ -412,8 +488,9 @@ export default function QR_Scanner_Modal({
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 gap-2 p-4">
               <AlertCircle className="h-8 w-8 text-red-400" />
               <p className="text-xs text-white text-center">{cameraError}</p>
-              {permissionDenied && (
+              {cameraError && (
                 <button
+                  type="button"
                   onClick={() => startCamera()}
                   className="mt-1 text-xs bg-white text-black px-3 py-1 rounded hover:bg-gray-100"
                 >
@@ -433,18 +510,27 @@ export default function QR_Scanner_Modal({
 
         {/* ── Camera Control ────────────────────────────────────────────────────── */}
         {videoDevices.length > 1 && !cameraError && (
-          <div className="px-4 py-2 border-b border-slate-200 shrink-0">
+          <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between gap-2">
             <select 
               value={selectedDeviceId} 
               onChange={(e) => handleCameraDeviceChange(e.target.value)}
-              className="w-full h-8 text-xs rounded border border-slate-200 bg-white px-2 text-slate-900"
+              className="flex-1 h-8 text-xs rounded border border-slate-200 bg-white px-2 text-slate-900"
             >
               {videoDevices.map((device, index) => (
                 <option key={device.deviceId} value={device.deviceId}>
-                  Camera {index + 1}
+                  {getCameraLabel(device)} {index + 1}
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              aria-label="Switch Camera"
+              onClick={handleSwitchCamera}
+              disabled={isSwitching}
+              className="h-8 px-3 text-xs bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 disabled:opacity-50"
+            >
+              {isSwitching ? 'Switching...' : 'Switch Camera'}
+            </button>
           </div>
         )}
 

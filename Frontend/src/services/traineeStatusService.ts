@@ -13,36 +13,55 @@ export interface TraineeStatusRecord {
   tenant_id: string;
   trainee_id: string;
   enrollment_id: string;
-  
+  tenantId?: string;
+  traineeId?: string;
+  enrollmentId?: string;
+
   // Graduation status
   graduation_status: 'pending' | 'graduated' | 'not_completed' | 'suspended';
+  graduationStatus?: 'pending' | 'graduated' | 'not_completed' | 'suspended';
   graduation_date?: string | null;
+  graduationDate?: string | null;
   certificate_id?: string | null;
-  
+  certificateId?: string | null;
+
   // Employment/outcome status
   employment_status: 'pending' | 'employed' | 'unemployed' | 'self_employed' | 'pursuing_education' | 'deceased';
-  
+  employmentStatus?: 'pending' | 'employed' | 'unemployed' | 'self_employed' | 'pursuing_education' | 'deceased';
+
   // Employment details
   job_title?: string | null;
+  jobTitle?: string | null;
   employer_name?: string | null;
+  employerName?: string | null;
   job_start_date?: string | null;
+  jobStartDate?: string | null;
   job_sector?: string | null;
-  
+  jobSector?: string | null;
+
   // Skills match assessment
   skills_match?: 'exact_match' | 'partial_match' | 'no_match' | 'not_applicable' | null;
+  skillsMatch?: 'exact_match' | 'partial_match' | 'no_match' | 'not_applicable' | null;
   skills_match_percentage?: number | null;
-  
+  skillsMatchPercentage?: number | null;
+
   // Remarks and feedback
   remarks?: string | null;
   unemployment_reason?: string | null;
-  
+  unemploymentReason?: string | null;
+
   // Audit
   recorded_by: string;
+  recordedBy?: string;
   recorded_at: string;
+  recordedAt?: string;
   last_updated_by?: string | null;
+  lastUpdatedBy?: string | null;
   updated_at: string;
+  updatedAt?: string;
   deleted_at?: string | null;
-  
+  deletedAt?: string | null;
+
   // Relations
   trainee?: any;
   enrollment?: any;

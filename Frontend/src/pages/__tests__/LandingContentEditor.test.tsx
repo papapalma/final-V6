@@ -20,19 +20,7 @@ import LandingContentEditorPage from '../LandingContentEditorPage';
 import { AuthProvider } from '../../contexts/AuthContext';
 import * as apiService from '../../services/api';
 
-// Mock lucide-react icons - provide all icons used by components
-vi.mock('lucide-react', () => ({
-  AlertCircle: ({ className }: any) => <div data-testid="icon-alert" className={className} />,
-  Eye: ({ className }: any) => <div data-testid="icon-eye" className={className} />,
-  Plus: ({ className }: any) => <div data-testid="icon-plus" className={className} />,
-  Trash2: ({ className }: any) => <div data-testid="icon-trash" className={className} />,
-  FileText: ({ className }: any) => <div data-testid="icon-file" className={className} />,
-  ChevronDownIcon: ({ className }: any) => <div data-testid="icon-chevron-down" className={className} />,
-  ChevronUpIcon: ({ className }: any) => <div data-testid="icon-chevron-up" className={className} />,
-  CheckIcon: ({ className }: any) => <div data-testid="icon-check-icon" className={className} />,
-  Copy: ({ className }: any) => <div data-testid="icon-copy" className={className} />,
-  Check: ({ className }: any) => <div data-testid="icon-check" className={className} />,
-}));
+
 
 // Mock API service
 vi.mock('../../services/api', () => ({

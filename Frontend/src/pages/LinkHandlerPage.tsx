@@ -57,6 +57,7 @@ export default function LinkHandlerPage() {
         // Validate program_id format (basic UUID check)
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidRegex.test(programId)) {
+          localStorage.removeItem('selected_program_id');
           setError('Invalid program link format');
           toast.error('Invalid program link');
           navigate('/', { replace: true });
@@ -68,6 +69,7 @@ export default function LinkHandlerPage() {
           const response = await programSharingService.validateProgramShare(programId);
           
           if (!response.isValid || !response.isActive) {
+            localStorage.removeItem('selected_program_id');
             setError('This program is no longer available');
             toast.error('This program is no longer available');
             navigate('/programs', { replace: true });
@@ -75,6 +77,7 @@ export default function LinkHandlerPage() {
           }
 
           if (!response.isPublic) {
+            localStorage.removeItem('selected_program_id');
             setError('This program is not available for public enrollment');
             toast.error('This program is not available for public enrollment');
             navigate('/programs', { replace: true });
@@ -82,9 +85,7 @@ export default function LinkHandlerPage() {
           }
 
           // Store program_id in LocalStorage
-          console.log('[LinkHandler] Storing programId:', programId);
           localStorage.setItem('selected_program_id', programId);
-          console.log('[LinkHandler] Stored value:', localStorage.getItem('selected_program_id'));
 
           // Clear URL query parameter and redirect based on user type
           if (!isAuthReady) {
@@ -100,12 +101,14 @@ export default function LinkHandlerPage() {
             navigate('/login', { replace: true });
           }
         } catch (err) {
+          localStorage.removeItem('selected_program_id');
           console.error('Error validating program:', err);
           setError('Unable to validate program');
           toast.error('Unable to validate program. Please try again.');
           navigate('/', { replace: true });
         }
       } catch (err) {
+        localStorage.removeItem('selected_program_id');
         console.error('Error handling program link:', err);
         setError('An error occurred');
         toast.error('An error occurred processing the link');

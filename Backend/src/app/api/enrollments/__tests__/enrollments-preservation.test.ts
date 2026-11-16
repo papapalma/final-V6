@@ -255,8 +255,9 @@ describe('Preservation Tests: Non-PATCH Operations (Task 2)', () => {
 
         // If validation fails, log details for debugging
         if (!validationResult.success) {
+          const issues = validationResult.error.issues || (validationResult.error as any).errors || [];
           console.log(`Validation failed for status ${testCase.status}:`, {
-            errors: validationResult.error.errors.map(e => ({ path: e.path.join('.'), message: e.message })),
+            errors: issues.map((e: any) => ({ path: e.path.join('.'), message: e.message })),
           });
         }
 

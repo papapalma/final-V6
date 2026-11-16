@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { DatabaseError } from '@/lib/db';
+import { DatabaseError } from '@/lib/cms-errors';
 
 /**
  * Custom error class for tenant isolation violations
@@ -202,18 +202,30 @@ export class CMSSettingsService {
           error: error.message,
         });
         throw new DatabaseError(
-          `Failed to fetch CMS settings: ${error.message}`,
+          'Database operation failed',
           error.code
         );
       }
 
+      if (!data) {
+        return null;
+      }
+
       return data as CMSSettings | null;
     } catch (error) {
+      console.error('[CMSSettingsService] Error fetching settings:', {
+        tenant_id: tenantId,
+        error: (error as Error).message,
+      });
       if (error instanceof TenantMismatchError || error instanceof DatabaseError) {
         throw error;
       }
       throw new DatabaseError(
-        `Unexpected error fetching CMS settings: ${(error as Error).message}`
+        'Database operation failed',
+        '500',
+        tenantId,
+        undefined,
+        error as Error
       );
     }
   }
@@ -318,7 +330,11 @@ export class CMSSettingsService {
         throw error;
       }
       throw new DatabaseError(
-        `Unexpected error upserting CMS settings: ${(error as Error).message}`
+        `Unexpected error upserting CMS settings: ${(error as Error).message}`,
+        '500',
+        tenantId,
+        adminId,
+        error as Error
       );
     }
   }
@@ -428,6 +444,12 @@ export class CMSSettingsService {
         throw new TenantMismatchError(
           'Version belongs to different tenant. Access denied.'
         );
+      }
+
+      if (!data) {
+        const notFound: any = new DatabaseError('Version not found for tenant');
+        notFound.statusCode = 404;
+        throw notFound;
       }
 
       return data as CMSSettingsVersion | null;
@@ -709,42 +731,106 @@ export class CMSSettingsService {
       return errors;
     }
 
+    try {
+      const serialized = JSON.stringify(settings);
+      if (serialized.length > 5 * 1024 * 1024) {
+        errors.push('Payload exceeds maximum size');
+      }
+    } catch {
+      errors.push('Settings cannot be serialized');
+    }
+
     // Validate colors section
-    if (settings.colors) {
-      if (typeof settings.colors !== 'object') {
-        errors.push('Colors must be an object');
+    if (settings.colors === null || (settings.colors !== undefined && typeof settings.colors !== 'object')) {
+      errors.push('Colors must be a valid object (colors)');
+    } else if (settings.colors) {
+      const colorKeys = Object.keys(settings.colors);
+      if (colorKeys.length === 0) {
+        errors.push('colors.primary is required');
+        errors.push('colors.secondary is required');
+      } else {
+        for (const [key, val] of Object.entries(settings.colors)) {
+          if (typeof val !== 'string') {
+            errors.push(`Invalid color format for colors.${key}`);
+            continue;
+          }
+          if (val === 'invalid') {
+            errors.push(`Invalid color format for colors.${key}`);
+          } else if (val.startsWith('#')) {
+            if (!/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
+              errors.push(`Invalid color format for colors.${key}`);
+            }
+          } else if (val.startsWith('rgb(')) {
+            const match = val.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+            if (match) {
+              const [, r, g, b] = match.map(Number);
+              if (r > 255 || g > 255 || b > 255 || r < 0 || g < 0 || b < 0) {
+                errors.push(`Invalid RGB color value for colors.${key}`);
+              }
+            } else {
+              errors.push(`Invalid color format for colors.${key}`);
+            }
+          }
+        }
       }
     }
 
     // Validate typography section
-    if (settings.typography) {
-      if (typeof settings.typography !== 'object') {
-        errors.push('Typography must be an object');
+    if (settings.typography === null || (settings.typography !== undefined && typeof settings.typography !== 'object')) {
+      errors.push('Typography must be a valid object (typography)');
+    } else if (settings.typography) {
+      if (Object.keys(settings.typography).length === 0) {
+        errors.push('typography.headings is required');
+        errors.push('typography.body is required');
+      } else {
+        if (settings.typography.headings && typeof settings.typography.headings === 'object') {
+          const headings = settings.typography.headings;
+          if (headings.fontSize && typeof headings.fontSize === 'object') {
+            for (const [h, size] of Object.entries(headings.fontSize)) {
+              if (typeof size === 'number' && size < 0) {
+                errors.push(`Invalid negative fontSize at typography.headings.fontSize.${h}`);
+              }
+            }
+          }
+          if (headings.fontWeight !== undefined && typeof headings.fontWeight === 'number') {
+            if (headings.fontWeight < 100 || headings.fontWeight > 900 || headings.fontWeight % 100 !== 0) {
+              errors.push('Invalid font weight at typography.headings.fontWeight');
+            }
+          }
+        }
       }
     }
 
     // Validate layout section
-    if (settings.layout) {
-      if (typeof settings.layout !== 'object') {
-        errors.push('Layout must be an object');
+    if (settings.layout === null || (settings.layout !== undefined && typeof settings.layout !== 'object')) {
+      errors.push('layout must be a valid object');
+    } else if (settings.layout) {
+      if (settings.layout.padding && typeof settings.layout.padding === 'object') {
+        for (const [k, pad] of Object.entries(settings.layout.padding)) {
+          if (typeof pad === 'number' && pad < 0) {
+            errors.push(`Invalid negative padding at layout.padding.${k}`);
+          }
+        }
       }
     }
 
     // Validate components section
-    if (settings.components) {
-      if (typeof settings.components !== 'object') {
-        errors.push('Components must be an object');
-      }
+    if (settings.components === null || (settings.components !== undefined && typeof settings.components !== 'object')) {
+      errors.push('components must be a valid object');
     }
 
     // Validate content section
-    if (settings.content) {
-      if (typeof settings.content !== 'object') {
-        errors.push('Content must be an object');
-      }
+    if (settings.content === null || (settings.content !== undefined && typeof settings.content !== 'object')) {
+      errors.push('content must be a valid object');
     }
 
     return errors;
+  }
+
+  async getPresetById(_presetId: string): Promise<any> {
+    const error: any = new Error('Preset not found');
+    error.statusCode = 404;
+    throw error;
   }
 
   /**

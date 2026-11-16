@@ -483,8 +483,15 @@ export function validateJsonbSize(fieldName: string, value: unknown): Validation
     return { valid: true }; // Unknown field, skip validation
   }
 
+  if (value === undefined || value === null) {
+    return { valid: true };
+  }
+
   try {
     const serialized = JSON.stringify(value);
+    if (serialized === undefined) {
+      return { valid: true };
+    }
     const sizeBytes = Buffer.byteLength(serialized, 'utf8');
 
     if (sizeBytes > limit) {
@@ -652,7 +659,7 @@ export function validateFileAccess(
  */
 export const DeviceInfoSchema = z.object({
   device_id: z
-    .string()
+    .string({ message: 'device_id is required' })
     .min(1, 'device_id is required')
     .max(100, 'device_id exceeds maximum length (100 chars)')
     .refine(
@@ -720,7 +727,7 @@ export function validateDeviceInfo(
     
     return { valid: true, data: parsed };
   } catch (err) {
-    const message = err instanceof z.ZodError ? err.errors[0]?.message : String(err);
+    const message = err instanceof z.ZodError ? ((err.issues || (err as any).errors)?.[0]?.message || 'Validation error') : String(err);
     return { valid: false, reason: message };
   }
 }

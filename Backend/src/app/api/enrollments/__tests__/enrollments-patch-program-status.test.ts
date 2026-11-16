@@ -188,7 +188,8 @@ describe('Bug Condition Exploration: PATCH Program Status Missing (Task 1)', () 
           });
         } catch (error) {
           if (error instanceof z.ZodError) {
-            const errors = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+            const issues = error.issues || (error as any).errors || [];
+            const errors = issues.map((e: any) => `${e.path.join('.')}: ${e.message}`);
             counterexamples.push({ status: statusValue, errors });
             console.log(`✗ Validation failed for status: ${statusValue}`);
             console.log('  Error details:', errors);
@@ -229,7 +230,8 @@ describe('Bug Condition Exploration: PATCH Program Status Missing (Task 1)', () 
       
       expect(result.success).toBe(false);
       if (!result.success) {
-        const hasStatusError = result.error.errors.some((e) => e.path.includes('program') && e.path.includes('status'));
+        const issues = result.error.issues || (result.error as any).errors || [];
+        const hasStatusError = issues.some((e: any) => e.path.includes('program') && e.path.includes('status'));
         expect(hasStatusError).toBe(true);
       }
     });
@@ -248,7 +250,8 @@ describe('Bug Condition Exploration: PATCH Program Status Missing (Task 1)', () 
       
       expect(result.success).toBe(false);
       if (!result.success) {
-        const hasStatusError = result.error.errors.some((e) => e.path.includes('program') && e.path.includes('status'));
+        const issues = result.error.issues || (result.error as any).errors || [];
+        const hasStatusError = issues.some((e: any) => e.path.includes('program') && e.path.includes('status'));
         expect(hasStatusError).toBe(true);
       }
     });
@@ -267,7 +270,8 @@ describe('Bug Condition Exploration: PATCH Program Status Missing (Task 1)', () 
       
       expect(result.success).toBe(false);
       if (!result.success) {
-        const hasStatusError = result.error.errors.some((e) => e.path.includes('program') && e.path.includes('status'));
+        const issues = result.error.issues || (result.error as any).errors || [];
+        const hasStatusError = issues.some((e: any) => e.path.includes('program') && e.path.includes('status'));
         expect(hasStatusError).toBe(true);
       }
     });
@@ -286,7 +290,8 @@ describe('Bug Condition Exploration: PATCH Program Status Missing (Task 1)', () 
       
       expect(result.success).toBe(false);
       if (!result.success) {
-        const hasStatusError = result.error.errors.some((e) => e.path.includes('program') && e.path.includes('status'));
+        const issues = result.error.issues || (result.error as any).errors || [];
+        const hasStatusError = issues.some((e: any) => e.path.includes('program') && e.path.includes('status'));
         expect(hasStatusError).toBe(true);
       }
     });

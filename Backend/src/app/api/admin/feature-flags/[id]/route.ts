@@ -18,7 +18,7 @@ import { invalidateFeatureFlagCache } from '@/lib/featureFlags';
 import { z } from 'zod';
 
 const updateFlagSchema = z.object({ enabled:       z.boolean().optional(),
-  configuration: z.record(z.unknown()).optional().nullable(), });
+  configuration: z.record(z.string(), z.unknown()).optional().nullable(), });
 
 export async function OPTIONS(request: NextRequest) { return handleOptionsRequest(request); }
 

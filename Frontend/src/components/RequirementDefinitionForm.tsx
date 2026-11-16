@@ -180,8 +180,8 @@ export function RequirementDefinitionForm({
   const isSubmitting = isCreating || isUpdating;
 
   // Initialize form with React Hook Form and Zod validation
-  const form = useForm<RequirementFormData>({
-    resolver: zodResolver(requirementFormSchema),
+  const form = useForm<any>({
+    resolver: zodResolver(requirementFormSchema) as any,
     mode: 'onBlur',
     defaultValues: {
       displayName: '',
@@ -336,8 +336,8 @@ export function RequirementDefinitionForm({
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
                   {isEditMode
-                    ? updateError?.message || 'Failed to update requirement. Please check your input and try again.'
-                    : createError?.message || 'Failed to create requirement. Please check your input and try again.'}
+                    ? `Failed to update requirement: ${updateError?.message || 'Please check your input and try again.'}`
+                    : `Failed to create requirement: ${createError?.message || 'Please check your input and try again.'}`}
                 </AlertDescription>
               </Alert>
             )}

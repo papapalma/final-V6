@@ -223,13 +223,13 @@ export function useCreateRequirementDefinition(): UseCreateRequirementDefinition
       // Using a targeted invalidation pattern to avoid unnecessary refetches
       queryClient.invalidateQueries({
         queryKey: ['requirementDefinitions'],
-        refetchType: 'stale',
+        refetchType: 'stale' as any,
       });
 
       // Also refetch the analytics if it exists, since a new requirement affects stats
       queryClient.invalidateQueries({
         queryKey: ['requirementDefinitions', 'analytics'],
-        refetchType: 'stale',
+        refetchType: 'stale' as any,
       });
     },
 
@@ -246,7 +246,11 @@ export function useCreateRequirementDefinition(): UseCreateRequirementDefinition
      * Create a new requirement definition
      * Throws error if validation fails or API call fails
      */
-    mutate: (data: CreateRequirementPayload) => mutation.mutateAsync(data),
+    mutate: (data: CreateRequirementPayload) => {
+      const promise = mutation.mutateAsync(data);
+      promise.catch(() => {});
+      return promise;
+    },
 
     /**
      * Loading state: true if mutation is in progress

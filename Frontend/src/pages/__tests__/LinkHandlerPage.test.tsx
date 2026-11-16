@@ -222,18 +222,9 @@ describe('LinkHandlerPage', () => {
     const mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
     mockUseSearchParams.mockReturnValue([mockSearchParams as any, vi.fn()]);
 
-    // Delay the validation response to simulate loading state
+    // Return a pending promise to keep component in loading state without leaking resolved promises
     (programSharingService.validateProgramShare as any).mockImplementation(
-      () => new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            isValid: true,
-            isActive: true,
-            isPublic: true,
-            program: { id: validProgramId, name: 'Test Program' },
-          });
-        }, 100);
-      })
+      () => new Promise(() => {})
     );
 
     const Wrapper = ({ children }: any) => (

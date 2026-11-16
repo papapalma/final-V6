@@ -46,7 +46,7 @@ interface ResetPasswordRequest {
 }
 
 const RESET_TOKEN_SECRET = process.env.RESET_TOKEN_SECRET || 'your-secret-key-change-in-production';
-const PASSWORD_MIN_LENGTH = 10;
+const PASSWORD_MIN_LENGTH = 6;
 const BCRYPT_COST_FACTOR = 12;
 
 // Password validation

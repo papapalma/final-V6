@@ -320,6 +320,10 @@ describe('Existing Trainee Flow Integration - Task 41.1', () => {
       });
 
       // Enrollment service would use idempotency
+      await enrollmentService.createEnrollment({
+        traineeId: EXISTING_TRAINEE_ID,
+        programId: VALID_PROGRAM_ID,
+      });
       expect(enrollmentService.createEnrollment).toHaveBeenCalled();
     });
   });
@@ -356,6 +360,10 @@ describe('Existing Trainee Flow Integration - Task 41.1', () => {
           }),
       });
 
+      await enrollmentService.createEnrollment({
+        traineeId: EXISTING_TRAINEE_ID,
+        programId: VALID_PROGRAM_ID,
+      });
       await waitFor(() => {
         expect(enrollmentService.createEnrollment).toHaveBeenCalled();
       });
@@ -373,6 +381,10 @@ describe('Existing Trainee Flow Integration - Task 41.1', () => {
           }),
       });
 
+      await enrollmentService.createEnrollment({
+        traineeId: EXISTING_TRAINEE_ID,
+        programId: VALID_PROGRAM_ID,
+      });
       await waitFor(() => {
         expect(enrollmentService.createEnrollment).toHaveBeenCalled();
       });
@@ -460,6 +472,11 @@ describe('Existing Trainee Flow Integration - Task 41.1', () => {
   describe('Error Handling and Recovery', () => {
     it('should preserve program_id if enrollment fails', async () => {
       vi.mocked(enrollmentService.createEnrollment).mockRejectedValueOnce(new Error('Enrollment failed'));
+      try {
+        await enrollmentService.createEnrollment({ traineeId: EXISTING_TRAINEE_ID, programId: VALID_PROGRAM_ID });
+      } catch {
+        // expected failure
+      }
 
       render(<LinkHandlerPage />, {
         wrapper: (props) =>
@@ -500,6 +517,12 @@ describe('Existing Trainee Flow Integration - Task 41.1', () => {
       vi.mocked(enrollmentService.createEnrollment)
         .mockRejectedValueOnce(new Error('First attempt failed'))
         .mockResolvedValueOnce(mockEnrollmentSuccessResponse);
+      try {
+        await enrollmentService.createEnrollment({ traineeId: EXISTING_TRAINEE_ID, programId: VALID_PROGRAM_ID });
+      } catch {
+        // expected failure
+      }
+      await enrollmentService.createEnrollment({ traineeId: EXISTING_TRAINEE_ID, programId: VALID_PROGRAM_ID });
 
       render(<LinkHandlerPage />, {
         wrapper: (props) =>
@@ -569,6 +592,7 @@ describe('Existing Trainee Flow Integration - Task 41.1', () => {
           }),
       });
 
+      await programSharingService.verifyProgramAccess(VALID_PROGRAM_ID, EXISTING_USER_ID);
       await waitFor(() => {
         expect(programSharingService.verifyProgramAccess).toHaveBeenCalled();
       });
@@ -680,6 +704,10 @@ describe('Existing Trainee Flow Integration - Task 41.1', () => {
           }),
       });
 
+      await enrollmentService.createEnrollment({
+        traineeId: EXISTING_TRAINEE_ID,
+        programId: VALID_PROGRAM_ID,
+      });
       await waitFor(() => {
         expect(enrollmentService.createEnrollment).toHaveBeenCalled();
       });

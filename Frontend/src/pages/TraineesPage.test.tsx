@@ -412,7 +412,7 @@ describe('TraineesPage Delete Functionality', () => {
   describe('Delete button loading state', () => {
     it('should show loading state and disable delete button during deletion', async () => {
       (traineeService.deleteTrainee as any).mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
+        () => new Promise(() => {})
       );
       
       renderComponent();

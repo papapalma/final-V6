@@ -468,9 +468,9 @@ export default function TraineeAttendancePage() {
                           In: {new Date(todayData.record.morning_time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       )}
-                      {todayData.record?.morning_time_out && (
+                      {(todayData.record as any)?.morning_time_out && (
                         <p className="text-xs text-muted-foreground">
-                          Out: {new Date(todayData.record.morning_time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          Out: {new Date((todayData.record as any).morning_time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       )}
                     </div>

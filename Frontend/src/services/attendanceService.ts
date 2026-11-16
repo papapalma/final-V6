@@ -128,6 +128,12 @@ export interface AttendanceWindowStatus {
   window_close: string | null;
   seconds_until_open: number | null;
   seconds_until_close: number | null;
+  morning_open?: string | null;
+  morning_close?: string | null;
+  morning_late_threshold?: number | null;
+  afternoon_open?: string | null;
+  afternoon_close?: string | null;
+  afternoon_late_threshold?: number | null;
 }
 
 export interface AttendanceSchedule {

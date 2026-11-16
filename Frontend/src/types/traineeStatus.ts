@@ -10,33 +10,57 @@ export interface TraineeStatusRecord {
   tenantId: string;
   traineeId: string;
   enrollmentId: string;
+  tenant_id?: string;
+  trainee_id?: string;
+  enrollment_id?: string;
 
   // Graduation Section
   graduationStatus: 'pending' | 'graduated' | 'not_completed' | 'suspended';
+  graduation_status?: 'pending' | 'graduated' | 'not_completed' | 'suspended';
   graduationDate?: string | null; // ISO 8601 date (YYYY-MM-DD)
+  graduation_date?: string | null;
   certificateId?: string | null;
+  certificate_id?: string | null;
 
   // Employment Section
   employmentStatus: 'pending' | 'employed' | 'unemployed' | 'self_employed' | 'pursuing_education' | 'deceased';
+  employment_status?: 'pending' | 'employed' | 'unemployed' | 'self_employed' | 'pursuing_education' | 'deceased';
   jobTitle?: string | null; // max 255 chars
+  job_title?: string | null;
   employerName?: string | null; // max 255 chars
+  employer_name?: string | null;
   jobStartDate?: string | null; // ISO 8601 date (YYYY-MM-DD)
+  job_start_date?: string | null;
   jobSector?: string | null; // free-text field
+  job_sector?: string | null;
   unemploymentReason?: string | null; // max 500 chars
+  unemployment_reason?: string | null;
 
   // Skills Assessment Section
   skillsMatch?: 'exact_match' | 'partial_match' | 'no_match' | 'not_applicable' | null;
+  skills_match?: 'exact_match' | 'partial_match' | 'no_match' | 'not_applicable' | null;
   skillsMatchPercentage?: number | null; // 0-100
+  skills_match_percentage?: number | null;
   remarks?: string | null; // max 1000 chars
 
   // Audit Trail Section
   recordedBy: string; // user ID
+  recorded_by?: string;
   recordedAt: string; // ISO 8601 timestamp
+  recorded_at?: string;
   lastUpdatedBy?: string | null; // user ID
+  last_updated_by?: string | null;
   updatedAt: string; // ISO 8601 timestamp
+  updated_at?: string;
 
   // Soft Delete
   deletedAt?: string | null; // ISO 8601 timestamp
+  deleted_at?: string | null;
+  
+  // Relations
+  trainee?: any;
+  enrollment?: any;
+  certificate?: any;
 }
 
 /**
@@ -385,7 +409,8 @@ export function parseValidationError(zodError: z.ZodError): ValidationErrorMap {
   const errorMap: ValidationErrorMap = {};
 
   // Iterate through all issues in the Zod error
-  zodError.issues.forEach((error) => {
+  const issues = (zodError.issues || (zodError as any).errors || []);
+  issues.forEach((error: any) => {
     // Get the field path (e.g., "jobTitle" or "nested.field")
     const fieldPath = error.path.join('.');
 

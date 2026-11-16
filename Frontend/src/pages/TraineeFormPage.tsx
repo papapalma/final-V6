@@ -316,8 +316,8 @@ export default function TraineeFormPage() {
           }
 
           // Set trainings from enrollments (normalized schema stores enrollments in array, not trainee.program_id)
-          if (trainee.enrollments && trainee.enrollments.length > 0) {
-            const enrollmentTrainings = trainee.enrollments.map((enrollment: any) => ({
+          if ((trainee as any).enrollments && (trainee as any).enrollments.length > 0) {
+            const enrollmentTrainings = (trainee as any).enrollments.map((enrollment: any) => ({
               program: enrollment.program_id,
               status: enrollment.status ? enrollment.status.charAt(0).toUpperCase() + enrollment.status.slice(1) : 'Active',
               dateEnrolled: enrollment.enrollment_date 
@@ -332,7 +332,7 @@ export default function TraineeFormPage() {
 
           // Fetch requirement files for existing trainee - inline to avoid closure issues
           try {
-            const filesResponse = await api.get(`/trainees/${id}/requirements`);
+            const filesResponse: any = await api.get(`/trainees/${id}/requirements`);
             console.log('[DEBUG API FETCH] Raw response:', filesResponse);
             
             // api.get() returns response.data directly, so filesResponse = { success, files }

@@ -62,7 +62,6 @@ describe('EnrollmentManagementSection Integration Tests', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
 
     (enrollmentService.fetchEnrollments as any).mockResolvedValue([
       mockEnrollment,
@@ -74,7 +73,7 @@ describe('EnrollmentManagementSection Integration Tests', () => {
   });
 
   afterEach(() => {
-    vi.runOnlyPendingTimers();
+    vi.clearAllMocks();
     vi.useRealTimers();
   });
 
@@ -381,37 +380,35 @@ describe('EnrollmentManagementSection Integration Tests', () => {
    * Validates: Requirements 6.5, 13.2
    */
   it('should update connection status indicator when connection changes', async () => {
-    (enrollmentService.getConnectionStatus as any)
-      .mockReturnValueOnce('connecting')
-      .mockReturnValueOnce('connecting')
-      .mockReturnValueOnce('connected')
-      .mockReturnValueOnce('connected')
-      .mockReturnValueOnce('reconnecting')
-      .mockReturnValue('reconnecting');
+    vi.useFakeTimers();
+    try {
+      (enrollmentService.getConnectionStatus as any)
+        .mockReturnValueOnce('connecting')
+        .mockReturnValueOnce('connected')
+        .mockReturnValue('reconnecting');
 
-    render(
-      <EnrollmentManagementSection traineeId={mockTraineeId} />
-    );
+      render(
+        <EnrollmentManagementSection traineeId={mockTraineeId} />
+      );
 
-    expect(screen.getByText('Connecting')).toBeInTheDocument();
+      expect(screen.getByText('Connecting')).toBeInTheDocument();
 
-    // Advance timers to trigger status update
-    act(() => {
-      jest.advanceTimersByTime(1000);
-    });
+      // Advance timers to trigger status update
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
 
-    await waitFor(() => {
       expect(screen.getByText('Connected')).toBeInTheDocument();
-    });
 
-    // Advance timers again to simulate reconnection
-    act(() => {
-      jest.advanceTimersByTime(1000);
-    });
+      // Advance timers again to simulate reconnection
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
 
-    await waitFor(() => {
       expect(screen.getByText('Reconnecting')).toBeInTheDocument();
-    });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /**

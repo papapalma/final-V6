@@ -22,10 +22,9 @@
  *   - user_agent
  *   - created_at
  *
- * Retention policy (Req 21.14):
- *   - Standard events: 2 years
- *   - Security events (category = 'security' | 'auth'): 5 years
- *   - Enforced via a scheduled database job (see migrations/006_audit_retention.sql)
+ * Retention policy:
+ *   - Audit logs retention window: 90 days
+ *   - Enforced via dataRetention.ts and scheduled cleanup tasks
  */
 
 import { supabaseAdmin } from '@/lib/supabase-admin';

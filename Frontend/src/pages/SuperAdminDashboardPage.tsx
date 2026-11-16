@@ -292,10 +292,10 @@ export default function SuperAdminDashboardPage() {
         });
         break;
       case 'date-newest':
-        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        result.sort((a, b) => new Date(b.createdAt || (b as any).created_at).getTime() - new Date(a.createdAt || (a as any).created_at).getTime());
         break;
       case 'date-oldest':
-        result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        result.sort((a, b) => new Date(a.createdAt || (a as any).created_at).getTime() - new Date(b.createdAt || (b as any).created_at).getTime());
         break;
     }
     return result;
@@ -408,7 +408,7 @@ export default function SuperAdminDashboardPage() {
     else if (!/^[a-zA-Z0-9_-]+$/.test(formData.adminUsername))
       errors.adminUsername = 'Username can only contain letters, numbers, hyphens, and underscores';
     if (!formData.adminPassword.trim()) errors.adminPassword = 'Admin password is required';
-    else if (formData.adminPassword.length < 8) errors.adminPassword = 'Password must be at least 8 characters';
+    else if (formData.adminPassword.length < 6) errors.adminPassword = 'Password must be at least 6 characters';
     else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9])/.test(formData.adminPassword))
       errors.adminPassword = 'Password must contain uppercase, lowercase, number, and special character';
     setFormErrors(errors);

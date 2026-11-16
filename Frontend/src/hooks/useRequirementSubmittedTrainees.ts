@@ -35,7 +35,10 @@ export function useRequirementSubmittedTrainees(requirementId: string) {
       const response = await api.get<SubmittedTraineesResponse>(
         `/requirement-definitions/${requirementId}/submitted-trainees?limit=100`
       );
-      setData(response.data || []);
+      const items = Array.isArray(response.data)
+        ? (response.data as SubmittedTraineeRequirementFile[])
+        : (response.data?.data || []);
+      setData(items);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to load submitted trainees'));
     } finally {

@@ -104,6 +104,7 @@ const renderTraineeStatusModal = (props: any = {}) => {
     programName: 'Software Development',
     onStatusCreated: vi.fn(),
     existingStatus: mockExistingStatus,
+    initialEditMode: true,
     ...props,
   };
 
@@ -119,6 +120,13 @@ const renderTraineeStatusModal = (props: any = {}) => {
     ...result,
     ...defaultProps,
   };
+};
+
+const getEmploymentStatusSelect = (val = 'pending') => {
+  const select = document.getElementById('employment-status-select') as HTMLSelectElement | null;
+  if (select && (!val || select.value === val)) return select;
+  const elements = screen.getAllByDisplayValue(val);
+  return elements.find(el => el.tagName === 'SELECT') || elements.find(el => el.getAttribute('name') === 'employment_status') || elements[0];
 };
 
 describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
@@ -299,7 +307,7 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
     it('should display employment status dropdown', () => {
       renderTraineeStatusModal();
 
-      expect(screen.getByDisplayValue('pending')).toBeInTheDocument();
+      expect(getEmploymentStatusSelect('pending')).toBeInTheDocument();
     });
 
     it('should show job-related fields when employment status is set to employed', async () => {
@@ -307,20 +315,21 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal();
 
       // Find employment status select
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       
       // Change to employed
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       // Job fields should be available (job_title, employer_name, job_start_date)
       // These might be in a collapsible section or shown/hidden
       await waitFor(() => {
         // After selection, should see job title field
-        const jobTitleField = screen.queryByPlaceholderText(/job title/i) || 
-                             screen.queryByDisplayValue('');
-        // Note: Exact selectors depend on component implementation
+        const jobTitleField = document.querySelector('input[name="job_title"]') ||
+                             screen.queryByPlaceholderText(/job title/i);
+        expect(jobTitleField).toBeInTheDocument();
       });
     });
 
@@ -329,14 +338,15 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal();
 
       // Change employment status to employed
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       // Find and fill job title
-      const jobTitleInput = screen.getByPlaceholderText(/job title/i) || 
-                           document.querySelector('input[name="job_title"]');
+      const jobTitleInput = document.querySelector('input[name="job_title"]') ||
+                           screen.queryByPlaceholderText(/job title/i);
       
       if (jobTitleInput) {
         await user.type(jobTitleInput, 'Software Engineer');
@@ -349,14 +359,15 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal();
 
       // Change employment status
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       // Fill employer name
-      const employerInput = screen.getByPlaceholderText(/employer/i) ||
-                           document.querySelector('input[name="employer_name"]');
+      const employerInput = document.querySelector('input[name="employer_name"]') ||
+                           screen.queryByPlaceholderText(/employer/i);
       
       if (employerInput) {
         await user.type(employerInput, 'TechCorp');
@@ -372,16 +383,17 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal();
 
       // Change employment status to employed
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       // Fill job details
-      const jobTitleInput = screen.getByPlaceholderText(/job title/i) ||
-                           document.querySelector('input[name="job_title"]');
-      const employerInput = screen.getByPlaceholderText(/employer/i) ||
-                           document.querySelector('input[name="employer_name"]');
+      const jobTitleInput = document.querySelector('input[name="job_title"]') ||
+                           screen.queryByPlaceholderText(/job title/i);
+      const employerInput = document.querySelector('input[name="employer_name"]') ||
+                           screen.queryByPlaceholderText(/employer/i);
 
       if (jobTitleInput) await user.type(jobTitleInput, 'Software Engineer');
       if (employerInput) await user.type(employerInput, 'TechCorp');
@@ -411,10 +423,16 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
 
       renderTraineeStatusModal();
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
+
+      const jobTitleInput = document.querySelector('input[name="job_title"]') || screen.queryByPlaceholderText(/job title/i);
+      const employerInput = document.querySelector('input[name="employer_name"]') || screen.queryByPlaceholderText(/employer/i);
+      if (jobTitleInput) await user.type(jobTitleInput, 'Software Engineer');
+      if (employerInput) await user.type(employerInput, 'TechCorp');
 
       const saveButton = screen.getByRole('button', { name: /save/i });
       await user.click(saveButton);
@@ -430,7 +448,7 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       const user = userEvent.setup();
       renderTraineeStatusModal();
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
       const unemployedOption = screen.getByRole('option', { name: /unemployed/i });
       await user.click(unemployedOption);
@@ -449,7 +467,7 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       const user = userEvent.setup();
       renderTraineeStatusModal();
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
       const unemployedOption = screen.getByRole('option', { name: /unemployed/i });
       await user.click(unemployedOption);
@@ -470,7 +488,7 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
 
       renderTraineeStatusModal();
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
       const unemployedOption = screen.getByRole('option', { name: /unemployed/i });
       await user.click(unemployedOption);
@@ -506,7 +524,7 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal({ existingStatus: employedStatus });
 
       // Change to unemployed
-      const employmentStatusSelect = screen.getByDisplayValue('employed');
+      const employmentStatusSelect = getEmploymentStatusSelect('employed');
       await user.click(employmentStatusSelect);
       const unemployedOption = screen.getByRole('option', { name: /unemployed/i });
       await user.click(unemployedOption);
@@ -547,7 +565,7 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       const deleteButton = screen.getByRole('button', { name: /delete/i });
       await user.click(deleteButton);
 
-      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      const cancelButton = screen.getAllByRole('button', { name: /cancel/i }).slice(-1)[0];
       await user.click(cancelButton);
 
       // Confirmation dialog should close, record should still exist
@@ -565,7 +583,9 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       await user.click(deleteButton);
 
       // Confirm deletion
-      const confirmButton = screen.getByRole('button', { name: /confirm|delete/i });
+      const confirmButton = screen.getAllByRole('button', { name: /confirm|delete/i }).find(
+        b => b !== deleteButton
+      );
       if (confirmButton && confirmButton !== deleteButton) {
         await user.click(confirmButton);
       }
@@ -631,10 +651,11 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal();
 
       // Change employment status to employed but don't fill job_title
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       // Try to save without job_title
       const saveButton = screen.getByRole('button', { name: /save/i });
@@ -646,17 +667,18 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       });
 
       // Modal should stay open
-      expect(screen.getByDisplayValue('employed')).toBeInTheDocument();
+      expect(getEmploymentStatusSelect('employed')).toBeInTheDocument();
     });
 
     it('should display field-level error messages', async () => {
       const user = userEvent.setup();
       renderTraineeStatusModal();
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       const saveButton = screen.getByRole('button', { name: /save/i });
       await user.click(saveButton);
@@ -672,10 +694,11 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       const user = userEvent.setup();
       renderTraineeStatusModal();
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       const saveButton = screen.getByRole('button', { name: /save/i });
       await user.click(saveButton);
@@ -689,10 +712,11 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       const user = userEvent.setup();
       renderTraineeStatusModal();
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       // Try to save - should fail
       let saveButton = screen.getByRole('button', { name: /save/i });
@@ -702,12 +726,17 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
         expect(toast.error).toHaveBeenCalled();
       });
 
-      // Fill in job_title
-      const jobTitleInput = screen.getByPlaceholderText(/job title/i) ||
-                           document.querySelector('input[name="job_title"]');
+      // Fill in job_title and employer_name
+      const jobTitleInput = document.querySelector('input[name="job_title"]') ||
+                           screen.queryByPlaceholderText(/job title/i);
+      const employerInput = document.querySelector('input[name="employer_name"]') ||
+                           screen.queryByPlaceholderText(/employer/i);
       
       if (jobTitleInput) {
         await user.type(jobTitleInput, 'Software Engineer');
+      }
+      if (employerInput) {
+        await user.type(employerInput, 'TechCorp');
       }
 
       // Error messages should disappear
@@ -1046,16 +1075,22 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       await user.type(remarksField, 'Completed training');
 
       // Update employment status
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
-      // Fill job title
-      const jobTitleInput = screen.getByPlaceholderText(/job title/i) ||
-                           document.querySelector('input[name="job_title"]');
+      // Fill job title and employer name
+      const jobTitleInput = document.querySelector('input[name="job_title"]') ||
+                           screen.queryByPlaceholderText(/job title/i);
+      const employerInput = document.querySelector('input[name="employer_name"]') ||
+                           screen.queryByPlaceholderText(/employer/i);
       if (jobTitleInput) {
         await user.type(jobTitleInput, 'Software Engineer');
+      }
+      if (employerInput) {
+        await user.type(employerInput, 'TechCorp');
       }
 
       // Save
@@ -1089,21 +1124,22 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal();
 
       // Change to employed
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       // Fill all employment fields
       const jobTitleInput = document.querySelector('input[name="job_title"]');
       const employerInput = document.querySelector('input[name="employer_name"]');
       const jobStartInput = document.querySelector('input[name="job_start_date"]');
-      const jobSectorInput = document.querySelector('input[name="job_sector"]');
+      const jobSectorInput = document.querySelector('select[name="job_sector"], input[name="job_sector"]') as HTMLElement | null;
 
       if (jobTitleInput) await user.type(jobTitleInput, 'Dev Lead');
       if (employerInput) await user.type(employerInput, 'Big Tech');
       if (jobStartInput) await user.type(jobStartInput, '2024-02-01');
-      if (jobSectorInput) await user.type(jobSectorInput, 'Technology');
+      if (jobSectorInput) fireEvent.change(jobSectorInput, { target: { value: 'Technology' } });
 
       // Save
       const saveButton = screen.getByRole('button', { name: /save/i });
@@ -1143,10 +1179,11 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       await user.clear(remarksField);
       await user.type(remarksField, updateData.remarks);
 
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       const jobTitleInput = document.querySelector('input[name="job_title"]');
       const employerInput = document.querySelector('input[name="employer_name"]');
@@ -1259,13 +1296,14 @@ describe('TraineeStatusModal - E2E Tests (Tasks 9.1-9.10)', () => {
       renderTraineeStatusModal();
 
       // Initial state: pending
-      expect(screen.getByDisplayValue('pending')).toBeInTheDocument();
+      expect(getEmploymentStatusSelect('pending')).toBeInTheDocument();
 
       // Change to employed
-      const employmentStatusSelect = screen.getByDisplayValue('pending');
+      const employmentStatusSelect = getEmploymentStatusSelect('pending');
       await user.click(employmentStatusSelect);
-      const employedOption = screen.getByRole('option', { name: /employed/i });
+      const employedOption = screen.getByRole('option', { name: /^employed$/i });
       await user.click(employedOption);
+      fireEvent.change(employmentStatusSelect, { target: { value: 'employed' } });
 
       const jobTitleInput = document.querySelector('input[name="job_title"]');
       const employerInput = document.querySelector('input[name="employer_name"]');

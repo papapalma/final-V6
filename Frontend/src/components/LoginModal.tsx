@@ -329,9 +329,6 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
             return prev - 1;
           });
         }, 1000);
-
-        // Cleanup timer on unmount
-        return () => clearInterval(timer);
       } else {
         setTwoFAError(response.message || 'Failed to resend code');
         setCanResend(true);
@@ -430,8 +427,8 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
       return;
     }
 
-    if (newPassword.length < 10) {
-      setForgotPasswordError('Password must be at least 10 characters');
+    if (newPassword.length < 6) {
+      setForgotPasswordError('Password must be at least 6 characters');
       return;
     }
 
@@ -712,7 +709,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
                   <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-2">
                     <p className="text-xs font-medium text-foreground">Password requirements:</p>
                     <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>• At least 10 characters</li>
+                      <li>• At least 6 characters</li>
                       <li>• 1 uppercase letter (A-Z)</li>
                       <li>• 1 lowercase letter (a-z)</li>
                       <li>• 1 number (0-9)</li>

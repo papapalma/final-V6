@@ -151,7 +151,7 @@ class ProgramService {
    */
   async enrollTraineeInProgram(programId: string, data: { trainee_id: string }): Promise<any> {
     try {
-      const response = await api.post(/programs//enroll, data);
+      const response = await api.post(`/programs/${programId}/enroll`, data);
       return response.data;
     } catch (error) {
       console.error('Error enrolling trainee in program:', error);

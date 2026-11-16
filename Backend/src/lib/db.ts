@@ -1,9 +1,11 @@
 import { supabaseAdmin } from './supabase-admin';
 
 export class DatabaseError extends Error {
+  public statusCode: number = 500;
   constructor(message: string, public code?: string) {
     super(message);
     this.name = 'DatabaseError';
+    this.statusCode = code && ['UNIQUE', 'FK', '23505', '23503'].includes(code) ? 400 : 500;
   }
 }
 

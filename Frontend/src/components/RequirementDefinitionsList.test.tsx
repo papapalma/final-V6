@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { RequirementDefinitionsList } from './RequirementDefinitionsList';
 import * as useRequirementDefinitionsHook from '../hooks/useRequirementDefinitions';
 import type { RequirementDefinition } from '../types/requirementDefinition';
@@ -45,7 +46,9 @@ function createTestWrapper() {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        {children}
+        <MemoryRouter>
+          {children}
+        </MemoryRouter>
       </QueryClientProvider>
     );
   };

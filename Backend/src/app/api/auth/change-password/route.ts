@@ -35,7 +35,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const body = await request.json();
   const parsed = changePasswordSchema.safeParse(body);
   if (!parsed.success) {
-    return errorResponse(parsed.error.errors[0].message, 400);
+    return errorResponse((parsed.error.issues || (parsed.error as any).errors)?.[0]?.message || 'Validation failed', 400);
   }
 
 const { currentPassword, newPassword } = parsed.data;

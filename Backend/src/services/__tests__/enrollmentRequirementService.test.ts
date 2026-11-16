@@ -182,19 +182,21 @@ describe('enrollmentRequirementService', () => {
 
       // Mock supabaseAdmin calls
       const mockSelectChain = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn().mockResolvedValue({ data: mockTraineeProfile, error: null }),
       };
 
       const mockSelectChain2 = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         is: jest.fn().mockReturnThis(),
         order: jest.fn().mockResolvedValue({ data: mockRequirements, error: null }),
       };
 
       const mockInsertChain = {
-        insert: jest.fn().mockReturnThis(),
+        insert: jest.fn().mockResolvedValue({ data: [], error: null }),
         select: jest.fn().mockResolvedValue({ data: [], error: null }),
       };
 
@@ -245,19 +247,21 @@ describe('enrollmentRequirementService', () => {
       ];
 
       const mockSelectChain = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
       };
 
       const mockSelectChain2 = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         is: jest.fn().mockReturnThis(),
         order: jest.fn().mockResolvedValue({ data: mockRequirements, error: null }),
       };
 
       const mockInsertChain = {
-        insert: jest.fn().mockReturnThis(),
+        insert: jest.fn().mockResolvedValue({ data: [], error: null }),
         select: jest.fn().mockResolvedValue({ data: [], error: null }),
       };
 
@@ -283,9 +287,10 @@ describe('enrollmentRequirementService', () => {
       const tenantId = 'tenant-001';
 
       const mockSelectChain = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         is: jest.fn().mockReturnThis(),
-        maybeSingle: vi
+        maybeSingle: jest
           .fn()
           .mockResolvedValue({ data: null, error: { message: 'Database error' } }),
       };
@@ -303,12 +308,14 @@ describe('enrollmentRequirementService', () => {
       const tenantId = 'tenant-001';
 
       const mockSelectChain = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         is: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'profile-001' }, error: null }),
       };
 
       const mockSelectChain2 = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         is: jest.fn().mockReturnThis(),
         order: jest.fn().mockResolvedValue({ data: null, error: { message: 'Query error' } }),
@@ -367,34 +374,35 @@ describe('enrollmentRequirementService', () => {
       ];
 
       const mockSelectChain1 = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn().mockResolvedValue({ data: mockTraineeProfile, error: null }),
       };
 
       const mockSelectChain2 = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        select: vi
-          .fn()
-          .mockResolvedValue({ data: mockEnrollments, error: null }),
+        then: (resolve: any) => Promise.resolve({ data: mockEnrollments, error: null }).then(resolve),
       };
 
-      const mockSelectChain3 = {
-        eq: jest.fn().mockReturnThis(),
-        select: vi
-          .fn()
-          .mockResolvedValue({ data: mockEnrollmentReqs, error: null }),
-      };
-
-      const mockUpdateChain = {
-        eq: jest.fn().mockReturnThis(),
-        update: jest.fn().mockResolvedValue({ data: null, error: null }),
-      };
-
-      (supabaseAdmin.from as any)
-        .mockReturnValueOnce(mockSelectChain1)
-        .mockReturnValueOnce(mockSelectChain2)
-        .mockReturnValueOnce(mockSelectChain3)
-        .mockReturnValueOnce(mockUpdateChain);
+      (supabaseAdmin.from as any).mockImplementation((table: string) => {
+        if (table === 'trainee_status_records') {
+          return mockSelectChain1;
+        }
+        if (table === 'enrollments') {
+          return mockSelectChain2;
+        }
+        if (table === 'enrollment_requirements') {
+          const chain: any = {
+            select: jest.fn().mockReturnThis(),
+            update: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            then: (resolve: any) => Promise.resolve({ data: mockEnrollmentReqs, error: null }).then(resolve),
+          };
+          return chain;
+        }
+        return {};
+      });
 
       const result = await updateEnrollmentRequirementsApplicability(traineeId, tenantId);
 
@@ -429,12 +437,13 @@ describe('enrollmentRequirementService', () => {
       ];
 
       const mockSelectChain = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        select: jest.fn().mockResolvedValue({ data: mockData, error: null }),
-        order: jest.fn().mockResolvedValue({ data: mockData, error: null }),
+        order: jest.fn().mockReturnThis(),
+        then: (resolve: any) => Promise.resolve({ data: mockData, error: null }).then(resolve),
       };
 
-      (supabaseAdmin.from as any).mockReturnValueOnce(mockSelectChain);
+      (supabaseAdmin.from as any).mockReturnValue(mockSelectChain);
 
       const result = await getEnrollmentRequirementsWithDetails(enrollmentId);
 
@@ -454,12 +463,13 @@ describe('enrollmentRequirementService', () => {
       const enrollmentId = 'enrollment-001';
 
       const mockSelectChain = {
+        select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        select: jest.fn().mockResolvedValue({ data: [], error: null }),
-        order: jest.fn().mockResolvedValue({ data: [], error: null }),
+        order: jest.fn().mockReturnThis(),
+        then: (resolve: any) => Promise.resolve({ data: [], error: null }).then(resolve),
       };
 
-      (supabaseAdmin.from as any).mockReturnValueOnce(mockSelectChain);
+      (supabaseAdmin.from as any).mockReturnValue(mockSelectChain);
 
       const result = await getEnrollmentRequirementsWithDetails(enrollmentId, false);
 

@@ -50,6 +50,18 @@ interface CMSSettings {
     ctaPrimary: string;
     ctaSecondary: string;
   };
+  features: Array<{
+    icon: string;
+    title: string;
+    description: string;
+  }>;
+  ctaBanner?: {
+    badge: string;
+    heading: string;
+    description: string;
+    ctaPrimaryText: string;
+    ctaSecondaryText: string;
+  };
   appearance: {
     logo: string;
     heroBackground: string;
@@ -77,6 +89,35 @@ const defaultCmsSettings: CMSSettings = {
     ctaPrimary: 'Enroll Now',
     ctaSecondary: 'Browse Programs',
   },
+  ctaBanner: {
+    badge: 'Admissions Open',
+    heading: 'Ready to Transform Your Career?',
+    description: 'Join thousands of successful graduates who have built rewarding careers through our programs.',
+    ctaPrimaryText: 'Enroll Now',
+    ctaSecondaryText: 'Explore Courses',
+  },
+  features: [
+    {
+      icon: 'Wrench',
+      title: 'Practical Workstations',
+      description: 'Real equipment, workshops, and industry-standard tools to build genuine competency.',
+    },
+    {
+      icon: 'Award',
+      title: 'Accredited Curriculum',
+      description: 'Programs structured to meet official regional and national skill standards.',
+    },
+    {
+      icon: 'Users2',
+      title: 'Expert Mentorship',
+      description: 'Experienced trainers dedicated to one-on-one guidance and skill assessment.',
+    },
+    {
+      icon: 'Compass',
+      title: 'Career Advancement',
+      description: 'Direct connections to local industry, apprenticeships, and livelihood projects.',
+    },
+  ],
   appearance: {
     logo: '',
     heroBackground: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=900&fit=crop',
@@ -94,6 +135,20 @@ const defaultCmsSettings: CMSSettings = {
     companyName: 'Bongabong Manpower Development Center',
     tagline: 'Empowering Communities Through Practical Skills',
   },
+};
+
+const getIconComponent = (iconName?: string) => {
+  switch (iconName) {
+    case 'Award':
+      return Award;
+    case 'Users2':
+      return Users2;
+    case 'Compass':
+      return Compass;
+    case 'Wrench':
+    default:
+      return Wrench;
+  }
 };
 
 // Format date helper
@@ -216,24 +271,46 @@ export default function LandingPage() {
     const loadCmsSettings = async () => {
       if (!selectedTenantId) return;
       try {
-        const response = await api.get('/landing-content');
-        if (response.success && response.data) {
+        let response = await api.get('/cms-settings');
+        if (!response || !response.success || !response.data) {
+          response = await api.get('/landing-content');
+        }
+        if (response && response.success && response.data) {
           // Transform new comprehensive structure to old structure for backward compatibility
           const data = response.data;
           const transformedSettings: CMSSettings = {
-            ...defaultCmsSettings,
             hero: {
-              badge: data.content?.hero?.badge || data.hero?.badge || '',
-              title: data.content?.hero?.heading || data.hero?.title || '',
-              subtitle: data.content?.hero?.subheading || data.hero?.subtitle || '',
-              ctaPrimary: data.content?.hero?.ctaText || data.hero?.ctaPrimary || 'Enroll Now',
-              ctaSecondary: data.hero?.ctaSecondary || 'Browse Programs',
+              badge: data.content?.hero?.badge || data.hero?.badge || defaultCmsSettings.hero.badge,
+              title: data.content?.hero?.heading || data.hero?.title || defaultCmsSettings.hero.title,
+              subtitle: data.content?.hero?.subheading || data.hero?.subtitle || defaultCmsSettings.hero.subtitle,
+              ctaPrimary: data.content?.hero?.ctaText || data.hero?.ctaPrimary || defaultCmsSettings.hero.ctaPrimary,
+              ctaSecondary: data.hero?.ctaSecondary || defaultCmsSettings.hero.ctaSecondary,
             },
-            appearance: data.content?.appearance || data.appearance || {},
-            mission: data.content?.missionVision?.description || data.mission || '',
-            vision: data.content?.missionVision?.vision || data.vision || '',
-            contact: data.content?.contact || data.contact || {},
-            footer: data.content?.footer || data.footer || {},
+            ctaBanner: {
+              badge: data.content?.ctaBanner?.badge || data.ctaBanner?.badge || defaultCmsSettings.ctaBanner!.badge,
+              heading: data.content?.ctaBanner?.heading || data.ctaBanner?.heading || defaultCmsSettings.ctaBanner!.heading,
+              description: data.content?.ctaBanner?.description || data.ctaBanner?.description || defaultCmsSettings.ctaBanner!.description,
+              ctaPrimaryText: data.content?.ctaBanner?.ctaPrimaryText || data.ctaBanner?.ctaPrimaryText || defaultCmsSettings.ctaBanner!.ctaPrimaryText,
+              ctaSecondaryText: data.content?.ctaBanner?.ctaSecondaryText || data.ctaBanner?.ctaSecondaryText || defaultCmsSettings.ctaBanner!.ctaSecondaryText,
+            },
+            features: data.content?.features || data.features || defaultCmsSettings.features,
+            appearance: {
+              logo: data.content?.appearance?.logo || data.appearance?.logo || defaultCmsSettings.appearance.logo,
+              heroBackground: data.content?.appearance?.heroBackground || data.appearance?.heroBackground || defaultCmsSettings.appearance.heroBackground,
+            },
+            mission: data.content?.missionVision?.description || data.mission || defaultCmsSettings.mission,
+            vision: data.content?.missionVision?.vision || data.vision || defaultCmsSettings.vision,
+            contact: {
+              address: data.content?.contact?.address || data.contact?.address || defaultCmsSettings.contact.address,
+              addressLine2: data.content?.contact?.addressLine2 || data.contact?.addressLine2 || defaultCmsSettings.contact.addressLine2,
+              phone: data.content?.contact?.phone || data.contact?.phone || defaultCmsSettings.contact.phone,
+              email: data.content?.contact?.email || data.contact?.email || defaultCmsSettings.contact.email,
+              facebook: data.content?.contact?.facebook || data.contact?.facebook || defaultCmsSettings.contact.facebook,
+            },
+            footer: {
+              companyName: data.content?.footer?.companyName || data.footer?.companyName || defaultCmsSettings.footer.companyName,
+              tagline: data.content?.footer?.tagline || data.footer?.tagline || defaultCmsSettings.footer.tagline,
+            },
           };
           setCmsSettings(transformedSettings);
         }
@@ -560,43 +637,28 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              {
-                icon: Wrench,
-                title: 'Practical Workstations',
-                description: 'Real equipment, workshops, and industry-standard tools to build genuine competency.',
-              },
-              {
-                icon: Award,
-                title: 'Accredited Curriculum',
-                description: 'Programs structured to meet official regional and national skill standards.',
-              },
-              {
-                icon: Users2,
-                title: 'Expert Mentorship',
-                description: 'Experienced trainers dedicated to one-on-one guidance and skill assessment.',
-              },
-              {
-                icon: Compass,
-                title: 'Career Advancement',
-                description: 'Direct connections to local industry, apprenticeships, and livelihood projects.',
-              },
-            ].map((pillar, i) => (
-              <motion.div
-                key={pillar.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.4 }}
-                className="group relative rounded-2xl border border-border bg-card p-6 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
-              >
-                <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                  <pillar.icon className="size-6" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2 text-foreground">{pillar.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{pillar.description}</p>
-              </motion.div>
-            ))}
+            {(cmsSettings.features && cmsSettings.features.length > 0
+              ? cmsSettings.features
+              : defaultCmsSettings.features
+            ).map((pillar, i) => {
+              const IconComponent = getIconComponent(pillar.icon);
+              return (
+                <motion.div
+                  key={`${pillar.title}-${i}`}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1, duration: 0.4 }}
+                  className="group relative rounded-2xl border border-border bg-card p-6 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
+                >
+                  <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                    <IconComponent className="size-6" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2 text-foreground">{pillar.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{pillar.description}</p>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -853,15 +915,15 @@ export default function LandingPage() {
           <div className="max-w-3xl mx-auto text-center space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-semibold text-black">
               <Sparkles className="size-3.5 text-black" />
-              <span>Admissions Open</span>
+              <span>{getValue(cmsSettings?.ctaBanner?.badge) || defaultCmsSettings.ctaBanner!.badge}</span>
             </div>
 
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-black leading-tight">
-              Ready to Build Your New Career?
+              {getValue(cmsSettings?.ctaBanner?.heading) || defaultCmsSettings.ctaBanner!.heading}
             </h2>
 
             <p className="text-black text-sm sm:text-base md:text-lg leading-relaxed max-w-xl mx-auto font-medium">
-              Enroll today and take your first step toward mastery in practical trades, digital competency, and technical skills.
+              {getValue(cmsSettings?.ctaBanner?.description) || defaultCmsSettings.ctaBanner!.description}
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
@@ -870,7 +932,7 @@ export default function LandingPage() {
                 onClick={() => setIsRegistrationModalOpen(true)}
                 className="bg-primary hover:bg-primary/90 text-white font-bold px-8 h-12"
               >
-                Enroll Now
+                {getValue(cmsSettings?.ctaBanner?.ctaPrimaryText) || defaultCmsSettings.ctaBanner!.ctaPrimaryText}
                 <ArrowRight className="size-4 ml-2" />
               </Button>
               <a href="#programs">
@@ -879,7 +941,7 @@ export default function LandingPage() {
                   size="lg"
                   className="border-2 border-black bg-white hover:bg-gray-100 text-black font-bold px-6 h-12"
                 >
-                  Explore Courses
+                  {getValue(cmsSettings?.ctaBanner?.ctaSecondaryText) || defaultCmsSettings.ctaBanner!.ctaSecondaryText}
                 </Button>
               </a>
             </div>

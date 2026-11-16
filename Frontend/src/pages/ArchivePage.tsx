@@ -178,8 +178,10 @@ export default function ArchivePage() {
   }, []);
 
   const handlePurgeSingle = useCallback((item: ArchivedItem) => {
-    if (!item.eligible_for_purge) {
-      toast.warning(`Not eligible for purge. ${item.days_remaining} days remaining.`);
+    const isEligible = item.eligibleForPurge ?? item.eligible_for_purge;
+    const remaining = item.daysRemaining ?? item.days_remaining;
+    if (!isEligible) {
+      toast.warning(`Not eligible for purge. ${remaining} days remaining.`);
       return;
     }
     setSelectedItem(item);
@@ -263,7 +265,7 @@ export default function ArchivePage() {
   const bulkPurgeDisabled = useMemo(() => {
     return Array.from(selectedItems.keys()).some((id) => {
       const item = items.find((i) => i.id === id);
-      return item && !item.eligible_for_purge;
+      return item && !(item.eligibleForPurge ?? item.eligible_for_purge);
     });
   }, [selectedItems, items]);
 
@@ -466,8 +468,8 @@ export default function ArchivePage() {
                       <PaginationContent>
                         <PaginationItem>
                           <PaginationPrevious
-                            onClick={() => handlePageChange(pagination.page - 1)}
-                            disabled={pagination.page === 1}
+                            onClick={() => pagination.page > 1 && handlePageChange(pagination.page - 1)}
+                            className={pagination.page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                           />
                         </PaginationItem>
 
@@ -521,8 +523,8 @@ export default function ArchivePage() {
 
                         <PaginationItem>
                           <PaginationNext
-                            onClick={() => handlePageChange(pagination.page + 1)}
-                            disabled={pagination.page === pagination.totalPages}
+                            onClick={() => pagination.page < pagination.totalPages && handlePageChange(pagination.page + 1)}
+                            className={pagination.page === pagination.totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                           />
                         </PaginationItem>
                       </PaginationContent>

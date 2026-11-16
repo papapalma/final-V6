@@ -83,7 +83,7 @@ export function ProgramLinkGenerator({
       } catch (err) {
         setError(
           err instanceof Error 
-            ? err.message 
+            ? `Failed to generate shareable link: ${err.message}`
             : 'Failed to generate shareable link'
         );
       } finally {

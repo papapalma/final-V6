@@ -65,6 +65,11 @@ describe('PATCH /api/requirement-definitions/{id} - Integration Tests', () => {
     const createMockChain = () => ({
       select: jest.fn().mockReturnValue({
         eq: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            is: jest.fn().mockReturnValue({
+              single: mockSingleFn,
+            }),
+          }),
           is: jest.fn().mockReturnValue({
             single: mockSingleFn,
           }),

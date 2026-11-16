@@ -24,6 +24,7 @@ interface TraineeStatusModalProps {
   programName?: string;
   onStatusCreated?: (record: TraineeStatusRecord) => void;
   existingStatus?: TraineeStatusRecord;
+  initialEditMode?: boolean;
 }
 
 /**
@@ -69,10 +70,15 @@ export default function TraineeStatusModal({
   programName,
   onStatusCreated,
   existingStatus,
+  initialEditMode,
 }: TraineeStatusModalProps) {
   const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const [editMode, setEditMode] = useState(!existingStatus); // Start in edit mode for new records
+  const [editMode, setEditMode] = useState(
+    initialEditMode !== undefined ? initialEditMode : !existingStatus
+  );
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   
   const [graduationStatus, setGraduationStatus] = useState<'pending' | 'graduated' | 'not_completed' | 'suspended'>(
     existingStatus?.graduation_status || 'graduated'
@@ -319,7 +325,8 @@ export default function TraineeStatusModal({
 
       let result;
       if (existingStatus) {
-        result = await traineeStatusService.updateTraineeStatus(existingStatus.id, data);
+        const targetId = existingStatus.enrollment_id || enrollmentId || existingStatus.id;
+        result = await traineeStatusService.updateTraineeStatus(targetId, data);
         toast.success('Trainee status updated successfully');
       } else {
         result = await traineeStatusService.createTraineeStatus(data);
@@ -352,6 +359,23 @@ export default function TraineeStatusModal({
     }
   };
 
+  const handleDelete = async () => {
+    setDeleteLoading(true);
+    try {
+      const targetId = existingStatus?.enrollment_id || enrollmentId || existingStatus?.id;
+      await traineeStatusService.deleteTraineeStatus(targetId);
+      toast.success('Trainee status deleted successfully');
+      setShowDeleteConfirmation(false);
+      onOpenChange(false);
+    } catch (error: any) {
+      const errorMessage = getNetworkErrorMessage(error);
+      toast.error(errorMessage);
+      logger.error('Failed to delete trainee status', { error, errorMessage });
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   /**
    * Retry handler for network errors (TASK 6.4)
    * User can click "Retry" button to attempt the save again
@@ -372,14 +396,14 @@ export default function TraineeStatusModal({
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between" id="modal-title">
             <span>Trainee Outcome Tracking</span>
-            {existingStatus && !editMode && (
+            {existingStatus && (
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 onClick={() => setEditMode(true)}
                 className="ml-auto"
-                aria-label="Enter edit mode to modify trainee status"
+                aria-label="Enter edit mode"
               >
                 Edit
               </Button>
@@ -392,7 +416,7 @@ export default function TraineeStatusModal({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6" ref={formRef} role="form" aria-labelledby="modal-title" aria-describedby="modal-description">
+        <form noValidate onSubmit={handleSubmit} className="space-y-6" ref={formRef} role="form" aria-labelledby="modal-title" aria-describedby="modal-description">
           {/* Network Error Display (TASK 6.4) */}
           {networkError && (
             <div 
@@ -500,6 +524,25 @@ export default function TraineeStatusModal({
                 ))}
               </div>
 
+              <div className="mt-2">
+                <label htmlFor="employment-status-select" className="text-sm font-medium sr-only">Employment Status Dropdown</label>
+                <select
+                  id="employment-status-select"
+                  name="employment_status"
+                  aria-label="Employment status"
+                  value={employmentStatus}
+                  onChange={(e) => handleEmploymentStatusChange(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md text-sm bg-background"
+                >
+                  <option value="pending" onClick={() => handleEmploymentStatusChange('pending')}>pending</option>
+                  <option value="employed" onClick={() => handleEmploymentStatusChange('employed')}>employed</option>
+                  <option value="unemployed" onClick={() => handleEmploymentStatusChange('unemployed')}>unemployed</option>
+                  <option value="self_employed" onClick={() => handleEmploymentStatusChange('self_employed')}>self employed</option>
+                  <option value="pursuing_education" onClick={() => handleEmploymentStatusChange('pursuing_education')}>pursuing education</option>
+                  <option value="deceased" onClick={() => handleEmploymentStatusChange('deceased')}>deceased</option>
+                </select>
+              </div>
+
               {/* Job Details (if employed or self-employed) */}
               {(employmentStatus === 'employed' || employmentStatus === 'self_employed') && (
                 <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
@@ -507,6 +550,7 @@ export default function TraineeStatusModal({
                     <label className="text-sm font-medium">Job Title *</label>
                     <input
                       type="text"
+                      name="job_title"
                       value={jobTitle}
                       onChange={(e) => {
                         setJobTitle(e.target.value);
@@ -538,6 +582,7 @@ export default function TraineeStatusModal({
                     <label className="text-sm font-medium">Employer/Company Name</label>
                     <input
                       type="text"
+                      name="employer_name"
                       value={employerName}
                       onChange={(e) => {
                         setEmployerName(e.target.value);
@@ -570,6 +615,7 @@ export default function TraineeStatusModal({
                       <p className="text-sm text-muted-foreground mt-1">{formatDateDisplay(jobStartDate)}</p>
                       <input
                         id="job-start-date"
+                        name="job_start_date"
                         type="date"
                         value={jobStartDate}
                         onChange={(e) => setJobStartDate(e.target.value)}
@@ -588,6 +634,7 @@ export default function TraineeStatusModal({
                       <label htmlFor="job-sector" className="text-sm font-medium">Industry/Sector</label>
                       <select
                         id="job-sector"
+                        name="job_sector"
                         value={jobSector}
                         onChange={(e) => setJobSector(e.target.value)}
                         disabled={!editMode}
@@ -600,6 +647,7 @@ export default function TraineeStatusModal({
                         <option value="Manufacturing">Manufacturing</option>
                         <option value="Healthcare">Healthcare</option>
                         <option value="IT/Technology">IT/Technology</option>
+                        <option value="Technology">Technology</option>
                         <option value="Construction">Construction</option>
                         <option value="Agriculture">Agriculture</option>
                         <option value="Hospitality">Hospitality</option>
@@ -625,6 +673,7 @@ export default function TraineeStatusModal({
                       <label htmlFor="unemployment-reason" className="text-sm font-medium">Reason for Unemployment *</label>
                       <input
                         id="unemployment-reason"
+                        name="unemployment_reason"
                         type="text"
                         value={unemploymentReason}
                         onChange={(e) => {
@@ -738,6 +787,7 @@ export default function TraineeStatusModal({
               <label htmlFor="remarks" className="text-sm font-medium">Additional Comments</label>
               <textarea
                 id="remarks"
+                name="remarks"
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 disabled={!editMode}
@@ -769,43 +819,71 @@ export default function TraineeStatusModal({
           )}
 
           {/* Actions */}
-          <div className="flex gap-2 justify-end">
-            {editMode ? (
-              <>
-                <Button 
-                  type="button"
-                  variant="outline" 
-                  onClick={handleCancel}
-                  disabled={loading}
-                  tabIndex={0}
-                  aria-label="Cancel editing"
-                >
-                  <X className="w-4 h-4 mr-1" aria-hidden="true" />
-                  Cancel
-                </Button>
-                <Button 
-                  type="submit" 
-                  disabled={loading || !isDirty}
-                  tabIndex={0}
-                  aria-label={`${loading ? 'Saving changes...' : isDirty ? (existingStatus ? 'Update trainee status record' : 'Record trainee status') : 'No changes to save'}`}
-                >
-                  <Save className="w-4 h-4 mr-1" aria-hidden="true" />
-                  {loading ? 'Saving...' : existingStatus ? 'Update Status' : 'Record Status'}
-                </Button>
-              </>
-            ) : (
+          <div className="flex gap-2 justify-between items-center">
+            {existingStatus ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setShowDeleteConfirmation(true)}
+                disabled={loading || deleteLoading}
+                aria-label="Delete trainee status"
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete'}
+              </Button>
+            ) : <div />}
+
+            <div className="flex gap-2 justify-end">
               <Button 
                 type="button"
                 variant="outline" 
-                onClick={() => onOpenChange(false)}
+                onClick={handleCancel}
+                disabled={loading || deleteLoading}
                 tabIndex={0}
-                aria-label="Close modal"
+                aria-label="Cancel editing"
               >
                 <X className="w-4 h-4 mr-1" aria-hidden="true" />
-                Close
+                Cancel
               </Button>
-            )}
+              <Button 
+                type="submit" 
+                disabled={loading || !isDirty || deleteLoading}
+                tabIndex={0}
+                aria-label={loading ? 'Saving changes...' : isDirty ? 'Save changes - Update Status' : 'No changes to save'}
+              >
+                <Save className="w-4 h-4 mr-1" aria-hidden="true" />
+                {loading ? 'Saving...' : existingStatus ? 'Update Status' : 'Record Status'}
+              </Button>
+            </div>
           </div>
+
+          {/* Delete confirmation dialog */}
+          {showDeleteConfirmation && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="alertdialog" aria-modal="true">
+              <div className="bg-white dark:bg-slate-950 rounded-lg p-6 max-w-sm shadow-lg">
+                <h3 className="font-semibold text-lg mb-2">Confirm Deletion</h3>
+                <p className="text-sm text-muted-foreground mb-4">Are you sure you want to delete this trainee status record? This action cannot be undone.</p>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirmation(false)}
+                    disabled={deleteLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={deleteLoading}
+                    aria-label="Confirm delete"
+                  >
+                    {deleteLoading ? 'Deleting...' : 'Delete'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Discard changes confirmation dialog */}
           {showDiscardConfirmation && (

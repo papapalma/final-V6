@@ -33,12 +33,18 @@ import { toast } from 'sonner';
  */
 vi.mock('../../services/programSharingService');
 vi.mock('sonner');
-vi.mock('../../utils/logger', () => ({
-  logger: {
+vi.mock('../../utils/logger', () => {
+  const mockLogger = {
     info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
-  },
-}));
+    debug: vi.fn(),
+  };
+  return {
+    default: mockLogger,
+    logger: mockLogger,
+  };
+});
 vi.mock('../../utils/pwa', () => ({
   initializePWA: vi.fn(),
 }));

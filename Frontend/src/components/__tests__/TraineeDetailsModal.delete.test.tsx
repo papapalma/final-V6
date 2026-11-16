@@ -36,8 +36,8 @@ const createAuthMock = (hasPermission: boolean = true) => ({
   hasPermission: vi.fn((perm: string) => hasPermission ? perm === 'canManageTrainees' : false),
 });
 
-vi.mock('../../contexts/AuthContext', () => {
-  const actualModule = vi.importActual<any>('../../contexts/AuthContext');
+vi.mock('../../contexts/AuthContext', async () => {
+  const actualModule = await vi.importActual<any>('../../contexts/AuthContext');
   return {
     ...actualModule,
     useAuth: vi.fn(() => createAuthMock(true)), // Default: has permission

@@ -32,7 +32,7 @@ describe('useArchiveFilters', () => {
     const { result } = renderHook(() => useArchiveFilters());
 
     expect(result.current.filters).toEqual({
-      entityType: '',
+      entityType: 'trainee',
       search: '',
       page: 1,
       limit: 20,

@@ -528,7 +528,7 @@ describe('getCycledDeviceId', () => {
   it('(PBT) Property 5: camera switch cycles in enumeration order', () => {
     fc.assert(
       fc.property(
-        fc.array(fc.string({ minLength: 1 }), { minLength: 2, maxLength: 10 }),
+        fc.uniqueArray(fc.string({ minLength: 1 }), { minLength: 2, maxLength: 10 }),
         fc.nat(),
         (deviceIds, startIndex) => {
           const i = startIndex % deviceIds.length;
@@ -547,7 +547,7 @@ describe('getCycledDeviceId', () => {
   it('(PBT) Property 5.1: applying cycle n times returns to original', () => {
     fc.assert(
       fc.property(
-        fc.array(fc.string({ minLength: 1 }), { minLength: 1, maxLength: 10 }),
+        fc.uniqueArray(fc.string({ minLength: 1 }), { minLength: 1, maxLength: 10 }),
         deviceIds => {
           let current = deviceIds[0];
           for (let i = 0; i < deviceIds.length; i++) {

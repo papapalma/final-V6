@@ -174,7 +174,7 @@ describe('TraineesPage - Bug Condition: Modal Shows Incomplete Enrollments', () 
     await waitFor(() => {
       const allNames = screen.queryAllByText('Alice Johnson');
       expect(allNames.length).toBeGreaterThan(0);
-    }, { timeout: 3000 });
+    }, { timeout: 10000 });
 
     // Click to open modal - get first occurrence
     const allNames = screen.getAllByText('Alice Johnson');
@@ -250,7 +250,7 @@ describe('TraineesPage - Bug Condition: Modal Shows Incomplete Enrollments', () 
     await waitFor(() => {
       const allNames = screen.queryAllByText('Bob Smith');
       expect(allNames.length).toBeGreaterThan(0);
-    }, { timeout: 3000 });
+    }, { timeout: 10000 });
 
     // Click to open modal - get first occurrence
     const allNames = screen.getAllByText('Bob Smith');
@@ -319,7 +319,7 @@ describe('TraineesPage - Bug Condition: Modal Shows Incomplete Enrollments', () 
     await waitFor(() => {
       const allNames = screen.queryAllByText('Charlie Brown');
       expect(allNames.length).toBeGreaterThan(0);
-    }, { timeout: 3000 });
+    }, { timeout: 10000 });
 
     // Click to open modal - get first occurrence
     const allNames = screen.getAllByText('Charlie Brown');

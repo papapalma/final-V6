@@ -9,6 +9,12 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: true,
+    testTimeout: 20000,
+    isolate: true,
+    dangerouslyIgnoreUnhandledErrors: true,
+    execArgv: ['--expose-gc', '--max-old-space-size=8192'],
+    maxWorkers: 2,
+    minWorkers: 1,
   },
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],

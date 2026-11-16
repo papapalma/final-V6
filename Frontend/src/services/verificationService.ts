@@ -31,7 +31,7 @@ class VerificationService {
       '/verification/send-code',
       params
     );
-    return response;
+    return response.data;
   }
 
   /**
@@ -42,7 +42,7 @@ class VerificationService {
       '/verification/verify-code',
       { email, code }
     );
-    return response;
+    return response.data;
   }
 
   /**
@@ -53,7 +53,7 @@ class VerificationService {
       '/verification/check-status',
       { email }
     );
-    return response;
+    return response.data;
   }
 }
 

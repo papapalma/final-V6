@@ -62,7 +62,8 @@ class EnrollmentServiceWithFallback {
       // WebSocket unavailable, must use REST API
       const enrollments = await this.apiClient.getEnrollments(traineeId);
 
-      // Update cache with fresh data
+      // Clear stale data and update cache with fresh data
+      this.cache.clear();
       for (const enrollment of enrollments) {
         this.cache.set(enrollment.id, enrollment);
       }
@@ -153,14 +154,14 @@ describe('Property: Fallback to API on Disconnection (Req 6.3)', () => {
     trainee_id: fc.uuid(),
     program_id: fc.uuid(),
     status: fc.constantFrom('enrolled', 'active', 'completed', 'dropped', 'failed'),
-    enrollment_date: fc.date({ min: new Date('2020-01-01'), max: new Date() }).map(
-      (date) => date.toISOString().split('T')[0]
+    enrollment_date: fc.date({ min: new Date('2020-01-01'), max: new Date('2026-12-31') }).map(
+      (date) => (Number.isNaN(date.getTime()) ? '2022-01-01' : date.toISOString().split('T')[0])
     ),
     created_at: fc.date({ min: new Date('2020-01-01'), max: new Date('2024-01-01') }).map(
-      (date) => date.toISOString()
+      (date) => (Number.isNaN(date.getTime()) ? '2022-01-01T00:00:00.000Z' : date.toISOString())
     ),
-    updated_at: fc.date({ min: new Date('2024-01-01'), max: new Date() }).map(
-      (date) => date.toISOString()
+    updated_at: fc.date({ min: new Date('2024-01-01'), max: new Date('2026-12-31') }).map(
+      (date) => (Number.isNaN(date.getTime()) ? '2024-01-01T00:00:00.000Z' : date.toISOString())
     ),
   });
 
@@ -197,6 +198,7 @@ describe('Property: Fallback to API on Disconnection (Req 6.3)', () => {
           newEnrollments: fc.array(enrollmentArbitrary, { minLength: 2, maxLength: 5 }),
         }),
         async (scenario) => {
+          service.clearCache();
           // Setup: Cache has old data
           for (const enrollment of scenario.oldEnrollments) {
             // Manually add to cache (simulating old cached data)
@@ -331,6 +333,7 @@ describe('Property: Fallback to API on Disconnection (Req 6.3)', () => {
           freshEnrollments: fc.array(enrollmentArbitrary, { minLength: 1, maxLength: 3 }),
         }),
         async (scenario) => {
+          service.clearCache();
           // Setup: Cache has stale data
           for (const enrollment of scenario.staleEnrollments) {
             service['cache'].set(enrollment.id, enrollment);

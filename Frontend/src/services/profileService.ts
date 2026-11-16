@@ -190,7 +190,7 @@ export async function saveSectionChanges(
     const response = await api.put('/api/trainee/profile', payload);
 
     // Check if response is successful
-    if (response.status === 200 || response.status === 201) {
+    if (response.success || (response as any).status === 200 || (response as any).status === 201) {
       return {
         success: true,
         message: `${sectionId} section saved successfully`,

@@ -74,12 +74,15 @@ interface SelectionTokenEntry {
 const selectionTokenStore = new Map<string, SelectionTokenEntry>();
 
 /** Evict expired selection tokens every minute */
-setInterval(() => {
+const selectionTokenEvictionInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of selectionTokenStore) {
     if (entry.expiresAt <= now) selectionTokenStore.delete(key);
   }
 }, 60_000);
+if (typeof selectionTokenEvictionInterval.unref === 'function') {
+  selectionTokenEvictionInterval.unref();
+}
 
 /** Selection token lifetime: 5 minutes */
 const SELECTION_TOKEN_TTL_MS = 5 * 60 * 1000;

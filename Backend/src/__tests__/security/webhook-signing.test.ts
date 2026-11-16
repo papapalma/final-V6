@@ -118,7 +118,7 @@ describe('Webhook Verification - verifyWebhookSignature()', () => {
 
   it('Invalid signature: should reject tampered signature', () => {
     const signed = signWebhook(payload, secret);
-    const tamperedSig = signed.signature.slice(0, -1) + '0';
+    const tamperedSig = signed.signature.slice(0, -1) + (signed.signature.endsWith('0') ? '1' : '0');
 
     const result = verifyWebhookSignature({
       payload,

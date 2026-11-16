@@ -721,7 +721,7 @@ describe('8.10: Error responses include proper error messages', () => {
     expect(result.success).toBe(false);
 
     if (!result.success) {
-      const errors = result.error.errors;
+      const errors = result.error.issues || (result.error as any).errors || [];
       expect(errors.length).toBeGreaterThan(0);
       // Error should include field path
       expect(errors.some((e) => e.path.length > 0)).toBe(true);

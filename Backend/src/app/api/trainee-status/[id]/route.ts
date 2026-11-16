@@ -113,7 +113,8 @@ export const PATCH = withErrorHandler(
       if (error.name === 'ZodError') {
         logger.info('PATCH: Validation error encountered');
         const errorMap: Record<string, string[]> = {};
-        error.errors.forEach((err: any) => {
+        const issues = error.issues || error.errors || [];
+        issues.forEach((err: any) => {
           const path = err.path.join('.');
           if (!errorMap[path]) {
             errorMap[path] = [];

@@ -37,7 +37,7 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ onError }) => {
   });
   const [admins, setAdmins] = useState<Array<{ id: string; name: string }>>([]);
   const [pagination, setPagination] = useState({
-    limit: 10,
+    limit: 5,
     offset: 0,
     total: 0,
   });
@@ -78,7 +78,7 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ onError }) => {
 
         // Extract unique admin IDs and fetch admin names
         if (data.entries && data.entries.length > 0) {
-          const uniqueAdminIds = [...new Set(data.entries.map((log: AuditLogEntry) => log.admin_id))];
+          const uniqueAdminIds: string[] = Array.from(new Set(data.entries.map((log: AuditLogEntry) => log.admin_id)));
           if (uniqueAdminIds.length > 0) {
             await fetchAdminNames(uniqueAdminIds);
           }
@@ -110,7 +110,7 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ onError }) => {
         body: JSON.stringify({ ids: adminIds }),
       });
 
-      if (!response.ok) {
+      if (!response || !response.ok) {
         console.warn('Failed to fetch admin names');
         return;
       }

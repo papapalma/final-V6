@@ -91,7 +91,7 @@ const webSocketMessageSchema = z.object({
     'pong',
     'subscription-ack',
     'error',
-  ], { errorMap: () => ({ message: 'Invalid message type' }) }),
+  ]),
   data: z.object({
     token: z.string().optional(),
     enrollmentId: z.string().uuid().optional(),
@@ -436,7 +436,7 @@ class WebSocketClient {
       // Step 1: Parse JSON from message
       message = JSON.parse(event.data) as WebSocketMessage;
     } catch (parseError) {
-      const _error = parseError instanceof Error ? parseError : new Error('Unknown parse error');
+      const error = parseError instanceof Error ? parseError : new Error('Unknown parse error');
       console.error('[WebSocket] Failed to parse message JSON:', error.message);
       this.emitError(new Error(`Invalid WebSocket message format: ${error.message}`));
       return; // Discard unparseable message
@@ -476,11 +476,11 @@ class WebSocketClient {
     } catch (error) {
       // Step 4: Log validation errors without crashing
       if (error instanceof z.ZodError) {
-        const errors = Array.isArray(error.issues) ? error.issues : error.errors || [];
+        const errors = error.issues || [];
         const validationIssues = errors
-          .map(e => {
-            const path = Array.isArray((e as any).path) ? (e as any).path.join('.') : 'unknown';
-            return `${path}: ${(e as any).message}`;
+          .map((e: any) => {
+            const path = Array.isArray(e.path) ? e.path.join('.') : 'unknown';
+            return `${path}: ${e.message}`;
           })
           .join(', ');
         console.error('[WebSocket] Message validation failed:', validationIssues);
@@ -522,9 +522,9 @@ class WebSocketClient {
    */
   private handleEnrollmentUpdated(message: WebSocketMessage): void {
     if (!message.data?.enrollment) {
-      const _error = 'Enrollment updated message missing enrollment data';
-      console.warn('[WebSocket]', error);
-      this.emitError(new Error(error));
+      const errorMsg = 'Enrollment updated message missing enrollment data';
+      console.warn('[WebSocket]', errorMsg);
+      this.emitError(new Error(errorMsg));
       return;
     }
 
@@ -543,11 +543,11 @@ class WebSocketClient {
       });
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
-        const errors = Array.isArray(validationError.issues) ? validationError.issues : validationError.errors || [];
+        const errors = validationError.issues || [];
         const validationIssues = errors
-          .map(e => {
-            const path = Array.isArray((e as any).path) ? (e as any).path.join('.') : 'unknown';
-            return `${path}: ${(e as any).message}`;
+          .map((e: any) => {
+            const path = Array.isArray(e.path) ? e.path.join('.') : 'unknown';
+            return `${path}: ${e.message}`;
           })
           .join(', ');
         console.error('[WebSocket] Enrollment data validation failed on update message:', validationIssues);
@@ -573,9 +573,9 @@ class WebSocketClient {
    */
   private handleEnrollmentAdded(message: WebSocketMessage): void {
     if (!message.data?.enrollment) {
-      const _error = 'Enrollment added message missing enrollment data';
-      console.warn('[WebSocket]', error);
-      this.emitError(new Error(error));
+      const errorMsg = 'Enrollment added message missing enrollment data';
+      console.warn('[WebSocket]', errorMsg);
+      this.emitError(new Error(errorMsg));
       return;
     }
 
@@ -594,11 +594,11 @@ class WebSocketClient {
       });
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
-        const errors = Array.isArray(validationError.issues) ? validationError.issues : validationError.errors || [];
+        const errors = validationError.issues || [];
         const validationIssues = errors
-          .map(e => {
-            const path = Array.isArray((e as any).path) ? (e as any).path.join('.') : 'unknown';
-            return `${path}: ${(e as any).message}`;
+          .map((e: any) => {
+            const path = Array.isArray(e.path) ? e.path.join('.') : 'unknown';
+            return `${path}: ${e.message}`;
           })
           .join(', ');
         console.error('[WebSocket] Enrollment data validation failed on added message:', validationIssues);
@@ -624,9 +624,9 @@ class WebSocketClient {
    */
   private handleEnrollmentRemoved(message: WebSocketMessage): void {
     if (!message.data?.enrollmentId) {
-      const _error = 'Enrollment removed message missing enrollmentId';
-      console.warn('[WebSocket]', error);
-      this.emitError(new Error(error));
+      const errorMsg = 'Enrollment removed message missing enrollmentId';
+      console.warn('[WebSocket]', errorMsg);
+      this.emitError(new Error(errorMsg));
       return;
     }
 
@@ -648,11 +648,11 @@ class WebSocketClient {
       });
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
-        const errors = Array.isArray(validationError.issues) ? validationError.issues : validationError.errors || [];
+        const errors = validationError.issues || [];
         const validationIssues = errors
-          .map(e => {
-            const path = Array.isArray((e as any).path) ? (e as any).path.join('.') : 'unknown';
-            return `${path}: ${(e as any).message}`;
+          .map((e: any) => {
+            const path = Array.isArray(e.path) ? e.path.join('.') : 'unknown';
+            return `${path}: ${e.message}`;
           })
           .join(', ');
         console.error('[WebSocket] Enrollment ID validation failed on removed message:', validationIssues);

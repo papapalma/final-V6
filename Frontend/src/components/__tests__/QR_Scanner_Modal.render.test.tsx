@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import '@testing-library/jest-dom';
-import { describe, it, expectafterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import QR_Scanner_Modal from '../QR_Scanner_Modal';
 import { AuthProvider } from '../../contexts/AuthContext';
 
@@ -48,8 +48,14 @@ vi.mock('sonner', () => ({
   },
 }));
 
+let shouldJsqrFail = false;
 vi.mock('jsqr', () => ({
-  default: vi.fn(),
+  get default() {
+    if (shouldJsqrFail) {
+      throw new Error('Cannot find module jsqr');
+    }
+    return vi.fn();
+  },
 }));
 
 /**
@@ -238,9 +244,9 @@ describe('QR Scanner Modal - Render Tests (Task 13)', () => {
     const notFoundError = new Error('Camera not found');
     (notFoundError as any).name = 'NotFoundError';
 
-    let _callCount = 0;
+    let callCount = 0;
     const mockGetUserMedia = vi.fn().mockImplementation(() => {
-      ___callCount++;
+      callCount++;
       if (callCount === 1) {
         // First call fails with NotFoundError
         return Promise.reject(notFoundError);
@@ -287,9 +293,9 @@ describe('QR Scanner Modal - Render Tests (Task 13)', () => {
     const notReadableError = new Error('Camera already in use');
     (notReadableError as any).name = 'NotReadableError';
 
-    let _callCount = 0;
+    let callCount = 0;
     const mockGetUserMedia = vi.fn().mockImplementation(() => {
-      ___callCount++;
+      callCount++;
       if (callCount === 1) {
         // First call fails with NotReadableError
         return Promise.reject(notReadableError);
@@ -352,14 +358,7 @@ describe('QR Scanner Modal - Render Tests (Task 13)', () => {
    * Validates: Requirements 10.5
    */
   it('Test 13.4: should show in-viewport error when jsQR fails to load', async () => {
-    // Create a custom mock where jsqr import will fail
-    // We override the vi.mock for jsqr by unmocking and remocking
-    vi.unmock('jsqr');
-    
-    // Now mock jsqr to simulate a load failure
-    vi.doMock('jsqr', () => {
-      throw new Error('Cannot find module jsqr');
-    });
+    shouldJsqrFail = true;
 
     try {
       // Mock successful camera initialization
@@ -406,18 +405,14 @@ describe('QR Scanner Modal - Render Tests (Task 13)', () => {
               return;
             }
           }
-          throw e;
+          throw __error;
         }
       }, { timeout: 2000 });
 
       // Verify Scanner unavailable text is present
       expect(screen.getByText('Scanner unavailable')).toBeInTheDocument();
     } finally {
-      // Restore the original mock
-      vi.doUnmock('jsqr');
-      vi.doMock('jsqr', () => ({
-        default: vi.fn(),
-      }));
+      shouldJsqrFail = false;
     }
   });
 
