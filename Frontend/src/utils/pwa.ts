@@ -2,6 +2,68 @@
 import logger from './logger';
 import { initializePushNotifications } from './pushSubscription';
 
+export interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+let deferredPrompt: BeforeInstallPromptEvent | null = null;
+const installListeners = new Set<(canInstall: boolean) => void>();
+
+// Globally listen for the install prompt as early as possible
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    e.preventDefault();
+    deferredPrompt = e as BeforeInstallPromptEvent;
+    logger.info('PWA install prompt deferred and ready');
+    installListeners.forEach((callback) => callback(true));
+  });
+
+  window.addEventListener('appinstalled', () => {
+    logger.info('PWA installed successfully');
+    deferredPrompt = null;
+    installListeners.forEach((callback) => callback(false));
+  });
+}
+
+// Check if install prompt is currently available
+export function canInstallPWA(): boolean {
+  return deferredPrompt !== null;
+}
+
+// Retrieve deferred install prompt
+export function getDeferredInstallPrompt(): BeforeInstallPromptEvent | null {
+  return deferredPrompt;
+}
+
+// Subscribe to install availability changes
+export function subscribeInstallPrompt(callback: (canInstall: boolean) => void): () => void {
+  installListeners.add(callback);
+  callback(deferredPrompt !== null);
+  return () => {
+    installListeners.delete(callback);
+  };
+}
+
+// Trigger PWA installation prompt
+export async function promptPWAInstall(): Promise<{ outcome: 'accepted' | 'dismissed' | 'unsupported' }> {
+  if (!deferredPrompt) {
+    return { outcome: 'unsupported' };
+  }
+  try {
+    await deferredPrompt.prompt();
+    const result = await deferredPrompt.userChoice;
+    if (result.outcome === 'accepted') {
+      deferredPrompt = null;
+      installListeners.forEach((callback) => callback(false));
+    }
+    return result;
+  } catch (error) {
+    logger.error('Error triggering PWA install prompt', { error });
+    return { outcome: 'unsupported' };
+  }
+}
+
 export function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -52,6 +114,65 @@ export function isIOS(): boolean {
 // Check if running on Android
 export function isAndroid(): boolean {
   return /Android/.test(navigator.userAgent);
+}
+
+// Check if running on Desktop
+export function isDesktop(): boolean {
+  return !isIOS() && !isAndroid() && !/Mobile|Mobi|Tablet|iPad/i.test(navigator.userAgent);
+}
+
+// Get device-specific install instructions
+export function getInstallInstructions(): {
+  platform: 'desktop' | 'ios' | 'android' | 'browser';
+  label: string;
+  steps: string[];
+} {
+  if (isIOS()) {
+    return {
+      platform: 'ios',
+      label: 'Apple iOS (iPhone / iPad)',
+      steps: [
+        'Open this site in Safari.',
+        'Tap the Share button (the square with an arrow pointing up ⎋).',
+        'Scroll down and tap "Add to Home Screen".',
+        'Tap "Add" in the top-right corner to finish.'
+      ]
+    };
+  }
+
+  if (isAndroid()) {
+    return {
+      platform: 'android',
+      label: 'Android Device',
+      steps: [
+        'Tap the "Download & Install App" button or tap browser menu (⋮).',
+        'Select "Install app" or "Add to Home screen".',
+        'Confirm the installation prompt.'
+      ]
+    };
+  }
+
+  if (isDesktop()) {
+    return {
+      platform: 'desktop',
+      label: 'Desktop (Windows / macOS / ChromeOS)',
+      steps: [
+        'Click the "Download & Install App" button below, or look for the Install icon (computer with down arrow or ⊕) in your browser address bar.',
+        'Alternatively, open Chrome/Edge menu (⋮ or …) > "Apps" > "Install Bongabong MDC...".',
+        'Click "Install" to create a desktop app shortcut and launch in a dedicated window.'
+      ]
+    };
+  }
+
+  return {
+    platform: 'browser',
+    label: 'Web Browser',
+    steps: [
+      'Open your browser settings or menu.',
+      'Select "Install BMDC" or "Add to Home Screen".',
+      'Follow the on-screen instructions.'
+    ]
+  };
 }
 
 // Request notification permission

@@ -9,7 +9,9 @@ import { Label } from '../components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Separator } from '../components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Edit2, Save, X, Award, CheckCircle2, BookOpen, Camera } from 'lucide-react';
+import { Edit2, Save, X, Award, CheckCircle2, BookOpen, Camera, Settings, Download } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { isStandalone, canInstallPWA, promptPWAInstall, getInstallInstructions } from '../utils/pwa';
 import { getFileUrl } from '../services/api';
 import { uploadTraineePhoto } from '../utils/fileUpload';
 import { toast } from 'sonner';
@@ -359,6 +361,12 @@ export default function TraineeProfilePage() {
 
             {/* BUTTONS */}
             <div className="flex flex-wrap gap-3">
+              <Link to="/settings">
+                <Button variant="outline" className="gap-2">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Button>
+              </Link>
               {!editing && (
                 <Button onClick={handleEditToggle}>
                   <Edit2 className="h-4 w-4" />
@@ -391,11 +399,12 @@ export default function TraineeProfilePage() {
 
           {/* CONTENT TABS */}
           <Tabs defaultValue="personal" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 max-w-md">
+            <TabsList className="grid w-full grid-cols-5 max-w-lg">
               <TabsTrigger value="personal">Personal</TabsTrigger>
               <TabsTrigger value="contact">Contact</TabsTrigger>
               <TabsTrigger value="certificates">Certs</TabsTrigger>
               <TabsTrigger value="achievements">Awards</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
             {/* PERSONAL TAB */}
@@ -545,6 +554,80 @@ export default function TraineeProfilePage() {
                       ))}
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* SETTINGS TAB */}
+            <TabsContent value="settings" className="mt-6 space-y-6">
+              <Card className="border-2 border-primary/20 shadow-sm bg-gradient-to-br from-card to-primary/5">
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Download className="size-5 text-primary" />
+                        Download BMDC App (PWA)
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Install on your mobile phone or desktop computer for fast offline attendance and portal access
+                      </p>
+                    </div>
+                    {isStandalone() ? (
+                      <Badge variant="default" className="bg-green-600 self-start sm:self-auto">
+                        <CheckCircle2 className="mr-1 size-3" /> Installed App
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="self-start sm:self-auto">
+                        <Download className="mr-1 size-3" /> Ready to Install
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-lg bg-muted/60 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-foreground">Why download the BMDC App?</p>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
+                      <li className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-green-600 shrink-0" />
+                        Works offline with cached training data
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-green-600 shrink-0" />
+                        Quick access to your attendance QR code
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-green-600 shrink-0" />
+                        Desktop icon & phone home screen shortcut
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-green-600 shrink-0" />
+                        Instant alerts and schedule reminders
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 pt-2">
+                    <Button
+                      className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                      onClick={async () => {
+                        if (canInstallPWA()) {
+                          const res = await promptPWAInstall();
+                          if (res.outcome === 'accepted') toast.success('App installed successfully!');
+                        } else {
+                          toast.info(getInstallInstructions().steps[0]);
+                        }
+                      }}
+                    >
+                      <Download className="size-4" />
+                      Download & Install PWA
+                    </Button>
+                    <Link to="/settings">
+                      <Button variant="outline" className="gap-2">
+                        <Settings className="size-4" />
+                        Open Trainee Settings
+                      </Button>
+                    </Link>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

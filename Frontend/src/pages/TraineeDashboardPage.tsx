@@ -31,6 +31,8 @@ import {
   SignalCellularNoSim,
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
+import { Settings as SettingsIcon, Download as DownloadIcon } from 'lucide-react';
+import { isStandalone, canInstallPWA, promptPWAInstall, subscribeInstallPrompt } from '../utils/pwa';
 import { getFileUrl } from '../services/api';
 import traineeService from '../services/traineeService';
 import programService from '../services/programService';
@@ -127,8 +129,12 @@ export default function TraineeDashboardPage() {
   const [excludedDates, setExcludedDates] = useState<ExcludedDate[]>([]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isAppInstalled, setIsAppInstalled] = useState(isStandalone());
+  const [canInstall, setCanInstall] = useState(canInstallPWA());
 
   useEffect(() => {
+    setIsAppInstalled(isStandalone());
+    const unsub = subscribeInstallPrompt((avail) => setCanInstall(avail));
     // Track online/offline status
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -215,6 +221,7 @@ export default function TraineeDashboardPage() {
     loadDashboardData();
 
     return () => {
+      unsub();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -328,13 +335,58 @@ export default function TraineeDashboardPage() {
                 )}
               </div>
             </div>
-            <Link to="/trainee/profile">
-              <Button className="gap-2">
-                <Person fontSize="small" />
-                <span>Profile</span>
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link to="/settings">
+                <Button variant="outline" className="gap-2">
+                  <SettingsIcon className="size-4" />
+                  <span>Settings</span>
+                </Button>
+              </Link>
+              <Link to="/trainee/profile">
+                <Button className="gap-2">
+                  <Person fontSize="small" />
+                  <span>Profile</span>
+                </Button>
+              </Link>
+            </div>
           </div>
+
+          {/* DOWNLOAD PWA APP BANNER */}
+          {!isAppInstalled && (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-lg border border-primary/20 bg-primary/5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                  <DownloadIcon className="size-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-foreground">Download the BMDC App (PWA)</p>
+                  <p className="text-xs text-muted-foreground">Install on your mobile or desktop for fast offline attendance, QR, and schedules.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                  onClick={async () => {
+                    if (canInstall) {
+                      const res = await promptPWAInstall();
+                      if (res.outcome === 'accepted') setIsAppInstalled(true);
+                    } else {
+                      toast.info('Go to Settings to view step-by-step install instructions for your device.');
+                    }
+                  }}
+                >
+                  <DownloadIcon className="size-3.5" />
+                  <span>Download App</span>
+                </Button>
+                <Link to="/settings">
+                  <Button variant="outline" size="sm" className="text-xs">
+                    Instructions
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* STATUS ALERTS - Simple */}
           {isOffline && (

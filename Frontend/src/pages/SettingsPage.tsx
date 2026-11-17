@@ -1,63 +1,125 @@
 import { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import PWAStatus from '../components/PWAStatus';
+import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
 import { Separator } from '../components/ui/separator';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../components/ui/accordion';
-import { Alert, AlertDescription } from '../components/ui/alert';
-import { Bell, Moon, Download, Smartphone, CheckCircle2 } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
+import {
+  Bell,
+  Moon,
+  Download,
+  Smartphone,
+  Monitor,
+  CheckCircle2,
+  RefreshCw,
+  Info,
+  Sparkles,
+  Wifi,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import { subscribeToPushNotifications, unsubscribeFromPushNotifications, getUserPushSubscriptions } from '../utils/pushSubscription';
+import {
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
+  getUserPushSubscriptions,
+} from '../utils/pushSubscription';
+import {
+  isStandalone,
+  isDesktop,
+  isIOS,
+  canInstallPWA,
+  promptPWAInstall,
+  subscribeInstallPrompt,
+  getInstallInstructions,
+} from '../utils/pwa';
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(false);
-  const [isPWAInstalled, setIsPWAInstalled] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isPWAInstalled, setIsPWAInstalled] = useState(isStandalone());
+  const [canInstall, setCanInstall] = useState(canInstallPWA());
+  const [showManualSteps, setShowManualSteps] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const desktopMode = isDesktop();
+  const iosMode = isIOS();
+  const instructions = getInstallInstructions();
+  const isTrainee = user?.role === 'trainee';
 
   useEffect(() => {
-    // Check if PWA is already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsPWAInstalled(true);
-    }
+    setIsPWAInstalled(isStandalone());
+
+    const unsubscribePrompt = subscribeInstallPrompt((available) => {
+      setCanInstall(available);
+      if (isStandalone()) {
+        setIsPWAInstalled(true);
+      }
+    });
 
     // Check for active push subscriptions
-    getUserPushSubscriptions().then(subscriptions => {
-      const hasActive = subscriptions.some(sub => sub.isActive);
+    getUserPushSubscriptions().then((subscriptions) => {
+      const hasActive = subscriptions.some((sub) => sub.isActive);
       setNotifications(hasActive);
     });
 
-    // Listen for PWA install prompt
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    });
-
-    window.addEventListener('appinstalled', () => {
-      setIsPWAInstalled(true);
-      setDeferredPrompt(null);
-      toast.success('App installed successfully!');
-    });
+    return () => {
+      unsubscribePrompt();
+    };
   }, []);
 
   const handleInstallPWA = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      
-      if (outcome === 'accepted') {
-        toast.success('Installing app...');
+    if (isPWAInstalled) {
+      toast.info('BMDC App is already installed on this device!');
+      return;
+    }
+
+    if (canInstall) {
+      const result = await promptPWAInstall();
+      if (result.outcome === 'accepted') {
+        setIsPWAInstalled(true);
+        toast.success('BMDC App installed successfully!');
+      } else {
+        toast.info('Installation cancelled.');
       }
-      setDeferredPrompt(null);
-    } else if (isPWAInstalled) {
-      toast.info('App is already installed!');
     } else {
-      toast.info('To install: Use browser menu > "Add to Home Screen"');
+      setShowManualSteps(true);
+      if (iosMode) {
+        toast.info('Tap the Safari Share button and select "Add to Home Screen"');
+      } else if (desktopMode) {
+        toast.info('Look for the Install icon in your browser address bar or menu');
+      } else {
+        toast.info('Open your browser menu (⋮) and select "Install app"');
+      }
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (!('serviceWorker' in navigator)) {
+      toast.info('Service Worker not supported in this browser.');
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        await registration.update();
+        toast.success('BMDC App is up to date!');
+      } else {
+        toast.info('No active service worker found.');
+      }
+    } catch (error) {
+      toast.error('Failed to check for updates.');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -66,7 +128,6 @@ export default function SettingsPage() {
     if (checked && 'Notification' in window) {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
-        // Subscribe to push notifications
         const subscriptionId = await subscribeToPushNotifications();
         if (subscriptionId) {
           toast.success('Push notifications enabled');
@@ -79,7 +140,6 @@ export default function SettingsPage() {
         setNotifications(false);
       }
     } else {
-      // Unsubscribe from push notifications
       const subscriptions = await getUserPushSubscriptions();
       for (const sub of subscriptions) {
         if (sub.isActive) {
@@ -91,15 +151,182 @@ export default function SettingsPage() {
   };
 
   return (
-    <DashboardLayout title="Settings">
+    <DashboardLayout title={isTrainee ? 'Trainee Settings' : 'Settings'}>
       <div className="mx-auto max-w-4xl space-y-6">
         {/* Header */}
-        <div>
-          <h2>Settings</h2>
-          <p className="text-muted-foreground">Manage your app preferences and configuration</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">
+              {isTrainee ? 'Trainee Settings & Preferences' : 'Settings'}
+            </h2>
+            <p className="text-muted-foreground">
+              {isTrainee
+                ? 'Manage your portal preferences and download the BMDC app for your phone or computer'
+                : 'Manage your app preferences and configuration'}
+            </p>
+          </div>
+          {isPWAInstalled ? (
+            <Badge variant="default" className="bg-green-600 gap-1.5 self-start sm:self-auto py-1 px-3">
+              <CheckCircle2 className="size-3.5" />
+              <span>Installed App</span>
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="gap-1.5 self-start sm:self-auto py-1 px-3">
+              {desktopMode ? <Monitor className="size-3.5" /> : <Smartphone className="size-3.5" />}
+              <span>{desktopMode ? 'Desktop Browser' : 'Mobile Browser'}</span>
+            </Badge>
+          )}
         </div>
 
-        {/* Desktop Layout */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* DEDICATED PWA DOWNLOAD & INSTALL CARD (Both Desktop and Mobile)      */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        <Card className="border-2 border-primary/20 shadow-sm overflow-hidden bg-gradient-to-br from-card via-card to-primary/5">
+          <CardHeader className="pb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Download className="size-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Download BMDC App</CardTitle>
+                    <CardDescription>
+                      Progressive Web App (PWA) for {instructions.label}
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+              {isPWAInstalled ? (
+                <Badge variant="default" className="bg-green-600 text-xs">
+                  <CheckCircle2 className="mr-1 size-3" /> Installed
+                </Badge>
+              ) : canInstall ? (
+                <Badge variant="default" className="bg-blue-600 text-xs animate-pulse">
+                  <Sparkles className="mr-1 size-3" /> Ready to Install
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="text-xs">
+                  <Info className="mr-1 size-3" /> Web Mode
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            {isPWAInstalled ? (
+              <div className="space-y-3">
+                <Alert className="border-green-500/20 bg-green-500/10 text-green-800 dark:text-green-200">
+                  <CheckCircle2 className="size-4 text-green-600" />
+                  <AlertTitle className="font-semibold">BMDC App is installed!</AlertTitle>
+                  <AlertDescription className="text-sm">
+                    You are enjoying the full standalone BMDC application experience with offline capabilities,
+                    instant launching, and fast cache performance.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex flex-wrap gap-3 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleCheckForUpdates}
+                    disabled={isUpdating}
+                  >
+                    <RefreshCw className={`size-4 ${isUpdating ? 'animate-spin' : ''}`} />
+                    <span>{isUpdating ? 'Checking...' : 'Check for App Updates'}</span>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Install BMDC on your {desktopMode ? 'desktop computer' : 'mobile phone'} for a faster,
+                  native app experience without browser URL bars or tabs. Access your attendance QR code,
+                  training modules, and records even without an active internet connection.
+                </p>
+
+                {/* Feature highlight grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+                    <Wifi className="size-4 text-primary shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-foreground">Offline Support</p>
+                      <p className="text-muted-foreground">Access schedules and profiles without internet</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+                    {desktopMode ? (
+                      <Monitor className="size-4 text-primary shrink-0 mt-0.5" />
+                    ) : (
+                      <Smartphone className="size-4 text-primary shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <p className="font-semibold text-foreground">
+                        {desktopMode ? 'Desktop Shortcut' : 'Home Screen App'}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {desktopMode ? 'Launches in its own clean window' : 'One-tap access like a native app'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+                    <Bell className="size-4 text-primary shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-foreground">Fast Alerts</p>
+                      <p className="text-muted-foreground">Real-time attendance reminders and notices</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Primary Install Actions */}
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <Button
+                    size="lg"
+                    className="w-full sm:w-auto gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md"
+                    onClick={handleInstallPWA}
+                  >
+                    <Download className="size-5" />
+                    <span>Download & Install BMDC App</span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto gap-2"
+                    onClick={() => setShowManualSteps(!showManualSteps)}
+                  >
+                    <Info className="size-4" />
+                    <span>{showManualSteps ? 'Hide Instructions' : 'How to Install'}</span>
+                  </Button>
+                </div>
+
+                {/* Step-by-step instructions (expanded by default if not direct promptable or on toggle) */}
+                {(showManualSteps || iosMode || (!canInstall && !isPWAInstalled)) && (
+                  <div className="mt-3 rounded-xl border border-primary/20 bg-muted/60 p-4 text-sm">
+                    <p className="font-semibold text-foreground mb-2 flex items-center gap-2">
+                      <Info className="size-4 text-primary" />
+                      Installation Steps for {instructions.label}:
+                    </p>
+                    <ol className="list-decimal ml-5 space-y-1.5 text-muted-foreground text-sm">
+                      {instructions.steps.map((step, idx) => (
+                        <li key={idx} className="leading-relaxed">
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* DESKTOP LAYOUT (Tablet / Desktop Screens)                             */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
         <div className="hidden md:block space-y-6">
           {/* Appearance */}
           <Card>
@@ -112,7 +339,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-3">
                   <Moon className="size-5 text-muted-foreground" />
                   <div>
-                    <Label htmlFor="dark-mode">Dark Mode</Label>
+                    <Label htmlFor="dark-mode" className="font-medium">Dark Mode</Label>
                     <p className="text-sm text-muted-foreground">
                       Switch between light and dark theme
                     </p>
@@ -138,9 +365,11 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-3">
                   <Bell className="size-5 text-muted-foreground" />
                   <div>
-                    <Label htmlFor="push-notifications">Push Notifications</Label>
+                    <Label htmlFor="push-notifications" className="font-medium">Push Notifications</Label>
                     <p className="text-sm text-muted-foreground">
-                      Receive notifications for overdue items
+                      {isTrainee
+                        ? 'Receive attendance reminders, program updates, and announcements'
+                        : 'Receive notifications for overdue items and center alerts'}
                     </p>
                   </div>
                 </div>
@@ -153,9 +382,9 @@ export default function SettingsPage() {
               <Separator />
               <div className="flex items-center justify-between">
                 <div>
-                  <Label htmlFor="email-notifications">Email Notifications</Label>
+                  <Label htmlFor="email-notifications" className="font-medium">Email Notifications</Label>
                   <p className="text-sm text-muted-foreground">
-                    Receive daily summary via email
+                    Receive daily summary and official announcements via email
                   </p>
                 </div>
                 <Switch
@@ -167,36 +396,38 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* PWA Status & Advanced Settings */}
+          {/* PWA Status & Advanced Storage Settings */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">PWA Advanced Settings</h3>
+            <h3 className="text-lg font-semibold mb-3">PWA Diagnostic & Offline Storage</h3>
             <PWAStatus />
           </div>
 
           {/* About */}
           <Card>
             <CardHeader>
-              <CardTitle>About</CardTitle>
-              <CardDescription>Application information</CardDescription>
+              <CardTitle>About BMDC</CardTitle>
+              <CardDescription>Application & system information</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Version:</span>
-                <span>1.0.0</span>
+                <span className="font-medium">1.2.0 (PWA Enabled)</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Build:</span>
-                <span>2024.10.31</span>
+                <span className="text-muted-foreground">Application Type:</span>
+                <span className="font-medium">Responsive Progressive Web App (Desktop & Mobile)</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Environment:</span>
-                <span>Production</span>
+                <span className="text-muted-foreground">Offline Storage:</span>
+                <span className="font-medium">IndexedDB + CacheStorage</span>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Mobile Layout (Accordion) */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* MOBILE LAYOUT (Mobile Screens)                                       */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
         <Accordion type="single" collapsible className="md:hidden space-y-4">
           <AccordionItem value="appearance" className="rounded-lg border bg-card px-4">
             <AccordionTrigger>
@@ -234,7 +465,7 @@ export default function SettingsPage() {
                 <div>
                   <Label htmlFor="push-notifications-mobile">Push Notifications</Label>
                   <p className="text-xs text-muted-foreground">
-                    Overdue alerts
+                    Program & attendance alerts
                   </p>
                 </div>
                 <Switch
@@ -245,7 +476,7 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <Label htmlFor="email-notifications-mobile">Email</Label>
+                  <Label htmlFor="email-notifications-mobile">Email Notifications</Label>
                   <p className="text-xs text-muted-foreground">
                     Daily summary
                   </p>
@@ -259,38 +490,23 @@ export default function SettingsPage() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="pwa" className="rounded-lg border bg-card px-4">
+          <AccordionItem value="pwa-advanced" className="rounded-lg border bg-card px-4">
             <AccordionTrigger>
               <div className="flex items-center gap-3">
-                <Smartphone className="size-5" />
-                <span>Install App</span>
+                <Wifi className="size-5" />
+                <span>Offline & Cache Status</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pb-4">
-              {isPWAInstalled ? (
-                <Alert className="mt-2">
-                  <CheckCircle2 className="size-4" />
-                  <AlertDescription>App is installed!</AlertDescription>
-                </Alert>
-              ) : (
-                <div className="space-y-3 pt-2">
-                  <p className="text-sm text-muted-foreground">
-                    Install for offline access and faster performance
-                  </p>
-                  <Button className="w-full" onClick={handleInstallPWA}>
-                    <Download className="mr-2 size-4" />
-                    Install Now
-                  </Button>
-                </div>
-              )}
+              <PWAStatus />
             </AccordionContent>
           </AccordionItem>
         </Accordion>
 
-        {/* Save Button - Mobile */}
+        {/* Mobile Save Button */}
         <div className="md:hidden">
           <Button className="w-full" onClick={() => toast.success('Settings saved!')}>
-            Save Settings
+            Save Preferences
           </Button>
         </div>
       </div>

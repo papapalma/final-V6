@@ -96,6 +96,7 @@ const NAVIGATION_ARRAYS = {
     { name: 'Profile', href: '/trainee/profile', icon: User },
     { name: 'Programs', href: '/trainee/programs', icon: GraduationCap },
     { name: 'Applications', href: '/trainee/applications', icon: ClipboardList },
+    { name: 'Settings', href: '/settings', icon: Settings },
   ] as NavItem[],
   superAdmin: [
     { name: 'Dashboard', href: '/super-admin', icon: ActivityIcon },
@@ -264,6 +265,12 @@ const UserProfileSection = memo(({ user, isDark, toggleTheme, openLogoutDialog }
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/settings" className="flex items-center cursor-pointer">
+            <Settings className="mr-2 size-4" />
+            Settings
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={toggleTheme}>
           {isDark ? <Sun className="mr-2 size-4" /> : <Moon className="mr-2 size-4" />}
           {isDark ? 'Light Mode' : 'Dark Mode'}
@@ -593,6 +600,12 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link to="/settings" className="flex items-center cursor-pointer">
+                        <Settings className="mr-2 size-4" />
+                        Settings
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={toggleTheme}>
                       {isDark ? <Sun className="mr-2 size-4" /> : <Moon className="mr-2 size-4" />}
                       {isDark ? 'Light Mode' : 'Dark Mode'}

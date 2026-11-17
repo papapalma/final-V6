@@ -3,34 +3,25 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Download, X, Smartphone, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+import { isStandalone, isIOS as checkIsIOS, isDesktop as checkIsDesktop, subscribeInstallPrompt, promptPWAInstall } from '../utils/pwa';
 
 export default function PWAInstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [canInstall, setCanInstall] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // Check if running as standalone (already installed)
-    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-                      (window.navigator as any).standalone === true;
-    setIsStandalone(standalone);
+    const standalone = isStandalone();
+    setIsInstalled(standalone);
+    setIsIOS(checkIsIOS());
+    setIsDesktop(checkIsDesktop());
 
-    // Check if iOS
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    setIsIOS(ios);
-
-    // Don't show prompt if already installed
     if (standalone) {
       return;
     }
 
-    // Check if user previously dismissed the prompt (within 7 days)
     const lastDismissed = localStorage.getItem('pwa-install-dismissed');
     if (lastDismissed) {
       const dismissedDate = new Date(lastDismissed);
@@ -40,49 +31,35 @@ export default function PWAInstallPrompt() {
       }
     }
 
-    // Listen for the beforeinstallprompt event
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      
-      // Show prompt after 10 seconds or on user interaction
-      setTimeout(() => {
-        setShowPrompt(true);
-      }, 10000);
-    };
+    const unsubscribe = subscribeInstallPrompt((available) => {
+      setCanInstall(available);
+      if (available) {
+        const timer = setTimeout(() => {
+          setShowPrompt(true);
+        }, 8000);
+        return () => clearTimeout(timer);
+      }
+    });
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // Show iOS install prompt immediately if on iOS and not installed
-    if (ios && !standalone) {
-      setTimeout(() => {
+    if (checkIsIOS() && !standalone) {
+      const timer = setTimeout(() => {
         setShowPrompt(true);
-      }, 10000);
+      }, 8000);
+      return () => {
+        clearTimeout(timer);
+        unsubscribe();
+      };
     }
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      unsubscribe();
     };
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt && !isIOS) {
-      return;
-    }
-
-    if (deferredPrompt) {
-      // Show the install prompt
-      deferredPrompt.prompt();
-
-      // Wait for the user to respond to the prompt
-      const { outcome } = await deferredPrompt.userChoice;
-      
-      if (outcome === 'accepted') {
-        toast.success('App installation started!');
-      }
-
-      // Clear the deferredPrompt
-      setDeferredPrompt(null);
+    const result = await promptPWAInstall();
+    if (result.outcome === 'accepted') {
+      toast.success('App installation started!');
       setShowPrompt(false);
     }
   };
@@ -98,7 +75,7 @@ export default function PWAInstallPrompt() {
     localStorage.setItem('pwa-install-dismissed', new Date().toISOString());
   };
 
-  if (isStandalone) {
+  if (isInstalled || isStandalone()) {
     return null; // Already installed
   }
 

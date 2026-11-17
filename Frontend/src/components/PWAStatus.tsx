@@ -11,6 +11,7 @@ import {
   Wifi,
   WifiOff,
   Smartphone,
+  Monitor,
   HardDrive,
   Trash2,
   RefreshCw,
@@ -19,20 +20,39 @@ import {
   Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { requestNotificationPermission } from '../utils/pwa';
+import {
+  requestNotificationPermission,
+  canInstallPWA,
+  promptPWAInstall,
+  subscribeInstallPrompt,
+  isDesktop,
+  isIOS,
+  isStandalone,
+  getInstallInstructions,
+} from '../utils/pwa';
 
 export default function PWAStatus() {
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(isStandalone());
+  const [canInstall, setCanInstall] = useState(canInstallPWA());
+  const [showInstructions, setShowInstructions] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
   const [storageEstimate, setStorageEstimate] = useState<{ usage: number; quota: number } | null>(null);
   const [serviceWorkerStatus, setServiceWorkerStatus] = useState<'active' | 'installing' | 'waiting' | 'none'>('none');
 
+  const instructions = getInstallInstructions();
+  const desktopPlatform = isDesktop();
+
   useEffect(() => {
     // Check if installed
-    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-                      (window.navigator as any).standalone === true;
-    setIsInstalled(standalone);
+    setIsInstalled(isStandalone());
+
+    const unsubscribe = subscribeInstallPrompt((available) => {
+      setCanInstall(available);
+      if (isStandalone()) {
+        setIsInstalled(true);
+      }
+    });
 
     // Check service worker status
     if ('serviceWorker' in navigator) {
@@ -65,6 +85,7 @@ export default function PWAStatus() {
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      unsubscribe();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -148,11 +169,11 @@ export default function PWAStatus() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Smartphone className="size-5" />
+                {desktopPlatform ? <Monitor className="size-5 text-primary" /> : <Smartphone className="size-5 text-primary" />}
                 Installation Status
               </CardTitle>
               <CardDescription>
-                Progressive Web App (PWA) installation
+                Progressive Web App (PWA) for {instructions.label}
               </CardDescription>
             </div>
             {isInstalled ? (
@@ -160,10 +181,15 @@ export default function PWAStatus() {
                 <CheckCircle2 className="mr-1 size-3" />
                 Installed
               </Badge>
+            ) : canInstall ? (
+              <Badge variant="default" className="bg-blue-600">
+                <Download className="mr-1 size-3" />
+                Ready to Install
+              </Badge>
             ) : (
               <Badge variant="secondary">
                 <Info className="mr-1 size-3" />
-                Not Installed
+                Browser Mode
               </Badge>
             )}
           </div>
@@ -171,41 +197,67 @@ export default function PWAStatus() {
         <CardContent className="space-y-4">
           {!isInstalled && (
             <div className="rounded-lg bg-muted p-4">
-              <p className="text-sm text-muted-foreground">
-                Install the BMDC app for:
+              <p className="text-sm font-medium text-foreground">
+                Install BMDC on your {desktopPlatform ? 'Desktop computer' : 'Mobile device'} for:
               </p>
-              <ul className="mt-2 space-y-1 text-sm">
+              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-green-600" />
-                  Faster loading times
+                  Instant loading and offline access
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-green-600" />
-                  Offline access to cached data
+                  Home screen or desktop app shortcut
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-green-600" />
-                  Home screen shortcut
+                  Full-screen experience without browser tabs
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-green-600" />
-                  Native app experience
+                  Background updates & notification alerts
                 </li>
               </ul>
-              <Button
-                className="mt-4 w-full"
-                onClick={() => {
-                  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-                  if (isIOS) {
-                    toast.info('Tap the Share button and select "Add to Home Screen"');
-                  } else {
-                    toast.info('Look for the install prompt in your browser address bar');
-                  }
-                }}
-              >
-                <Download className="mr-2 size-4" />
-                How to Install
-              </Button>
+
+              <div className="mt-4 flex flex-col gap-2">
+                {canInstall ? (
+                  <Button
+                    className="w-full gap-2"
+                    onClick={async () => {
+                      const res = await promptPWAInstall();
+                      if (res.outcome === 'accepted') {
+                        setIsInstalled(true);
+                        toast.success('App installation started!');
+                      }
+                    }}
+                  >
+                    <Download className="size-4" />
+                    Download & Install App
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={() => setShowInstructions(!showInstructions)}
+                  >
+                    <Info className="size-4" />
+                    {showInstructions ? 'Hide Instructions' : 'How to Download & Install'}
+                  </Button>
+                )}
+
+                {(!canInstall || showInstructions) && (
+                  <div className="mt-3 rounded-md border border-border bg-card p-3 text-sm">
+                    <p className="font-semibold text-foreground mb-1">
+                      Installation Steps ({instructions.label}):
+                    </p>
+                    <ol className="list-decimal ml-4 space-y-1 text-muted-foreground">
+                      {instructions.steps.map((step, idx) => (
+                        <li key={idx}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -213,7 +265,7 @@ export default function PWAStatus() {
             <div className="rounded-lg bg-green-500/10 p-4 border border-green-500/20">
               <p className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
                 <CheckCircle2 className="size-4" />
-                You're using BMDC as an installed app!
+                You are currently running BMDC in installed standalone app mode!
               </p>
             </div>
           )}
