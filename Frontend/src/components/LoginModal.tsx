@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
-import { Eye, EyeOff, Building2, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Building2, Loader2, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserRole } from '../utils/roles';
 import { getFileUrl } from '../services/api';
@@ -387,7 +387,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
         setForgotPasswordResendCountdown(60);
       }
     } catch (error: any) {
-      const errorMsg = error?.message || 'Failed to send reset code. Please try again.';
+      const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Failed to send reset code. Please try again.';
       setForgotPasswordError(errorMsg);
       toast.error(errorMsg);
     } finally {
@@ -409,7 +409,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
         toast.success('OTP verified successfully');
       }
     } catch (error: any) {
-      const errorMsg = error?.message || 'Invalid OTP. Please try again.';
+      const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Invalid OTP. Please try again.';
       setForgotPasswordError(errorMsg);
       toast.error(errorMsg);
     } finally {
@@ -421,19 +421,19 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
   const handleForgotPasswordComplete = async () => {
     setForgotPasswordError(null);
 
-    // Validate passwords
+    // Validate passwords (8+ characters, uppercase, lowercase, number, special character)
     if (newPassword !== confirmPassword) {
       setForgotPasswordError('Passwords do not match');
       return;
     }
 
-    if (newPassword.length < 6) {
-      setForgotPasswordError('Password must be at least 6 characters');
+    if (newPassword.length < 8) {
+      setForgotPasswordError('Password must be at least 8 characters');
       return;
     }
 
-    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      setForgotPasswordError('Password must contain uppercase, lowercase, and numbers');
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(newPassword)) {
+      setForgotPasswordError('Password must contain uppercase, lowercase, numbers, and a special character');
       return;
     }
 
@@ -453,7 +453,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
         setForgotPasswordStep(false);
       }
     } catch (error: any) {
-      const errorMsg = error?.message || 'Failed to reset password. Please try again.';
+      const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Failed to reset password. Please try again.';
       setForgotPasswordError(errorMsg);
       toast.error(errorMsg);
     } finally {
@@ -473,13 +473,32 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
       await authService.requestPasswordReset(forgotEmail);
       toast.success('Reset code resent to your email');
     } catch (error: any) {
-      const errorMsg = error?.message || 'Failed to resend code. Please try again.';
+      const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Failed to resend code. Please try again.';
       setForgotPasswordError(errorMsg);
       setCanResendForgotPassword(true);
       setForgotPasswordResendCountdown(0);
       toast.error(errorMsg);
     }
   };
+
+  // Password requirements calculation for Apple-style real-time validation
+  const passwordReqs = {
+    minLength: newPassword.length >= 8,
+    uppercase: /[A-Z]/.test(newPassword),
+    lowercase: /[a-z]/.test(newPassword),
+    number: /[0-9]/.test(newPassword),
+    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(newPassword),
+  };
+  const allPasswordReqsMet =
+    passwordReqs.minLength &&
+    passwordReqs.uppercase &&
+    passwordReqs.lowercase &&
+    passwordReqs.number &&
+    passwordReqs.special;
+  const passwordsMatch =
+    newPassword.length > 0 &&
+    confirmPassword.length > 0 &&
+    newPassword === confirmPassword;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) resetState(); onOpenChange(v); }}>
@@ -668,7 +687,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
                       <Input
                         id="new-password"
                         type={showNewPassword ? 'text' : 'password'}
-                        placeholder="••••••••••"
+                        placeholder="••••••••••••"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         required
@@ -690,7 +709,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
                       <Input
                         id="confirm-password"
                         type={showConfirmPassword ? 'text' : 'password'}
-                        placeholder="••••••••••"
+                        placeholder="••••••••••••"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
@@ -704,16 +723,85 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
                         {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                       </button>
                     </div>
+                    {confirmPassword.length > 0 && (
+                      <div className="pt-1">
+                        {passwordsMatch ? (
+                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 transition-colors">
+                            <span className="inline-flex size-4 items-center justify-center rounded-full bg-emerald-500/20 text-[10px]">✓</span> Passwords match
+                          </p>
+                        ) : (
+                          <p className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 transition-colors">
+                            <span className="inline-flex size-4 items-center justify-center rounded-full bg-amber-500/20 text-[10px]">•</span> Passwords do not match yet
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-2">
-                    <p className="text-xs font-medium text-foreground">Password requirements:</p>
-                    <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>• At least 6 characters</li>
-                      <li>• 1 uppercase letter (A-Z)</li>
-                      <li>• 1 lowercase letter (a-z)</li>
-                      <li>• 1 number (0-9)</li>
-                    </ul>
+                  {/* Apple Design Real-time Requirements Indicator */}
+                  <div className="bg-muted/40 backdrop-blur-sm border border-border/60 rounded-xl p-3.5 space-y-2.5 transition-all">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-foreground">Password criteria</p>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full transition-colors ${
+                        allPasswordReqsMet 
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold' 
+                          : 'text-muted-foreground bg-muted'
+                      }`}>
+                        {allPasswordReqsMet ? 'All criteria met ✓' : 'Requirements pending'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                      <div className={`flex items-center gap-1.5 transition-colors duration-150 ${
+                        passwordReqs.minLength ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'
+                      }`}>
+                        <span className={`size-3.5 rounded-full flex items-center justify-center text-[9px] ${
+                          passwordReqs.minLength ? 'bg-emerald-500 text-white font-bold' : 'bg-muted-foreground/20'
+                        }`}>
+                          {passwordReqs.minLength ? '✓' : '•'}
+                        </span>
+                        <span>At least 8 characters</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 transition-colors duration-150 ${
+                        passwordReqs.uppercase ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'
+                      }`}>
+                        <span className={`size-3.5 rounded-full flex items-center justify-center text-[9px] ${
+                          passwordReqs.uppercase ? 'bg-emerald-500 text-white font-bold' : 'bg-muted-foreground/20'
+                        }`}>
+                          {passwordReqs.uppercase ? '✓' : '•'}
+                        </span>
+                        <span>1 uppercase letter (A-Z)</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 transition-colors duration-150 ${
+                        passwordReqs.lowercase ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'
+                      }`}>
+                        <span className={`size-3.5 rounded-full flex items-center justify-center text-[9px] ${
+                          passwordReqs.lowercase ? 'bg-emerald-500 text-white font-bold' : 'bg-muted-foreground/20'
+                        }`}>
+                          {passwordReqs.lowercase ? '✓' : '•'}
+                        </span>
+                        <span>1 lowercase letter (a-z)</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 transition-colors duration-150 ${
+                        passwordReqs.number ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'
+                      }`}>
+                        <span className={`size-3.5 rounded-full flex items-center justify-center text-[9px] ${
+                          passwordReqs.number ? 'bg-emerald-500 text-white font-bold' : 'bg-muted-foreground/20'
+                        }`}>
+                          {passwordReqs.number ? '✓' : '•'}
+                        </span>
+                        <span>1 number (0-9)</span>
+                      </div>
+                      <div className={`col-span-1 sm:col-span-2 flex items-center gap-1.5 transition-colors duration-150 ${
+                        passwordReqs.special ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'
+                      }`}>
+                        <span className={`size-3.5 rounded-full flex items-center justify-center text-[9px] ${
+                          passwordReqs.special ? 'bg-emerald-500 text-white font-bold' : 'bg-muted-foreground/20'
+                        }`}>
+                          {passwordReqs.special ? '✓' : '•'}
+                        </span>
+                        <span>1 special symbol (!@#$%^&*...)</span>
+                      </div>
+                    </div>
                   </div>
 
                   {forgotPasswordError && (
@@ -728,7 +816,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
             <div className="flex gap-3 border-t px-4 sm:px-6 py-3 sm:py-4 bg-muted/30">
               <Button
                 variant="outline"
-                className="flex-1"
+                className="flex-1 active:scale-[0.98] transition-all duration-150"
                 onClick={() => {
                   if (forgotPasswordStep2) {
                     setForgotPasswordStep2(false);
@@ -748,7 +836,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
                 ← Back
               </Button>
               <Button
-                className="flex-1"
+                className="flex-1 active:scale-[0.98] transition-all duration-150"
                 onClick={() => {
                   if (forgotPasswordStep1) {
                     handleForgotPasswordRequest();
@@ -758,9 +846,18 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
                     handleForgotPasswordComplete();
                   }
                 }}
-                disabled={forgotPasswordLoading || !forgotEmail || (forgotPasswordStep2 && !forgotOTP) || (forgotPasswordStep3 && (!newPassword || !confirmPassword))}
+                disabled={
+                  forgotPasswordLoading ||
+                  !forgotEmail ||
+                  (forgotPasswordStep2 && (!forgotOTP || forgotOTP.length !== 6)) ||
+                  (forgotPasswordStep3 && (!newPassword || !confirmPassword || !allPasswordReqsMet || !passwordsMatch))
+                }
               >
-                {forgotPasswordLoading ? 'Processing...' : 'Continue'}
+                {forgotPasswordLoading 
+                  ? 'Processing...' 
+                  : forgotPasswordStep3 
+                    ? 'Reset Password' 
+                    : 'Continue'}
               </Button>
             </div>
           </>

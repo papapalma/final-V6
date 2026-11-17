@@ -31,12 +31,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateOTP, markOTPAsVerified } from '@/services/otpService';
+import { markOTPAsVerified } from '@/services/otpService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { logger } from '@/utils/logger';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { isAuthRateLimitDisabled } from '@/utils/rateLimit';
 
 interface ResetPasswordRequest {
   email: string;
@@ -46,31 +45,30 @@ interface ResetPasswordRequest {
 }
 
 const RESET_TOKEN_SECRET = process.env.RESET_TOKEN_SECRET || 'your-secret-key-change-in-production';
-const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MIN_LENGTH = 8;
 const BCRYPT_COST_FACTOR = 12;
 
 // Password validation
 function validatePassword(password: string): { valid: boolean; error?: string } {
   if (!password || password.length < PASSWORD_MIN_LENGTH) {
-  return { valid: false, error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters` };
+    return { valid: false, error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters` };
   }
 
   // Check for at least one uppercase letter, lowercase letter, number, and special character
-
-if (!/[A-Z]/.test(password)) {
-  return { valid: false, error: 'Password must contain at least one uppercase letter' };
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one uppercase letter' };
   }
 
-if (!/[a-z]/.test(password)) {
-  return { valid: false, error: 'Password must contain at least one lowercase letter' };
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one lowercase letter' };
   }
 
-if (!/[0-9]/.test(password)) {
-  return { valid: false, error: 'Password must contain at least one number' };
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one number' };
   }
 
-if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
-  return { valid: false, error: 'Password must contain at least one special character' };
+  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one special character' };
   }
 
   return { valid: true };
@@ -78,183 +76,185 @@ if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-  const body: ResetPasswordRequest = await request.json();
-  const { email, otp, newPassword, resetToken } = body;
+    const body: ResetPasswordRequest = await request.json();
+    const { email, otp, newPassword, resetToken } = body;
 
-  // Validate input
-
-if (!email || !otp || !newPassword || !resetToken) {
-  return NextResponse.json(
-  { error: 'Email, OTP, password, and reset token are required' },
-  { status: 400 }
-  );
-  }
-
-if (otp.length !== 6 || !/^\d+$/.test(otp)) {
-  return NextResponse.json(
-  { error: 'OTP must be 6 digits' },
-  { status: 400 }
-  );
-  }
-
-  // Validate password strength
-
-const passwordValidation = validatePassword(newPassword);
-  if (!passwordValidation.valid) {
-  return NextResponse.json(
-  { error: passwordValidation.error },
-  { status: 400 }
-  );
-  }
-
-const normalizedEmail = email.toLowerCase().trim();
-
-  logger.info('[PASSWORD_RESET] Resetting password', { email: normalizedEmail });
-
-  // Verify reset token
-
-let tokenData: any;
-  try {
-  tokenData = jwt.verify(resetToken, RESET_TOKEN_SECRET);
-  } catch (tokenError: any) {
-  logger.warn('[PASSWORD_RESET] Invalid or expired reset token', {
-  email: normalizedEmail,
-  error: tokenError?.message,
-  });
-  return NextResponse.json(
-  { error: 'Reset token expired or invalid. Please request a new reset.' },
-  { status: 401 }
-  );
-  }
-
-  // Verify token matches request
-
-if (tokenData.email !== normalizedEmail) {
-  logger.warn('[PASSWORD_RESET] Email mismatch in token', {
-  tokenEmail: tokenData.email,
-  providedEmail: normalizedEmail,
-  });
-  return NextResponse.json(
-  { error: 'Email does not match reset request' },
-  { status: 401 }
-  );
-  }
-
-  // Verify OTP second time (double verification)
-
-const validationResult = await validateOTP(normalizedEmail, otp, 'password_reset');
-
-  if (!validationResult.valid) {
-  logger.warn('[PASSWORD_RESET] Second OTP validation failed', {
-  email: normalizedEmail,
-  error: validationResult.error,
-  remainingAttempts: validationResult.remainingAttempts,
-  });
-
-      if (!isAuthRateLimitDisabled() && (validationResult.remainingAttempts ?? 0) === 0) {
+    // Validate input
+    if (!email || !otp || !newPassword || !resetToken) {
       return NextResponse.json(
-        {
-          error: 'Too many failed attempts. Please request a new reset code.',
-          locked: true,
-        },
-        { status: 429 }
+        { error: 'Email, OTP, password, and reset token are required' },
+        { status: 400 }
       );
     }
 
-  return NextResponse.json(
-  {
-  error: 'Verification code incorrect. ' + validationResult.error,
-  remainingAttempts: validationResult.remainingAttempts,
-  },
-  { status: 400 }
-  );
-  }
+    if (otp.length !== 6 || !/^\d+$/.test(otp)) {
+      return NextResponse.json(
+        { error: 'OTP must be 6 digits' },
+        { status: 400 }
+      );
+    }
 
-  // Verify the OTP matches the one from the token (double verification check)
+    // Validate password strength (8+ chars, upper, lower, number, special char)
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.valid) {
+      return NextResponse.json(
+        { error: passwordValidation.error },
+        { status: 400 }
+      );
+    }
 
-if (validationResult.record?.code !== tokenData.otpCode) {
-  logger.warn('[PASSWORD_RESET] OTP mismatch between requests', { email: normalizedEmail });
-  return NextResponse.json(
-  { error: 'Verification code does not match. Please enter the same code.' },
-  { status: 401 }
-  );
-  }
+    const normalizedEmail = email.toLowerCase().trim();
+    logger.info('[PASSWORD_RESET] Resetting password', { email: normalizedEmail });
 
-  // Find user and update password
+    // Verify reset token (JWT)
+    let tokenData: any;
+    try {
+      tokenData = jwt.verify(resetToken, RESET_TOKEN_SECRET);
+    } catch (tokenError: any) {
+      logger.warn('[PASSWORD_RESET] Invalid or expired reset token', {
+        email: normalizedEmail,
+        error: tokenError?.message,
+      });
+      return NextResponse.json(
+        { error: 'Reset token expired or invalid. Please request a new reset.' },
+        { status: 401 }
+      );
+    }
 
-const { data: user, error: userError } = await supabaseAdmin
-  .from('users')
-  .select('id')
-  .eq('email', normalizedEmail)
-  .single();
+    // Verify token matches request
+    if (tokenData.email !== normalizedEmail) {
+      logger.warn('[PASSWORD_RESET] Email mismatch in token', {
+        tokenEmail: tokenData.email,
+        providedEmail: normalizedEmail,
+      });
+      return NextResponse.json(
+        { error: 'Email does not match reset request' },
+        { status: 401 }
+      );
+    }
 
-  if (userError || !user) {
-  logger.error('[PASSWORD_RESET] User not found during reset', { email: normalizedEmail });
-  return NextResponse.json(
-  { error: 'User not found' },
-  { status: 500 }
-  );
-  }
+    if (tokenData.otpCode && tokenData.otpCode !== otp) {
+      logger.warn('[PASSWORD_RESET] OTP code mismatch with token', { email: normalizedEmail });
+      return NextResponse.json(
+        { error: 'Verification code does not match reset session' },
+        { status: 401 }
+      );
+    }
 
-  // Hash new password
+    // Verify the OTP verification record exists, is unverified, and hasn't expired
+    if (tokenData.otpVerificationId) {
+      const { data: otpRecord, error: otpRecordError } = await supabaseAdmin
+        .from('email_verifications')
+        .select('id, expires_at, verified_at')
+        .eq('id', tokenData.otpVerificationId)
+        .eq('type', 'password_reset')
+        .maybeSingle();
 
-const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST_FACTOR);
+      if (otpRecordError || !otpRecord) {
+        logger.warn('[PASSWORD_RESET] OTP record not found', { id: tokenData.otpVerificationId });
+        return NextResponse.json(
+          { error: 'Verification session record not found. Please request a new reset.' },
+          { status: 400 }
+        );
+      }
 
-  // Update password in database
+      if (otpRecord.verified_at) {
+        logger.warn('[PASSWORD_RESET] OTP already used', { id: tokenData.otpVerificationId });
+        return NextResponse.json(
+          { error: 'This reset code has already been used. Please request a new reset.' },
+          { status: 400 }
+        );
+      }
 
-const { error: updateError } = await supabaseAdmin
-  .from('users')
-  .update({
-  password_hash: passwordHash,
-  updated_at: new Date().toISOString(),
-  })
-  .eq('id', user.id);
+      if (new Date(otpRecord.expires_at) < new Date()) {
+        logger.warn('[PASSWORD_RESET] OTP expired', { id: tokenData.otpVerificationId });
+        return NextResponse.json(
+          { error: 'Reset session has expired. Please request a new reset.' },
+          { status: 400 }
+        );
+      }
+    }
 
-  if (updateError) {
-  logger.error('[PASSWORD_RESET] Failed to update password', {
-  userId: user.id,
-  error: updateError,
-  });
-  return NextResponse.json(
-  { error: 'Failed to update password' },
-  { status: 500 }
-  );
-  }
+    // Find user by email (case-insensitive)
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .ilike('email', normalizedEmail)
+      .single();
 
-  // Mark OTP as verified
+    if (userError || !user) {
+      logger.error('[PASSWORD_RESET] User not found during reset', { email: normalizedEmail });
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 500 }
+      );
+    }
 
-if (validationResult.record?.id) {
-  await markOTPAsVerified(validationResult.record.id);
-  }
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST_FACTOR);
 
-  logger.info('[PASSWORD_RESET] Password reset successful', { userId: user.id });
+    // Update password in database
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        password_hash: passwordHash,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
 
-  // Log to audit_logs
+    if (updateError) {
+      logger.error('[PASSWORD_RESET] Failed to update password', {
+        userId: user.id,
+        error: updateError,
+      });
+      return NextResponse.json(
+        { error: 'Failed to update password' },
+        { status: 500 }
+      );
+    }
 
-await supabaseAdmin.from('audit_logs').insert({
-  tenant_id: null,
-  user_id: user.id,
-  action: 'password_reset.completed',
-  entity_type: 'user',
-  entity_id: user.id,
-  details: {
-  email: normalizedEmail,
-  method: 'email_otp_double_verification',
-  },
-  });
+    // Mark OTP as verified (consumed)
+    if (tokenData.otpVerificationId) {
+      await markOTPAsVerified(tokenData.otpVerificationId);
+    }
 
-  return NextResponse.json(
-  {
-  success: true,
-  message: 'Password reset successful. You can now log in with your new password.',
-  },
-  { status: 200 }
-  );
+    // Revoke existing refresh tokens
+    try {
+      await supabaseAdmin
+        .from('refresh_tokens')
+        .delete()
+        .eq('user_id', user.id);
+    } catch (revokeErr) {
+      logger.warn('[PASSWORD_RESET] Failed to revoke refresh tokens', { userId: user.id, revokeErr });
+    }
+
+    logger.info('[PASSWORD_RESET] Password reset successful', { userId: user.id });
+
+    // Log to audit_logs
+    await supabaseAdmin.from('audit_logs').insert({
+      tenant_id: null,
+      user_id: user.id,
+      action: 'password_reset.completed',
+      entity_type: 'user',
+      entity_id: user.id,
+      details: {
+        email: normalizedEmail,
+        method: 'email_otp_verified_token',
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Password reset successful. You can now log in with your new password.',
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
-  logger.error('[PASSWORD_RESET] Error during password reset', { error: error?.message });
-  return NextResponse.json(
-  { error: 'Failed to reset password' },
-  { status: 500 }
-  );
+    logger.error('[PASSWORD_RESET] Error during password reset', { error: error?.message });
+    return NextResponse.json(
+      { error: 'Failed to reset password' },
+      { status: 500 }
+    );
   }
 }

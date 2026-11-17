@@ -181,7 +181,7 @@ describe('Milestone 1 Empirical Challenger: Password Boundaries & Data Retention
   // 4. Reset Password Route validatePassword function
   // =========================================================================
   describe('Backend auth/reset-password validatePassword Boundaries', () => {
-    const PASSWORD_MIN_LENGTH = 6;
+    const PASSWORD_MIN_LENGTH = 8;
     function validatePassword(password: string): { valid: boolean; error?: string } {
       if (!password || password.length < PASSWORD_MIN_LENGTH) {
         return { valid: false, error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters` };
@@ -205,19 +205,20 @@ describe('Milestone 1 Empirical Challenger: Password Boundaries & Data Retention
       ['empty string', ''],
       ['1 char', 'P'],
       ['5 chars', 'Pass1'],
-    ])('MUST reject 0-5 characters: %s', (_, pwd) => {
+      ['7 chars', 'Pass1!x'],
+    ])('MUST reject 0-7 characters: %s', (_, pwd) => {
       const res = validatePassword(pwd);
       expect(res.valid).toBe(false);
-      expect(res.error).toBe('Password must be at least 6 characters');
+      expect(res.error).toBe('Password must be at least 8 characters');
     });
 
-    test('MUST accept exactly 6 characters', () => {
-      const res = validatePassword('Pass1!');
+    test('MUST accept exactly 8 characters', () => {
+      const res = validatePassword('Pass123!');
       expect(res.valid).toBe(true);
       expect(res.error).toBeUndefined();
     });
 
-    test('MUST accept > 6 characters', () => {
+    test('MUST accept > 8 characters', () => {
       const res = validatePassword('Password123!');
       expect(res.valid).toBe(true);
     });
@@ -227,16 +228,16 @@ describe('Milestone 1 Empirical Challenger: Password Boundaries & Data Retention
   // 5. Frontend LoginModal & SuperAdminDashboardPage Validation Logic
   // =========================================================================
   describe('Frontend Password Validation Handlers Boundaries', () => {
-    // Exact logic from Frontend/src/components/LoginModal.tsx:428-441
+    // Exact logic from Frontend/src/components/LoginModal.tsx
     const validateLoginModalPassword = (newPassword: string, confirmPassword: string) => {
       if (newPassword !== confirmPassword) {
         return 'Passwords do not match';
       }
-      if (newPassword.length < 6) {
-        return 'Password must be at least 6 characters';
+      if (newPassword.length < 8) {
+        return 'Password must be at least 8 characters';
       }
-      if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-        return 'Password must contain uppercase, lowercase, and numbers';
+      if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(newPassword)) {
+        return 'Password must contain uppercase, lowercase, numbers, and a special character';
       }
       return null;
     };
@@ -256,21 +257,21 @@ describe('Milestone 1 Empirical Challenger: Password Boundaries & Data Retention
     };
 
     describe('LoginModal', () => {
-      test.each(['', 'a', 'ab', 'Ab1', 'Ab1!', 'Ab1!x'])(
-        'MUST reject password length < 6 (%s)',
+      test.each(['', 'a', 'ab', 'Ab1', 'Ab1!', 'Ab1!x', 'Ab1!xyz'])(
+        'MUST reject password length < 8 (%s)',
         (pwd) => {
           const err = validateLoginModalPassword(pwd, pwd);
-          expect(err).toBe('Password must be at least 6 characters');
+          expect(err).toBe('Password must be at least 8 characters');
         }
       );
 
-      test('MUST accept exactly 6 characters ("Pass1!")', () => {
-        const err = validateLoginModalPassword('Pass1!', 'Pass1!');
+      test('MUST accept exactly 8 characters ("Pass123!")', () => {
+        const err = validateLoginModalPassword('Pass123!', 'Pass123!');
         expect(err).toBeNull();
       });
 
-      test('MUST accept > 6 characters ("Password123")', () => {
-        const err = validateLoginModalPassword('Password123', 'Password123');
+      test('MUST accept > 8 characters with special symbol ("Password123!")', () => {
+        const err = validateLoginModalPassword('Password123!', 'Password123!');
         expect(err).toBeNull();
       });
     });

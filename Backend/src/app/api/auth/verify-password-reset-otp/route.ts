@@ -111,35 +111,32 @@ const record = validationResult.record;
   );
   }
 
-  // Find user by email
-
-const { data: user, error: userError } = await supabaseAdmin
-  .from('users')
-  .select('id, email')
-  .eq('email', normalizedEmail)
-  .single();
+  // Find user by email (case-insensitive)
+  const { data: user, error: userError } = await supabaseAdmin
+    .from('users')
+    .select('id, email')
+    .ilike('email', normalizedEmail)
+    .single();
 
   if (userError || !user) {
-  logger.error('[PASSWORD_RESET] User not found', { email: normalizedEmail });
-  return NextResponse.json(
-  { error: 'User not found' },
-  { status: 500 }
-  );
+    logger.error('[PASSWORD_RESET] User not found', { email: normalizedEmail });
+    return NextResponse.json(
+      { error: 'User not found' },
+      { status: 500 }
+    );
   }
 
   // Generate temporary reset token (JWT)
-
-const resetToken = jwt.sign(
-  {
-  userId: user.id,
-  email: user.email,
-  type: 'password_reset_temp',
-  otpVerificationId: record.id,
-  // Store the OTP in the token so we can verify it matches on the next request
-  otpCode: record.code,
-  },
-  RESET_TOKEN_SECRET,
-  { expiresIn: `${RESET_TOKEN_EXPIRY_SECONDS}s` }
+  const resetToken = jwt.sign(
+    {
+      userId: user.id,
+      email: normalizedEmail,
+      type: 'password_reset_temp',
+      otpVerificationId: record.id,
+      otpCode: record.code,
+    },
+    RESET_TOKEN_SECRET,
+    { expiresIn: `${RESET_TOKEN_EXPIRY_SECONDS}s` }
   );
 
   logger.info('[PASSWORD_RESET] First OTP verified, temp token generated', {

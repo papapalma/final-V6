@@ -131,18 +131,17 @@ return NextResponse.json(
   }
 
   // Generate OTP
-
-const otpResponse = await createOTPVerification({
-  email: user.email,
-  type: 'password_reset',
-  userId: user.id,
-  expiryMinutes: 15,
-  maxAttempts: 5,
+  const otpResponse = await createOTPVerification({
+    email: normalizedEmail,
+    type: 'password_reset',
+    userId: user.id,
+    expiryMinutes: 15,
+    maxAttempts: 5,
   });
 
   logger.debug('[PASSWORD_RESET] OTP generated', {
-  userId: user.id,
-  verificationId: otpResponse.verificationId,
+    userId: user.id,
+    verificationId: otpResponse.verificationId,
   });
 
   // Resolve tenant for user if available
@@ -158,25 +157,22 @@ const otpResponse = await createOTPVerification({
   // Send email
   const emailResult = await sendPasswordResetOtpEmail({
     tenantId,
-    recipientEmail: user.email,
+    recipientEmail: normalizedEmail,
     otpCode: otpResponse.code,
   });
 
   if (!emailResult.success) {
-  logger.error('[PASSWORD_RESET] Failed to send email', {
-  userId: user.id,
-  error: emailResult.error,
-  });
-  // Still return success to user for security
+    logger.error('[PASSWORD_RESET] Failed to send email', {
+      userId: user.id,
+      error: emailResult.error,
+    });
 
-return NextResponse.json(
-  {
-  success: true,
-  message: 'If this email is registered, you will receive a reset code shortly.',
-  expiresIn: 900,
-  },
-  { status: 200 }
-  );
+    return NextResponse.json(
+      {
+        error: 'Unable to send reset email at this time. Please contact support or try again later.',
+      },
+      { status: 502 }
+    );
   }
 
   logger.info('[PASSWORD_RESET] Reset code sent', { userId: user.id });

@@ -162,15 +162,16 @@ export async function createOTPVerification(params: CreateOTPParams): Promise<OT
   const expiryMinutes = params.expiryMinutes ?? DEFAULT_EXPIRY_MINUTES;
   const maxAttempts = params.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const expiresAt = calculateExpiryTime(expiryMinutes);
+  const normalizedEmail = params.email.toLowerCase().trim();
 
   logger.info('[OTP] Creating OTP verification', {
-    email: params.email,
+    email: normalizedEmail,
     type: params.type,
     expiryMinutes,
   });
 
   const { data, error } = await supabaseAdmin.from('email_verifications').insert({
-    email: params.email,
+    email: normalizedEmail,
     code,
     type: params.type,
     method: 'email',
@@ -183,7 +184,7 @@ export async function createOTPVerification(params: CreateOTPParams): Promise<OT
 
   if (error) {
     logger.error('[OTP] Failed to create OTP verification', {
-      email: params.email,
+      email: normalizedEmail,
       type: params.type,
       error,
     });
@@ -195,7 +196,7 @@ const record = Array.isArray(data) ? data[0] : data;
   await logOTPOperation({
     tenantId: params.traineeId ? undefined : params.userId ? undefined : undefined,
     action: 'otp.create',
-    email: params.email,
+    email: normalizedEmail,
     type: params.type,
     userId: params.userId,
     traineeId: params.traineeId,
@@ -231,14 +232,15 @@ export async function validateOTP(
   code: string,
   type: OTPType
 ): Promise<ValidateOTPResult> {
-  logger.info('[OTP] Validating OTP', { email, type, codeLength: code.length });
+  const normalizedEmail = email.toLowerCase().trim();
+  logger.info('[OTP] Validating OTP', { email: normalizedEmail, type, codeLength: code.length });
 
   // Fetch the most recent unverified OTP for this email and type
 
 const { data: records, error: fetchError } = await supabaseAdmin
     .from('email_verifications')
     .select('*')
-    .eq('email', email)
+    .ilike('email', normalizedEmail)
     .eq('type', type)
     .is('verified_at', null)
     .order('created_at', { ascending: false })
@@ -416,10 +418,11 @@ export async function markOTPAsVerified(verificationId: string): Promise<void> {
  * @returns OTP record or null if not found
  */
 export async function getActiveOTP(email: string, type: OTPType): Promise<EmailVerification | null> {
+  const normalizedEmail = email.toLowerCase().trim();
   const { data: records, error } = await supabaseAdmin
     .from('email_verifications')
     .select('*')
-    .eq('email', email)
+    .ilike('email', normalizedEmail)
     .eq('type', type)
     .is('verified_at', null)
     .gt('expires_at', new Date().toISOString())
@@ -427,7 +430,7 @@ export async function getActiveOTP(email: string, type: OTPType): Promise<EmailV
     .limit(1);
 
   if (error) {
-    logger.warn('[OTP] Failed to fetch active OTP', { email, type, error });
+    logger.warn('[OTP] Failed to fetch active OTP', { email: normalizedEmail, type, error });
     return null;
   }
 
@@ -442,17 +445,18 @@ export async function getActiveOTP(email: string, type: OTPType): Promise<EmailV
  * @returns true if locked, false otherwise
  */
 export async function isLocked(email: string, type: OTPType): Promise<boolean> {
+  const normalizedEmail = email.toLowerCase().trim();
   const { data: records, error } = await supabaseAdmin
     .from('email_verifications')
     .select('attempt_count, max_attempts')
-    .eq('email', email)
+    .ilike('email', normalizedEmail)
     .eq('type', type)
     .is('verified_at', null)
     .order('created_at', { ascending: false })
     .limit(1);
 
   if (error) {
-    logger.warn('[OTP] Failed to check lock status', { email, type, error });
+    logger.warn('[OTP] Failed to check lock status', { email: normalizedEmail, type, error });
     return false;
   }
 
