@@ -157,14 +157,19 @@ await supabaseAdmin.from('audit_logs').insert({
   },
   });
 
-  return NextResponse.json(
-  {
-  success: true,
-  resetToken,
-  expiresIn: RESET_TOKEN_EXPIRY_SECONDS,
-  },
-  { status: 200 }
-  );
+    return NextResponse.json(
+      {
+        success: true,
+        resetToken,
+        expiresIn: RESET_TOKEN_EXPIRY_SECONDS,
+        data: {
+          success: true,
+          resetToken,
+          expiresIn: RESET_TOKEN_EXPIRY_SECONDS,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
   logger.error('[PASSWORD_RESET] Error verifying first OTP', { error: error?.message });
   return NextResponse.json(

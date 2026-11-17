@@ -247,6 +247,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       {
         success: true,
         message: 'Password reset successful. You can now log in with your new password.',
+        data: {
+          success: true,
+          message: 'Password reset successful. You can now log in with your new password.',
+        },
       },
       { status: 200 }
     );

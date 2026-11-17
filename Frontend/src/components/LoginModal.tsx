@@ -378,13 +378,17 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
 
     try {
       const result = await authService.requestPasswordReset(forgotEmail);
-      if (result.success) {
+      if (result?.success) {
         setForgotOTPSent(true);
         setForgotPasswordStep1(false);
         setForgotPasswordStep2(true);
-        toast.success('Reset code sent to your email');
+        toast.success(result.message || 'Reset code sent to your email');
         setCanResendForgotPassword(false);
         setForgotPasswordResendCountdown(60);
+      } else {
+        const errorMsg = (result as any)?.error || (result as any)?.message || 'Failed to send reset code. Please try again.';
+        setForgotPasswordError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
       const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Failed to send reset code. Please try again.';
@@ -402,11 +406,16 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
 
     try {
       const result = await authService.verifyPasswordResetOTP(forgotEmail, forgotOTP);
-      if (result.success) {
-        setResetToken(result.resetToken);
+      const token = result?.resetToken || (result as any)?.data?.resetToken;
+      if (result?.success && token) {
+        setResetToken(token);
         setForgotPasswordStep2(false);
         setForgotPasswordStep3(true);
         toast.success('OTP verified successfully');
+      } else {
+        const errorMsg = (result as any)?.error || (result as any)?.message || 'Invalid OTP. Please try again.';
+        setForgotPasswordError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
       const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Invalid OTP. Please try again.';
@@ -447,10 +456,14 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
         resetToken,
       });
 
-      if (result.success) {
+      if (result?.success) {
         toast.success('Password reset successfully! You can now log in with your new password.');
         resetState();
         setForgotPasswordStep(false);
+      } else {
+        const errorMsg = (result as any)?.error || (result as any)?.message || 'Failed to reset password. Please try again.';
+        setForgotPasswordError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
       const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Failed to reset password. Please try again.';

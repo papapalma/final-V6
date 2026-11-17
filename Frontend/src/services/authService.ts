@@ -198,7 +198,7 @@ class AuthService {
       '/auth/forgot-password',
       { email }
     );
-    return response.data;
+    return (response as any)?.data?.success !== undefined ? (response as any).data : ((response as any)?.data ?? response);
   }
 
   /**
@@ -212,11 +212,11 @@ class AuthService {
       '/auth/verify-password-reset-otp',
       { email, otp }
     );
-    return response.data;
+    return (response as any)?.data?.resetToken !== undefined ? (response as any).data : ((response as any)?.data ?? response);
   }
 
   /**
-   * Complete password reset with new password and double OTP verification
+   * Complete password reset with new password
    */
   async resetPassword(params: {
     email: string;
@@ -228,7 +228,7 @@ class AuthService {
       '/auth/reset-password',
       params
     );
-    return response.data;
+    return (response as any)?.data?.success !== undefined ? (response as any).data : ((response as any)?.data ?? response);
   }
 
   /**

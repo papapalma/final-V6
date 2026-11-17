@@ -191,23 +191,33 @@ await supabaseAdmin.from('audit_logs').insert({
   },
   });
 
-  return NextResponse.json(
-  {
-  success: true,
-  message: 'If this email is registered, you will receive a reset code shortly.',
-  expiresIn: 900,
-  },
-  { status: 200 }
-  );
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'If this email is registered, you will receive a reset code shortly.',
+        expiresIn: 900,
+        data: {
+          success: true,
+          message: 'If this email is registered, you will receive a reset code shortly.',
+          expiresIn: 900,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
-  logger.error('[PASSWORD_RESET] Error in forgot password', { error: error?.message });
-  return NextResponse.json(
-  {
-  success: true,
-  message: 'If this email is registered, you will receive a reset code shortly.',
-  expiresIn: 900,
-  },
-  { status: 200 }
-  );
+    logger.error('[PASSWORD_RESET] Error in forgot password', { error: error?.message });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'If this email is registered, you will receive a reset code shortly.',
+        expiresIn: 900,
+        data: {
+          success: true,
+          message: 'If this email is registered, you will receive a reset code shortly.',
+          expiresIn: 900,
+        },
+      },
+      { status: 200 }
+    );
   }
 }
