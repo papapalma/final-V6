@@ -33,6 +33,7 @@ export interface ActivityFilters {
   endDate?: string;
   page?: number;
   perPage?: number;
+  limit?: number;
   // Cross-tenant filters
   tenantId?: string;
 }

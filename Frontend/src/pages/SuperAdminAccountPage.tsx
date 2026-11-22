@@ -177,7 +177,7 @@ export default function SuperAdminAccountPage() {
                       placeholder="Search by username, email, or tenant…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="pl-9"
+                      className="pl-10"
                     />
                   </div>
                   <Select value={sort} onValueChange={setSort}>

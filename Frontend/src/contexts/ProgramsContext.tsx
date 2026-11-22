@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { Program } from '../utils/programHelpers';
 import programService from '../services/programService';
 import { getThumbnailUrl } from '../services/api';
@@ -21,13 +21,17 @@ export const ProgramsProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   /**
    * Fetch programs from API and update cache
    */
   const syncPrograms = useCallback(async () => {
     try {
-      setLoading(true);
+      // Only show loading state before first payload arrives (stale-while-revalidate on revisits)
+      if (!hasLoadedRef.current) {
+        setLoading(true);
+      }
       setError(null);
       const response = await programService.getPrograms({});
       const programsArray = response?.data || [];
@@ -59,13 +63,15 @@ export const ProgramsProvider: React.FC<{ children: ReactNode }> = ({ children }
           createdAt: p.created_at || '',
           updatedAt: p.updated_at || '',
           instructor: p.instructor || undefined,
-          // Include enrollment fields from backend
+          // Include enrollment and staff-only registration fields from backend
           enrollment_limit: p.enrollment_limit,
           max_trainees: p.max_trainees,
           current_enrollment: p.current_enrollment,
+          total_registrations: typeof p.total_registrations === 'number' ? p.total_registrations : undefined,
         };
       });
 
+      hasLoadedRef.current = true;
       setPrograms(transformedPrograms);
       logger.debug('Programs synced', { count: transformedPrograms.length, photoUrls: transformedPrograms.filter(p => p.photoUrl).length });
     } catch (err) {

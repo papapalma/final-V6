@@ -565,7 +565,7 @@ export default function RegistrationModal({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col p-0">
-          <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
             <motion.div
               initial={{ scale: 0.6, opacity: 0 }}
               animate={{ scale: [0.6, 1.15, 1], opacity: 1 }}

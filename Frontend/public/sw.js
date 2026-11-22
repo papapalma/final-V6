@@ -1,6 +1,6 @@
 // Service Worker for Bongabong Manpower Development Center (BMDC) PWA
-const CACHE_NAME = 'bmdc-pwa-static-v1';
-const DATA_CACHE_NAME = 'bmdc-pwa-data-v1';
+const CACHE_NAME = 'bmdc-pwa-static-v2';
+const DATA_CACHE_NAME = 'bmdc-pwa-data-v2';
 
 const STATIC_ASSETS = [
   '/',
@@ -51,8 +51,15 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Bypass non-GET requests and non-http(s) schemes (e.g. chrome-extension)
-  if (request.method !== 'GET' || !url.protocol.startsWith('http')) {
+  // Bypass non-GET requests, non-http(s) schemes, cross-origin requests, and Vite dev/HMR modules
+  if (
+    request.method !== 'GET' ||
+    !url.protocol.startsWith('http') ||
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/')
+  ) {
     return;
   }
 
@@ -105,18 +112,42 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle static assets (Stale-While-Revalidate)
+  // Network-first for JS/CSS bundles so lazy-loaded chunks never serve stale mismatched code
+  const isCodeBundle =
+    url.pathname.startsWith('/assets/') ||
+    /\.(?:m?js|css)$/i.test(url.pathname);
+
+  if (isCodeBundle) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          return Response.error();
+        })
+    );
+    return;
+  }
+
+  // Handle remaining static assets (Stale-While-Revalidate)
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
-      const fetchPromise = fetch(request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const copy = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-        }
-        return networkResponse;
-      }).catch(() => {
-        // Network failed, silently ignored if cachedResponse exists
-      });
+      const fetchPromise = fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse || Response.error());
 
       return cachedResponse || fetchPromise;
     })

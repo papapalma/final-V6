@@ -22,6 +22,7 @@ export interface Program {
   enrollment_limit?: number | null;
   max_trainees?: number;
   current_enrollment?: number;
+  total_registrations?: number;
 }
 
 // Helper function to check if program should be inactive based on end date

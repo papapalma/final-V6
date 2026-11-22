@@ -27,6 +27,8 @@ import path from 'path';
 import crypto from 'crypto';
 import sharp from 'sharp';
 import { requireTenantContext } from '@/middleware/tenantContext';
+import { requireAuthAsync } from '@/middleware/auth';
+import { handleOptionsRequest } from '@/middleware/cors';
 import { UPLOAD_BASE_DIR, validateTenantId } from '@/lib/fileStorage';
 import { withErrorHandler } from '@/middleware/errorHandler';
 import { forbiddenResponse, notFoundResponse } from '@/utils/responses';
@@ -48,7 +50,12 @@ const MIME_TYPES: Record<string, string> = { '.jpg':  'image/jpeg',
   '.doc':  'application/msword',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.xls':  'application/vnd.ms-excel',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', };
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.txt':  'text/plain; charset=utf-8', };
+
+export function OPTIONS(request: NextRequest) {
+  return handleOptionsRequest(request);
+}
 
 function getMimeType(filename: string): string { const ext = path.extname(filename).toLowerCase();
   return MIME_TYPES[ext] ?? 'application/octet-stream'; }
@@ -95,9 +102,17 @@ let userTenantId: string | undefined;
 
     if (!isPublicAsset) { 
       const ctxResult = requireTenantContext(request);
-      if (ctxResult.error) return ctxResult.error as NextResponse;
-
-      ({ tenantId: userTenantId, userId, isSuperAdmin } = ctxResult.context); 
+      if (ctxResult.error) {
+        const authResult = await requireAuthAsync(request);
+        if ('error' in authResult) {
+          return ctxResult.error as NextResponse;
+        }
+        userTenantId = authResult.user.tenantId;
+        userId = authResult.user.userId;
+        isSuperAdmin = authResult.user.role === 'super_admin';
+      } else {
+        ({ tenantId: userTenantId, userId, isSuperAdmin } = ctxResult.context);
+      }
     }
 
     // ── 4. Validate the tenant_id in the URL ─────────────────────────────────
@@ -246,7 +261,9 @@ if (!absolutePath.startsWith(UPLOAD_BASE_DIR)) { logger.warn('[FILE_ACCESS] Path
     const clientEtag = request.headers.get('if-none-match');
     const cacheControl = isFallback
       ? 'no-cache'
-      : 'public, max-age=86400, stale-while-revalidate=604800';
+      : isPublicAsset
+      ? 'public, max-age=86400, stale-while-revalidate=604800'
+      : 'private, max-age=3600';
 
     if (clientEtag && clientEtag === etag) {
       return new NextResponse(null, {

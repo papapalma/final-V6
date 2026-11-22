@@ -295,7 +295,7 @@ export default function ExtensionRequestsPage() {
                     placeholder="Search requests..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
+                    className="pl-10"
                   />
                 </div>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -353,7 +353,7 @@ export default function ExtensionRequestsPage() {
                   placeholder="Search requests..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  className="pl-10"
                 />
               </div>
             </div>

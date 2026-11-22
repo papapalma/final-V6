@@ -41,7 +41,7 @@ export class TraineeService {
   }): Promise<Trainee[]> {
     let query = supabaseAdmin
       .from('trainees')
-      .select('*, trainee_accounts(user_id, users(email)), enrollments(*)');
+      .select('*, trainee_accounts(user_id, users(email)), enrollments(*, program:programs(id, name))');
 
     // Apply tenant filtering for non-super-admin users
 
@@ -91,7 +91,48 @@ if (filters?.search) {
       };
     });
 
-    return Promise.all(trainees.map((trainee) => this.withThumbnail(trainee as Trainee)));
+    // Batch-fetch latest remark per trainee in 1 query for authorized non-training-staff roles
+    const canIncludeRemarks = Boolean(context && context.role !== 'staff_training_coordinator');
+    let latestRemarkByTrainee: Map<string, string> | null = null;
+
+    if (canIncludeRemarks && trainees.length > 0) {
+      try {
+        const traineeIds = trainees.map((t: any) => t.id).filter(Boolean);
+        let remarksQuery = supabaseAdmin
+          .from('trainee_remarks')
+          .select('trainee_id, remark, created_at')
+          .in('trainee_id', traineeIds)
+          .order('created_at', { ascending: false });
+
+        if (!context!.isSuperAdmin) {
+          remarksQuery = remarksQuery.eq('tenant_id', context!.tenantId);
+        }
+
+        const { data: remarksData, error: remarksError } = await remarksQuery;
+        if (!remarksError && Array.isArray(remarksData)) {
+          latestRemarkByTrainee = new Map<string, string>();
+          for (const entry of remarksData as Array<{ trainee_id: string; remark?: string | null }>) {
+            if (entry.trainee_id && !latestRemarkByTrainee.has(entry.trainee_id)) {
+              latestRemarkByTrainee.set(entry.trainee_id, entry.remark || '');
+            }
+          }
+        }
+      } catch {
+        // Non-fatal: keep trainee list working even if remarks query is unavailable
+        latestRemarkByTrainee = null;
+      }
+    }
+
+    return Promise.all(
+      trainees.map((trainee: any) =>
+        this.withThumbnail({
+          ...trainee,
+          ...(latestRemarkByTrainee !== null
+            ? { latest_remark: latestRemarkByTrainee.get(trainee.id) ?? '' }
+            : {}),
+        } as Trainee)
+      )
+    );
   }
 
   async getTraineeById(context: TenantContext | null, id: string, includeDeleted: boolean = false): Promise<Trainee | null> {

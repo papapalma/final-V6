@@ -25,11 +25,6 @@ import {
   WifiOff,
   Bell,
 } from 'lucide-react';
-import {
-  Person,
-  Notifications,
-  SignalCellularNoSim,
-} from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { Settings as SettingsIcon, Download as DownloadIcon } from 'lucide-react';
 import { isStandalone, canInstallPWA, promptPWAInstall, subscribeInstallPrompt } from '../utils/pwa';
@@ -344,7 +339,7 @@ export default function TraineeDashboardPage() {
               </Link>
               <Link to="/trainee/profile">
                 <Button className="gap-2">
-                  <Person fontSize="small" />
+                  <UserIcon className="size-4" />
                   <span>Profile</span>
                 </Button>
               </Link>
@@ -391,7 +386,7 @@ export default function TraineeDashboardPage() {
           {/* STATUS ALERTS - Simple */}
           {isOffline && (
             <div className="flex items-start gap-4 p-3 sm:p-4 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
-              <SignalCellularNoSim className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" fontSize="small" />
+              <WifiOff className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-amber-900 dark:text-amber-100">Offline Mode</p>
                 <p className="text-sm text-amber-800 dark:text-amber-300">Viewing cached data. Connect to internet for updates.</p>
@@ -402,7 +397,7 @@ export default function TraineeDashboardPage() {
           {'Notification' in window && !notificationsEnabled && !isOffline && (
             <div className="flex items-start justify-between gap-4 p-3 sm:p-4 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700">
               <div className="flex items-start gap-4 flex-1">
-                <Notifications className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" fontSize="small" />
+                <Bell className="size-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold text-blue-900 dark:text-blue-100">Enable Notifications</p>
                   <p className="text-sm text-blue-800 dark:text-blue-300">Get alerts for schedule changes and reminders.</p>
@@ -412,7 +407,7 @@ export default function TraineeDashboardPage() {
                 onClick={handleEnableNotifications} 
                 className="shrink-0 gap-2"
               >
-                <Notifications fontSize="small" />
+                <Bell className="size-4" />
                 Enable
               </Button>
             </div>

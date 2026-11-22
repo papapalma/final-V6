@@ -1,13 +1,18 @@
-import { ReactNode, useState, useEffect, useMemo, memo, lazy, Suspense } from 'react';
+import { ReactNode, useState, useEffect, useMemo, memo, Suspense } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranding } from '../contexts/BrandingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useMessenger } from '../contexts/MessengerContext';
+import { BrandLogo } from './BrandLogo';
+import { TraineeMessengerDrawer } from './messenger/TraineeMessengerDrawer';
 import { getRoleDisplayName, getRoleBadgeColor } from '../utils/roles';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Badge } from './ui/badge';
-import { getFileUrl } from '../services/api';
+import { NotificationBadge, formatBadgeAriaLabel } from './ui/notification-badge';
 import OverdueBellNotification from './OverdueBellNotification';
 import {
   AlertDialog,
@@ -42,6 +47,10 @@ import {
   ClipboardList,
   BookOpen,
   Trash2,
+  Megaphone,
+  MessageSquare,
+  Menu,
+  X,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -76,6 +85,8 @@ const NAVIGATION_ARRAYS = {
     { name: 'Programs', href: '/programs', icon: GraduationCap, permission: 'canManagePrograms' as const },
     { name: 'Registrations', href: '/registrations', icon: ClipboardList, permission: 'canManageTrainees' as const },
     { name: 'Reports', href: '/reports', icon: BarChart3, permission: 'canViewReports' as const },
+    { name: 'Announcements', href: '/admin/announcements', icon: Megaphone, permission: 'canManageCMS' as const },
+    { name: 'Messenger', href: '/messages', icon: MessageSquare },
     { 
       name: 'Settings', 
       icon: Settings, 
@@ -96,11 +107,13 @@ const NAVIGATION_ARRAYS = {
     { name: 'Profile', href: '/trainee/profile', icon: User },
     { name: 'Programs', href: '/trainee/programs', icon: GraduationCap },
     { name: 'Applications', href: '/trainee/applications', icon: ClipboardList },
+    { name: 'Messenger', href: '/messages', icon: MessageSquare },
     { name: 'Settings', href: '/settings', icon: Settings },
   ] as NavItem[],
   superAdmin: [
     { name: 'Dashboard', href: '/super-admin', icon: ActivityIcon },
     { name: 'Reports', href: '/super-admin/reports', icon: BarChart3 },
+    { name: 'Messenger', href: '/messages', icon: MessageSquare },
     { name: 'Activity Logs', href: '/activity-logs', icon: Activity },
     { name: 'Extension Requests', href: '/extension-requests', icon: ClipboardList },
     { name: 'Account', href: '/super-admin/accounts', icon: UserCog },
@@ -134,29 +147,18 @@ const filterNavigation = (nav: NavItem[], hasPermission: (perm: any) => boolean,
 };
 
 // Memoized Sidebar Logo Component
-const SidebarLogo = memo(({ cmsSettings, user }: any) => (
-  <div className="flex h-16 shrink-0 items-center gap-3">
-    {cmsSettings?.appearance?.logo ? (
-      <img
-        src={getFileUrl(cmsSettings.appearance.logo)}
-        alt="Logo"
-        className="size-10 rounded-xl object-contain shadow-sm border border-border"
-        loading="lazy"
-        onError={(e) => {
-          e.currentTarget.style.display = 'none';
-        }}
-      />
-    ) : (
-      <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-        <span className="text-xs font-bold">BMDC</span>
+const SidebarLogo = memo(({ companyName, tagline, user }: { companyName: string; tagline: string; user: any }) => {
+  const displayName = user?.tenantName || companyName || 'Bongabong MDC';
+  return (
+    <div className="flex h-16 shrink-0 items-center gap-3">
+      <BrandLogo size="sm" companyName={displayName} />
+      <div className="min-w-0">
+        <h3 className="text-sm font-bold text-foreground truncate">{displayName}</h3>
+        <p className="text-xs font-medium text-muted-foreground truncate max-w-[140px]">{tagline || 'Training Center'}</p>
       </div>
-    )}
-    <div className="min-w-0">
-      <h3 className="text-sm font-bold text-foreground truncate">{user?.tenantName || cmsSettings?.footer?.companyName?.value || 'Bongabong MDC'}</h3>
-      <p className="text-xs font-medium text-muted-foreground truncate max-w-[140px]">{cmsSettings?.footer?.tagline?.value || 'Training Center'}</p>
     </div>
-  </div>
-));
+  );
+});
 SidebarLogo.displayName = 'SidebarLogo';
 
 // Memoized Navigation Item Component
@@ -210,10 +212,20 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
   }
 
   const isCurrentActive = isActive(item.href!);
+  const numericBadgeCount = typeof badgeCount === 'number' ? badgeCount : 0;
+  const navAriaLabel =
+    numericBadgeCount > 0
+      ? formatBadgeAriaLabel(
+          item.name,
+          numericBadgeCount,
+          item.href === '/messages' ? 'unread message' : 'pending item',
+        )
+      : undefined;
 
   return (
     <Link
       to={item.href!}
+      aria-label={navAriaLabel}
       className={`ds-nav-item flex items-center justify-between gap-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
         isCurrentActive
           ? 'is-active bg-primary text-primary-foreground font-semibold shadow-sm'
@@ -224,18 +236,12 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
         <item.icon className="size-4.5 shrink-0" />
         <span>{item.name}</span>
       </div>
-      {typeof badgeCount === 'number' && badgeCount > 0 && (
-        <span
-          style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
-          className={`notif-badge-red inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums text-white bg-red-600 shadow-sm transition-all ${
-            isCurrentActive
-              ? 'ring-2 ring-primary-foreground/40'
-              : 'ring-2 ring-background'
-          }`}
-        >
-          {badgeCount > 99 ? '99+' : badgeCount}
-        </span>
-      )}
+      <NotificationBadge
+        variant="count"
+        count={numericBadgeCount}
+        position="inline"
+        ringClassName={isCurrentActive ? 'ring-primary-foreground/40' : 'ring-card'}
+      />
     </Link>
   );
 });
@@ -291,9 +297,10 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, hasPermission, isAuthReady } = useAuth();
+  const { companyName, tagline } = useBranding();
   const { isDark, toggleTheme } = useTheme();
-  const [cmsSettings, setCmsSettings] = useState<any>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [pendingRegistrationCount, setPendingRegistrationCount] = useState<number>(() => {
     try {
@@ -307,16 +314,14 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
     }
     return 0;
   });
+  const { totalUnreadCount } = useMessenger();
   const [showBottomNav, setShowBottomNav] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  // Load CMS settings from localStorage (one-time)
+  // Auto-close tablet/mobile navigation drawer on route change
   useEffect(() => {
-    const savedSettings = localStorage.getItem('bmdc-cms-settings');
-    if (savedSettings) {
-      setCmsSettings(JSON.parse(savedSettings));
-    }
-  }, []);
+    setMobileDrawerOpen(false);
+  }, [location.pathname]);
 
   // Handle scroll to show/hide bottom nav
   useEffect(() => {
@@ -431,13 +436,13 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
   return (
     <div className="min-h-screen overflow-x-hidden bg-background ds-shell">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <div className="ds-sidebar flex grow flex-col gap-y-5 overflow-y-auto border-r border-border bg-card px-6 pb-4">
+      <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col no-print">
+        <div className="ds-sidebar flex grow flex-col gap-y-6 overflow-y-auto border-r border-border bg-card px-6 pb-4">
           {/* Logo */}
-          <SidebarLogo cmsSettings={cmsSettings} user={user} />
+          <SidebarLogo companyName={companyName} tagline={tagline} user={user} />
 
           {/* Navigation */}
-          <nav className="flex flex-1 flex-col">
+          <nav className="flex flex-1 flex-col" aria-label="Main navigation">
             <ul className="flex flex-1 flex-col gap-y-1">
               {filteredNavigation.map((item) => (
                 <li key={item.name}>
@@ -447,7 +452,13 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                     isChildActive={isChildActive}
                     onToggle={toggleDropdown}
                     openDropdown={openDropdown}
-                    badgeCount={item.href === '/registrations' ? pendingRegistrationCount : undefined}
+                    badgeCount={
+                      item.href === '/registrations'
+                        ? pendingRegistrationCount
+                        : item.href === '/messages'
+                        ? totalUnreadCount
+                        : undefined
+                    }
                   />
                 </li>
               ))}
@@ -464,21 +475,93 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className={`${!isAuthReady ? 'hidden' : 'md:hidden fixed'} bottom-0 left-0 right-0 z-50 border-t border-border bg-card shadow-lg transition-transform duration-300 ease-out ${
-        showBottomNav ? 'translate-y-0' : 'translate-y-full'
-      }`}>
+      {/* Tablet & Mobile Slide-Over Navigation Drawer (< 1024px) */}
+      <DialogPrimitive.Root open={mobileDrawerOpen} onOpenChange={setMobileDrawerOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 duration-200 lg:hidden no-print" />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left duration-200 lg:hidden no-print"
+          >
+            <DialogPrimitive.Title className="sr-only">Navigation menu</DialogPrimitive.Title>
+            <div className="flex items-center justify-between border-b border-border px-6">
+              <SidebarLogo companyName={companyName} tagline={tagline} user={user} />
+              <DialogPrimitive.Close asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close navigation menu"
+                  className="shrink-0"
+                >
+                  <X className="size-5" />
+                </Button>
+              </DialogPrimitive.Close>
+            </div>
+            <div className="flex grow flex-col gap-y-6 overflow-y-auto px-6 py-4">
+              <nav className="flex flex-1 flex-col" aria-label="Drawer navigation">
+                <ul className="flex flex-1 flex-col gap-y-1">
+                  {filteredNavigation.map((item) => (
+                    <li key={item.name}>
+                      <NavItemComponent
+                        item={item}
+                        isActive={isActive}
+                        isChildActive={isChildActive}
+                        onToggle={toggleDropdown}
+                        openDropdown={openDropdown}
+                        badgeCount={
+                          item.href === '/registrations'
+                            ? pendingRegistrationCount
+                            : item.href === '/messages'
+                            ? totalUnreadCount
+                            : undefined
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+              <UserProfileSection
+                user={user}
+                isDark={isDark}
+                toggleTheme={toggleTheme}
+                openLogoutDialog={openLogoutDialog}
+              />
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+
+      {/* Mobile Bottom Navigation (< 768px) */}
+      <nav
+        aria-label="Mobile navigation"
+        className={`${!isAuthReady ? 'hidden' : 'md:hidden fixed'} bottom-0 left-0 right-0 z-50 border-t border-border bg-card shadow-lg transition-transform duration-300 ease-out no-print ${
+          showBottomNav ? 'translate-y-0' : 'translate-y-full'
+        }`}
+      >
         <div className="flex h-16 w-full items-stretch">
           {mobileMenuItems.slice(0, 5).map((item) => {
             const isCurrentActive = item.href && isActive(item.href);
-            const isRegistrationsItem = item.href === '/registrations';
-            const showRegBadge = isRegistrationsItem && pendingRegistrationCount > 0;
-            
+            const itemBadgeCount =
+              item.href === '/registrations'
+                ? pendingRegistrationCount
+                : item.href === '/messages'
+                ? totalUnreadCount
+                : 0;
+            const mobileItemAriaLabel =
+              itemBadgeCount > 0
+                ? formatBadgeAriaLabel(
+                    item.name,
+                    itemBadgeCount,
+                    item.href === '/messages' ? 'unread message' : 'pending item',
+                  )
+                : undefined;
+
             return (
               <Link
                 key={item.name}
                 to={item.href || '#'}
-                className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] transition-colors ${
+                aria-label={mobileItemAriaLabel}
+                className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
                   isCurrentActive
                     ? 'text-primary font-semibold'
                     : 'text-muted-foreground hover:text-foreground'
@@ -486,14 +569,14 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
               >
                 <div className="relative">
                   <item.icon className="size-5" />
-                  {showRegBadge && (
-                    <span
-                      style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
-                      className="notif-badge-red absolute -top-1.5 -right-2 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white shadow-sm ring-2 ring-card"
-                    >
-                      {pendingRegistrationCount > 9 ? '9+' : pendingRegistrationCount}
-                    </span>
-                  )}
+                  <NotificationBadge
+                    variant="count"
+                    count={itemBadgeCount}
+                    max={9}
+                    size="sm"
+                    position="corner"
+                    ringClassName="ring-card"
+                  />
                 </div>
                 <span className="line-clamp-1 text-center">{item.name}</span>
               </Link>
@@ -501,41 +584,64 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
           })}
 
           {mobileMenuItems.length > 5 && (() => {
-            const hasRegistrationsInMore = mobileMenuItems.slice(5).some(item => item.href === '/registrations' && pendingRegistrationCount > 0);
+            const hasAlertInMore = mobileMenuItems.slice(5).some(
+              (item) =>
+                (item.href === '/registrations' && pendingRegistrationCount > 0) ||
+                (item.href === '/messages' && totalUnreadCount > 0)
+            );
             return (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] text-muted-foreground transition-colors hover:text-foreground">
+                  <button
+                    type="button"
+                    aria-label={hasAlertInMore ? 'More navigation options, new alerts' : 'More navigation options'}
+                    className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
                     <div className="relative">
                       <Settings className="size-5" />
-                      {hasRegistrationsInMore && (
-                        <span className="absolute -top-0.5 -right-1 flex size-2">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF3B30] opacity-75" />
-                          <span className="relative inline-flex size-2 rounded-full bg-[#FF3B30]" />
-                        </span>
-                      )}
+                      <NotificationBadge
+                        variant="dot"
+                        show={hasAlertInMore}
+                        position="corner"
+                        ringClassName="ring-card"
+                      />
                     </div>
                     <span>More</span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
                   {mobileMenuItems.slice(5).map((item) => {
-                    const isReg = item.href === '/registrations';
+                    const overflowCount =
+                      item.href === '/registrations'
+                        ? pendingRegistrationCount
+                        : item.href === '/messages'
+                        ? totalUnreadCount
+                        : 0;
+                    const overflowAriaLabel =
+                      overflowCount > 0
+                        ? formatBadgeAriaLabel(
+                            item.name,
+                            overflowCount,
+                            item.href === '/messages' ? 'unread message' : 'pending item',
+                          )
+                        : undefined;
                     return (
                       <DropdownMenuItem key={item.name} asChild>
-                        <Link to={item.href || '#'} className="flex cursor-pointer items-center justify-between gap-2">
+                        <Link
+                          to={item.href || '#'}
+                          aria-label={overflowAriaLabel}
+                          className="flex cursor-pointer items-center justify-between gap-2"
+                        >
                           <div className="flex items-center gap-2">
                             <item.icon className="size-4" />
                             {item.name}
                           </div>
-                          {isReg && pendingRegistrationCount > 0 && (
-                            <span 
-                              style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
-                              className="notif-badge-red inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-[10px] font-bold text-white shadow-sm ring-2 ring-card"
-                            >
-                              {pendingRegistrationCount > 99 ? '99+' : pendingRegistrationCount}
-                            </span>
-                          )}
+                          <NotificationBadge
+                            variant="count"
+                            count={overflowCount}
+                            position="inline"
+                            ringClassName="ring-card"
+                          />
                         </Link>
                       </DropdownMenuItem>
                     );
@@ -550,12 +656,26 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
       {/* Main Content */}
       <div className="lg:pl-64">
         {/* Top Bar - Height: h-16 (64px), z-index: z-30 */}
-        <div className="ds-topbar sticky top-0 z-30 flex h-16 min-w-0 shrink-0 items-center gap-x-3 border-b border-border bg-card px-3 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
+        <div className="ds-topbar sticky top-0 z-30 flex h-16 min-w-0 shrink-0 items-center gap-x-3 border-b border-border bg-card px-3 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8 no-print">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileDrawerOpen(true)}
+            className="lg:hidden shrink-0"
+            aria-label="Open navigation menu"
+            title="Menu"
+          >
+            <Menu className="size-5" />
+          </Button>
           <div className="flex min-w-0 flex-1 gap-x-3 self-stretch lg:gap-x-6">
             <div className="flex min-w-0 flex-1 items-center">
-              {title && <h1 className="truncate text-foreground">{title}</h1>}
+              {title && (
+                <h1 className="truncate text-lg sm:text-xl font-semibold leading-tight tracking-tight text-foreground">
+                  {title}
+                </h1>
+              )}
             </div>
-            <div className="flex shrink-0 items-center gap-x-1.5 sm:gap-x-2 lg:gap-x-6">
+            <div className="flex shrink-0 items-center gap-x-1.5 sm:gap-x-2 lg:gap-x-4">
               {/* Tenant name badge — desktop only */}
               {user?.tenantName && (
                 <span className="hidden lg:inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs text-primary font-medium">
@@ -566,10 +686,10 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
               <Suspense fallback={null}>
                 <OverdueBellNotification />
               </Suspense>
-              
+
               {hasPermission('canScanQR') && (
-                <Link to="/scan">
-                  <Button variant="ghost" size="icon">
+                <Link to="/scan" aria-label="Open QR Scanner">
+                  <Button variant="ghost" size="icon" title="QR Scanner" aria-label="Open QR Scanner">
                     <QrCode className="size-5" />
                   </Button>
                 </Link>
@@ -579,7 +699,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
               <div className="lg:hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
+                    <Button variant="ghost" size="icon" aria-label="Open account menu" title="Account">
                       <Avatar className="size-6">
                         <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                           {user?.name?.charAt(0) || 'U'}
@@ -624,6 +744,8 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                 size="icon"
                 onClick={toggleTheme}
                 className="hidden lg:flex"
+                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                title={isDark ? 'Light mode' : 'Dark mode'}
               >
                 {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
               </Button>
@@ -653,6 +775,9 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Floating Messenger Drawer when not on dedicated /messages page */}
+      {location.pathname !== '/messages' && <TraineeMessengerDrawer />}
     </div>
   );
 }

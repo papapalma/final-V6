@@ -7,6 +7,7 @@ import { sanitizePath } from '@/lib/security';
 // Allowed file types
 const ALLOWED_IMAGE_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif'];
 const ALLOWED_DOCUMENT_TYPES = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+const ALLOWED_VIDEO_TYPES = ['.mp4', '.webm'];
 
 /**
  * Magic byte signatures for allowed file types (SEC-12).
@@ -25,6 +26,11 @@ const DOCUMENT_MAGIC_BYTES: Array<{ magic: number[]; offset?: number }> = [
   { magic: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1] }, // OLE2 (doc, xls)
 ];
 
+const VIDEO_MAGIC_BYTES: Array<{ magic: number[]; offset?: number }> = [
+  { magic: [0x66, 0x74, 0x79, 0x70], offset: 4 },        // MP4 (ftyp)
+  { magic: [0x1a, 0x45, 0xdf, 0xa3], offset: 0 },        // WebM
+];
+
 function matchesMagic(
   buf: Buffer,
   signatures: Array<{ magic: number[]; offset?: number }>
@@ -36,8 +42,8 @@ function matchesMagic(
 
 // File size limits (in bytes)
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
-
 const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
 
 // Base upload directory - use env variable or static default to prevent dynamic path tracing in Turbopack
 const UPLOAD_BASE_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'public', 'uploads');
@@ -45,7 +51,7 @@ const DEFAULT_THUMBNAIL_RELATIVE_PATH = '/uploads/images/defaults/blank-thumbnai
 const THUMBNAIL_SIZE = 320;
 const THUMBNAIL_QUALITY = 82;
 
-export type UploadCategory = 'items' | 'trainees' | 'programs' | 'cms' | 'qrcodes' | 'documents';
+export type UploadCategory = 'items' | 'trainees' | 'programs' | 'cms' | 'qrcodes' | 'documents' | 'announcements';
 
 interface UploadResult {
   success: boolean;
@@ -93,6 +99,13 @@ function validateFileType(filename: string, category: UploadCategory): { valid: 
         error: `File type ${ext} not allowed. Allowed types: ${ALLOWED_DOCUMENT_TYPES.join(', ')}`
       };
     }
+  } else if (category === 'announcements') {
+    if (![...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES].includes(ext)) {
+      return {
+        valid: false,
+        error: `File type ${ext} not allowed for announcements. Allowed types: ${[...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES].join(', ')}`
+      };
+    }
   } else {
     // All other categories are for images
     if (!ALLOWED_IMAGE_TYPES.includes(ext)) {
@@ -109,8 +122,11 @@ function validateFileType(filename: string, category: UploadCategory): { valid: 
 /**
  * Validate file size
  */
-function validateFileSize(size: number, category: UploadCategory): { valid: boolean; error?: string } {
-  const maxSize = category === 'documents' ? MAX_DOCUMENT_SIZE : MAX_IMAGE_SIZE;
+function validateFileSize(size: number, category: UploadCategory, ext = ''): { valid: boolean; error?: string } {
+  let maxSize = category === 'documents' ? MAX_DOCUMENT_SIZE : MAX_IMAGE_SIZE;
+  if (category === 'announcements' && ALLOWED_VIDEO_TYPES.includes(ext.toLowerCase())) {
+    maxSize = MAX_VIDEO_SIZE;
+  }
   
   if (size > maxSize) {
     const maxSizeMB = maxSize / (1024 * 1024);
@@ -141,8 +157,10 @@ function getDefaultThumbnailAbsolutePath(): string {
   return path.join(UPLOAD_BASE_DIR, 'images', 'defaults', 'blank-thumbnail.webp');
 }
 
-function isImageCategory(category: UploadCategory): boolean {
-  return category !== 'documents';
+function isImageCategory(category: UploadCategory, ext = ''): boolean {
+  if (category === 'documents') return false;
+  if (category === 'announcements' && ALLOWED_VIDEO_TYPES.includes(ext.toLowerCase())) return false;
+  return true;
 }
 
 /**
@@ -274,25 +292,41 @@ async function pathExists(absolutePath: string): Promise<boolean> {
   }
 }
 
-async function ensureDefaultThumbnailExists(): Promise<void> {
-  const defaultThumbnailAbsolutePath = getDefaultThumbnailAbsolutePath();
+let defaultThumbnailEnsured = false;
+let defaultThumbnailEnsurePromise: Promise<void> | null = null;
 
-  if (await pathExists(defaultThumbnailAbsolutePath)) {
+async function ensureDefaultThumbnailExists(): Promise<void> {
+  if (defaultThumbnailEnsured) {
     return;
   }
+  if (defaultThumbnailEnsurePromise) {
+    return defaultThumbnailEnsurePromise;
+  }
 
-  await ensureDir(path.dirname(defaultThumbnailAbsolutePath));
+  defaultThumbnailEnsurePromise = (async () => {
+    const defaultThumbnailAbsolutePath = getDefaultThumbnailAbsolutePath();
 
-  await sharp({
-    create: {
-      width: THUMBNAIL_SIZE,
-      height: THUMBNAIL_SIZE,
-      channels: 3,
-      background: { r: 240, g: 243, b: 247 },
-    },
-  })
-    .webp({ quality: 90 })
-    .toFile(defaultThumbnailAbsolutePath);
+    if (!(await pathExists(defaultThumbnailAbsolutePath))) {
+      await ensureDir(path.dirname(defaultThumbnailAbsolutePath));
+
+      await sharp({
+        create: {
+          width: THUMBNAIL_SIZE,
+          height: THUMBNAIL_SIZE,
+          channels: 3,
+          background: { r: 240, g: 243, b: 247 },
+        },
+      })
+        .webp({ quality: 90 })
+        .toFile(defaultThumbnailAbsolutePath);
+    }
+
+    defaultThumbnailEnsured = true;
+  })().finally(() => {
+    defaultThumbnailEnsurePromise = null;
+  });
+
+  return defaultThumbnailEnsurePromise;
 }
 
 async function createThumbnailFromBuffer(sourceBuffer: Buffer, destinationPath: string): Promise<void> {
@@ -385,28 +419,33 @@ export async function uploadFile(
       return { success: false, error: typeValidation.error };
     }
 
-    // Validate actual file content against known magic bytes (SEC-12)
+    const ext = path.extname(originalName).toLowerCase();
 
-const expectedSignatures = category === 'documents' ? DOCUMENT_MAGIC_BYTES : IMAGE_MAGIC_BYTES;
+    // Validate actual file content against known magic bytes (SEC-12)
+    let expectedSignatures = IMAGE_MAGIC_BYTES;
+    if (category === 'documents') {
+      expectedSignatures = DOCUMENT_MAGIC_BYTES;
+    } else if (ALLOWED_VIDEO_TYPES.includes(ext)) {
+      expectedSignatures = VIDEO_MAGIC_BYTES;
+    }
+
     if (!matchesMagic(fileBuffer, expectedSignatures)) {
       return { success: false, error: 'File content does not match the declared file type.' };
     }
 
     // Validate file size
-
-const sizeValidation = validateFileSize(fileBuffer.length, category);
+    const sizeValidation = validateFileSize(fileBuffer.length, category, ext);
     if (!sizeValidation.valid) {
       return { success: false, error: sizeValidation.error };
     }
 
     // Generate filename and paths
-
-const filename = generateFilename(originalName, prefix);
+    const filename = generateFilename(originalName, prefix);
     const uploadDir = getUploadDir(category);
     await ensureDir(uploadDir);
 
     let thumbnailPath: string | undefined;
-    if (isImageCategory(category)) {
+    if (isImageCategory(category, ext)) {
       await ensureDir(getThumbnailDir(category));
       await ensureDefaultThumbnailExists();
     }

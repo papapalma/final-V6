@@ -61,10 +61,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   }
 
   const programs = await programService.getAllPrograms({ status, search, tenantId });
-  
-  // Enrich all programs with current enrollment counts
-  const enrichedPrograms = await programService.enrichProgramWithEnrollment(programs);
-  
+
+  // Only include registration/applicant counts for authenticated staff/admin roles (matches /programs/[id]/stats RBAC)
+  const staffStatsRoles = ['local_admin', 'staff_training_coordinator', 'staff_inventory_manager', 'super_admin'];
+  const includeRegistrationCounts = !ctxResult.error && staffStatsRoles.includes(ctxResult.context.role);
+
+  // Enrich all programs with batched enrollment (and RBAC-gated registration) counts
+  const enrichedPrograms = await programService.enrichProgramWithEnrollment(programs, {
+    includeRegistrationCounts,
+  });
+
   return successResponse(enrichedPrograms);
 });
 

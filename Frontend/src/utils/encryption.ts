@@ -35,6 +35,10 @@ const KDF_ALGORITHM = {
 const STORAGE_VERSION = '1';
 const ENCRYPTION_PREFIX = 'enc:v1:';
 
+// In-memory cache keyed by storage key + exact ciphertext so repeated API calls
+// skip WebCrypto key import/decrypt without weakening sessionStorage encryption.
+const decryptedTokenCache = new Map<string, { ciphertext: string; plaintext: string }>();
+
 /**
  * Get or create a session-based encryption key stored in sessionStorage
  * This key is stable throughout the session and unique per browser instance
@@ -182,15 +186,26 @@ export async function decryptToken(encryptedData: string): Promise<string> {
 export async function getEncryptedToken(key: string): Promise<string | null> {
   try {
     const encrypted = sessionStorage.getItem(key);
-    if (!encrypted) return null;
+    if (!encrypted) {
+      decryptedTokenCache.delete(key);
+      return null;
+    }
+
+    const cached = decryptedTokenCache.get(key);
+    if (cached && cached.ciphertext === encrypted) {
+      return cached.plaintext;
+    }
 
     // Try to decrypt
     try {
-      return await decryptToken(encrypted);
+      const plaintext = await decryptToken(encrypted);
+      decryptedTokenCache.set(key, { ciphertext: encrypted, plaintext });
+      return plaintext;
     } catch (decryptError) {
       // If decryption fails, it's likely an old token encrypted with browser fingerprint
       // Clear it and return null so user can login again
       console.warn('[Encryption] Token decryption failed - clearing old token', decryptError);
+      decryptedTokenCache.delete(key);
       sessionStorage.removeItem(key);
       return null;
     }
@@ -208,6 +223,7 @@ export async function setEncryptedToken(key: string, token: string): Promise<voi
   try {
     const encrypted = await encryptToken(token);
     sessionStorage.setItem(key, encrypted);
+    decryptedTokenCache.set(key, { ciphertext: encrypted, plaintext: token });
   } catch (error) {
     console.error('[Encryption] Failed to store encrypted token:', error);
     throw error;
@@ -219,6 +235,7 @@ export async function setEncryptedToken(key: string, token: string): Promise<voi
  */
 export function removeEncryptedToken(key: string): void {
   try {
+    decryptedTokenCache.delete(key);
     sessionStorage.removeItem(key);
   } catch (error) {
     console.error('[Encryption] Failed to remove encrypted token:', error);

@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { FilterPill } from '../components/ui/filter-pill';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -43,7 +44,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import programService from '../services/programService';
-import { getThumbnailUrl } from '../services/api';
+import { api } from '../services/api';
 import { TableSkeleton, CardGridSkeleton } from '../components/LoadingSkeletons';
 
 // Icon options for programs
@@ -71,8 +72,8 @@ export default function ProgramsPage() {
   const { hasPermission, user, isAuthReady } = useAuth();
   const { programs: contextPrograms, loading: contextLoading, refetch: contextRefetch } = usePrograms();
   const navigate = useNavigate();  
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [programs, setPrograms] = useState<Program[]>(contextPrograms);
+  const [loading, setLoading] = useState(contextPrograms.length === 0);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,8 +84,6 @@ export default function ProgramsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [tablePage, setTablePage] = useState(1);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
-  const [programStats, setProgramStats] = useState<Record<string, any>>({});
-  const [statsLoading, setStatsLoading] = useState<Set<string>>(new Set());
   const tableRowsPerPage = 10;
   const location = useLocation();
 
@@ -111,11 +110,11 @@ export default function ProgramsPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Sync context programs to local state
+  // Sync context programs to local state immediately (no skeleton flash when cached)
   useEffect(() => {
-    if (contextPrograms.length > 0) {
-      setPrograms(contextPrograms);
-      setLoading(contextLoading);
+    setPrograms(contextPrograms);
+    if (!contextLoading || contextPrograms.length > 0) {
+      setLoading(false);
     }
   }, [contextPrograms, contextLoading]);
 
@@ -129,6 +128,7 @@ export default function ProgramsPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    api.clearCache();
     await contextRefetch();
     setRefreshing(false);
   };
@@ -206,37 +206,6 @@ export default function ProgramsPage() {
   }, [searchTerm, filterStatus, filterFunding, viewMode]);
 
   const canManage = hasPermission('canManagePrograms');
-
-  // Fetch stats for programs when grid view is active
-  useEffect(() => {
-    if (viewMode === 'grid' && filteredPrograms.length > 0) {
-      filteredPrograms.forEach((program) => {
-        if (!programStats[program.id] && !statsLoading.has(program.id)) {
-          const newLoading = new Set(statsLoading);
-          newLoading.add(program.id);
-          setStatsLoading(newLoading);
-
-          programService.getProgramSpecificStats(program.id)
-            .then((stats) => {
-              setProgramStats((prev) => ({
-                ...prev,
-                [program.id]: stats,
-              }));
-            })
-            .catch((error) => {
-              console.error(`Failed to fetch stats for program ${program.id}:`, error);
-            })
-            .finally(() => {
-              setStatsLoading((prev) => {
-                const newLoading = new Set(prev);
-                newLoading.delete(program.id);
-                return newLoading;
-              });
-            });
-        }
-      });
-    }
-  }, [viewMode, filteredPrograms, programStats, statsLoading]);
 
   return (
     <DashboardLayout>
@@ -380,27 +349,27 @@ export default function ProgramsPage() {
                 </span>
 
                 {[
-                  { key: 'all', label: 'All', count: statusCounts.all },
-                  { key: 'active', label: 'Active', count: statusCounts.active },
-                  { key: 'inactive', label: 'Inactive', count: statusCounts.inactive },
+                  { key: 'all', label: 'All', count: statusCounts.all, tone: 'neutral' as const },
+                  { key: 'active', label: 'Active', count: statusCounts.active, tone: 'success' as const },
+                  { key: 'inactive', label: 'Inactive', count: statusCounts.inactive, tone: 'muted' as const },
                 ].map((status) => {
                   const isActive = filterStatus === status.key;
                   return (
-                    <button
+                    <FilterPill
                       key={status.key}
-                      type="button"
+                      tone={status.tone}
+                      active={isActive}
                       onClick={() => setFilterStatus(status.key as any)}
-                      className={`program-pill-base ${isActive ? `program-pill-${status.key}-active` : `program-pill-${status.key}`}`}
                     >
                       <span>{status.label}</span>
                       <span
-                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-semibold transition-colors ${
-                          isActive ? 'bg-white/25 text-white' : 'bg-black/5 dark:bg-white/10 text-muted-foreground'
+                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
+                          isActive ? 'bg-white/25 text-current' : 'bg-black/5 dark:bg-white/10 text-muted-foreground'
                         }`}
                       >
                         {status.count}
                       </span>
-                    </button>
+                    </FilterPill>
                   );
                 })}
               </div>
@@ -459,7 +428,7 @@ export default function ProgramsPage() {
                     return (
                       <TableRow
                         key={program.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className="group cursor-pointer hover:bg-muted/50"
                         onClick={() => {
                           setSelectedProgram(program);
                           setDetailsModalOpen(true);
@@ -500,10 +469,15 @@ export default function ProgramsPage() {
                         </TableCell>
                         <TableCell>
                           {canManage && (
-                            <div className="flex gap-1" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                            <div
+                              className="flex gap-1 opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                            >
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                title="Edit program"
+                                aria-label={`Edit ${program.name}`}
                                 onClick={(e: React.MouseEvent) => {
                                   e.stopPropagation();
                                   handleEdit(program);
@@ -514,6 +488,8 @@ export default function ProgramsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                title="Delete program"
+                                aria-label={`Delete ${program.name}`}
                                 onClick={(e: React.MouseEvent) => {
                                   e.stopPropagation();
                                   openDeleteDialog(program);
@@ -571,7 +547,7 @@ export default function ProgramsPage() {
                   variant="outline"
                   size="sm"
                   onClick={resetFilters}
-                  className="mt-5 rounded-xl border-input text-xs font-medium"
+                  className="mt-6 rounded-xl border-input text-xs font-medium"
                 >
                   <RotateCcw className="mr-1.5 size-3.5" />
                   Reset all filters
@@ -583,93 +559,112 @@ export default function ProgramsPage() {
           <div className={`${viewMode === 'grid' ? 'grid' : 'grid sm:hidden'} gap-3 sm:gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`}>
             {filteredPrograms.map((program) => {
               const IconComponent = getIconComponent(program.icon);
-              const stats = programStats[program.id];
-              const isLoadingStats = statsLoading.has(program.id);
               return (
-                <Card key={program.id} className="group hover:shadow-lg transition-all cursor-pointer overflow-hidden flex flex-col"
+                <Card
+                  key={program.id}
+                  className="group hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col border border-border/70 hover:border-border"
                   onClick={() => {
                     setSelectedProgram(program);
                     setDetailsModalOpen(true);
                   }}
                 >
-                  {program.photoUrl && (
-                    <div className="w-full h-32 sm:h-40 md:h-48 rounded-t-xl overflow-hidden border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
-                      <img
-                        src={program.photoUrl}
-                        alt={program.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  )}
-                  <CardHeader className="pb-2 sm:pb-3">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex size-10 sm:size-12 items-center justify-center rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors shrink-0">
-                        <IconComponent className="size-5 sm:size-6 text-primary" />
+                  <CardHeader className="p-4 pb-2">
+                    <div className="flex items-start gap-3">
+                      {/* Compact 44px Avatar / Icon */}
+                      <div className="size-11 rounded-xl overflow-hidden bg-primary/10 group-hover:bg-primary/15 transition-colors shrink-0 flex items-center justify-center border border-primary/10">
+                        {program.photoUrl && !program.photoUrl.includes('blank-thumbnail') ? (
+                          <img
+                            src={program.photoUrl}
+                            alt={program.name}
+                            className="size-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <IconComponent className="size-5 text-primary" />
+                        )}
                       </div>
-                      {canManage && (
-                        <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 sm:h-8 sm:w-8"
-                            onClick={(e: React.MouseEvent) => {
-                              e.stopPropagation();
-                              handleEdit(program);
-                            }}
-                          >
-                            <Pencil className="size-3 sm:size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 sm:h-8 sm:w-8"
-                            onClick={(e: React.MouseEvent) => {
-                              e.stopPropagation();
-                              openDeleteDialog(program);
-                            }}
-                          >
-                            <Trash2 className="size-3 sm:size-4 text-destructive" />
-                          </Button>
+
+                      {/* Title & Badges */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-1">
+                          <CardTitle className="text-sm sm:text-base font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                            {program.name}
+                          </CardTitle>
+                          {canManage && (
+                            <div
+                              className="flex items-center gap-0.5 shrink-0 -mr-1 -mt-1 transition-opacity duration-150 sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-focus-within:pointer-events-auto"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit program"
+                                aria-label={`Edit ${program.name}`}
+                                className="size-7 text-muted-foreground hover:text-foreground"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  handleEdit(program);
+                                }}
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Delete program"
+                                aria-label={`Delete ${program.name}`}
+                                className="size-7 text-muted-foreground hover:text-destructive"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  openDeleteDialog(program);
+                                }}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <CardTitle className="text-sm sm:text-base line-clamp-2">{program.name}</CardTitle>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      <Badge variant={program.status === 'active' ? 'default' : 'secondary'} className="text-xs">
-                        {program.status}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">{program.duration}</Badge>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                          <Badge variant={program.status === 'active' ? 'default' : 'secondary'} className="text-[11px] px-1.5 py-0">
+                            {program.status}
+                          </Badge>
+                          {program.duration && (
+                            <Badge variant="outline" className="text-[11px] px-1.5 py-0 font-normal">
+                              {program.duration}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="flex-1 flex flex-col gap-3">
-                    <CardDescription className="text-xs sm:text-sm line-clamp-2">{program.description}</CardDescription>
-                    
-                    {/* Enrollment Stats - Label Only (no link) */}
-                    {program.current_enrollment !== undefined ? (
-                      <div className="flex items-center gap-2 text-xs sm:text-sm font-medium border-t border-gray-200 dark:border-gray-700 pt-2">
-                        <Users className="size-3.5 shrink-0" />
-                        <span className={program.enrollment_limit && program.current_enrollment >= program.enrollment_limit ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
-                          {program.current_enrollment} / {program.enrollment_limit || program.max_trainees} enrolled
+
+                  <CardContent className="p-4 pt-1 flex-1 flex flex-col justify-between">
+                    <CardDescription className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
+                      {program.description || 'No description provided.'}
+                    </CardDescription>
+
+                    {/* Compact 2-column info grid */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Users className="size-3.5 shrink-0 text-muted-foreground/80" />
+                        <span className={program.enrollment_limit && program.current_enrollment && program.current_enrollment >= program.enrollment_limit ? 'text-red-600 dark:text-red-400 font-medium' : 'truncate'}>
+                          {program.current_enrollment ?? 0}/{program.enrollment_limit || program.max_trainees || '∞'} enrolled
                         </span>
                       </div>
-                    ) : null}
 
-                    {/* Total Registrations - Label Only (no link) */}
-                    {stats && (
-                      <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground">
-                        <BarChart3 className="size-3.5 shrink-0" />
-                        <span>
-                          {stats.total_registrations} trying to register
-                        </span>
+                      <div className="flex items-center justify-end gap-1 truncate text-right">
+                        <span className="text-[11px] text-muted-foreground/70">Funding:</span>
+                        <span className="font-medium text-foreground truncate max-w-[95px]">{program.type_of_funding || 'N/A'}</span>
                       </div>
-                    )}
 
-                    <div className="flex items-center justify-between text-xs sm:text-sm pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-muted-foreground">Type of Funding:</span>
-                      <span className="font-medium">{program.type_of_funding}</span>
+                      {typeof program.total_registrations === 'number' && (
+                        <div className="col-span-2 flex items-center gap-1.5 text-[11px] text-muted-foreground/80 pt-0.5">
+                          <BarChart3 className="size-3 shrink-0" />
+                          <span>{program.total_registrations} applicant{program.total_registrations !== 1 ? 's' : ''} registered</span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

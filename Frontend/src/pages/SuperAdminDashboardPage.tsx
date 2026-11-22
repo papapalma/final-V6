@@ -610,7 +610,7 @@ export default function SuperAdminDashboardPage() {
                           placeholder="Search by name or email…"
                           value={tenantSearch}
                           onChange={(e) => setTenantSearch(e.target.value)}
-                          className="pl-9"
+                          className="pl-10"
                         />
                       </div>
                       <Select value={tenantSort} onValueChange={setTenantSort}>
@@ -818,7 +818,7 @@ export default function SuperAdminDashboardPage() {
                           placeholder="Search by user, action, entity, or IP…"
                           value={auditSearch}
                           onChange={(e) => setAuditSearch(e.target.value)}
-                          className="pl-9"
+                          className="pl-10"
                         />
                       </div>
                       <Select value={auditActionFilter} onValueChange={setAuditActionFilter}>
@@ -936,7 +936,7 @@ export default function SuperAdminDashboardPage() {
                           placeholder="Search by title, tenant, or requester…"
                           value={extSearch}
                           onChange={(e) => setExtSearch(e.target.value)}
-                          className="pl-9"
+                          className="pl-10"
                         />
                       </div>
                       <Select value={extStatusFilter} onValueChange={setExtStatusFilter}>

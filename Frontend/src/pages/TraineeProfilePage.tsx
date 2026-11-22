@@ -301,7 +301,7 @@ export default function TraineeProfilePage() {
       <main className="w-full">
         <div className="space-y-6">
           {/* HEADER */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 sm:gap-10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 sm:gap-8">
             <div className="flex items-start gap-6">
               <div className="relative">
                 <Avatar className="h-24 w-24 border-2 border-gray-200 dark:border-gray-700">

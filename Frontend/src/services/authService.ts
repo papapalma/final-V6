@@ -93,6 +93,7 @@ class AuthService {
       if (authResponse.refreshToken) {
         await setEncryptedToken(REFRESH_TOKEN_KEY, authResponse.refreshToken);
       }
+      api.clearCache();
     }
     
     return apiResponse.data;
@@ -116,6 +117,7 @@ class AuthService {
       if (apiResponse.data.refreshToken) {
         await setEncryptedToken(REFRESH_TOKEN_KEY, apiResponse.data.refreshToken);
       }
+      api.clearCache();
     }
     
     return apiResponse.data;
@@ -141,13 +143,14 @@ class AuthService {
     } catch {
       // Ignore errors — still clear client-side user cache
     } finally {
-      // Clear all auth tokens from sessionStorage
+      // Clear all auth tokens from sessionStorage and drop any cached API responses
       clearAllEncryptedTokens([
         'bmdc-user',
         STORAGE_KEY,
         REFRESH_TOKEN_KEY,
         SELECTION_TOKEN_KEY,
       ]);
+      api.clearCache();
     }
   }
 

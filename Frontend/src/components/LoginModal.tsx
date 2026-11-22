@@ -9,9 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Eye, EyeOff, Building2, Loader2, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserRole } from '../utils/roles';
-import { getFileUrl } from '../services/api';
 import authService from '../services/authService';
-import cmsSettingsService from '../services/cmsSettingsService';
+import { BrandLogo } from './BrandLogo';
 import { verificationService } from '../services/verificationService';
 import { OTPVerificationStep } from './auth/OTPVerificationStep';
 
@@ -20,13 +19,6 @@ interface LoginModalProps {
   onOpenChange: (open: boolean) => void;
   onSwitchToSignup?: () => void;
   preFilledUsername?: string;  // NEW - optional pre-filled username from registration
-}
-
-interface CMSSettings {
-  appearance: {
-    logo: string;
-    heroBackground: string;
-  };
 }
 
 /** Determine the correct post-login route for a given role. */
@@ -41,7 +33,6 @@ function getDashboardRoute(role: UserRole | string): string {
 export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFilledUsername }: LoginModalProps) {
   const navigate = useNavigate();
   const { login, selectTenant, isAuthenticated, user } = useAuth();
-  const [cmsSettings, setCmsSettings] = useState<CMSSettings | null>(null);
 
   // ── Credentials step ─────────────────────────────────────────────────────
   const [email, setEmail]               = useState('');
@@ -92,21 +83,6 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
   const isMultiTenantContext = tenantStep && pendingSelection;
   const totalSteps = isMultiTenantContext ? 3 : 2;
   const currentStep = twoFAStep ? totalSteps : (tenantStep ? 2 : 1);
-
-  // Load CMS settings on mount
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const data = await cmsSettingsService.getSettings();
-        if (data) {
-          setCmsSettings(data as CMSSettings);
-        }
-      } catch (error) {
-        console.error('Failed to load CMS settings:', error);
-      }
-    };
-    loadSettings();
-  }, []);
 
   // Pre-fill username when modal opens with a pre-filled username from registration
   useEffect(() => {
@@ -878,20 +854,7 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
           /* ── Credentials step ── */
           <>
             <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-              <div className="mx-auto mb-3 sm:mb-4 flex size-14 sm:size-16 items-center justify-center rounded-2xl bg-primary shadow-lg">
-                {cmsSettings?.appearance?.logo ? (
-                  <img 
-                    src={getFileUrl(cmsSettings.appearance.logo)} 
-                    alt="Logo" 
-                    className="size-14 rounded-xl object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <span className="text-2xl text-primary-foreground">BMDC</span>
-                )}
-              </div>
+              <BrandLogo size="lg" className="mx-auto mb-3 sm:mb-4 size-14 sm:size-16 shadow-lg" />
               <div className="text-center text-sm font-medium text-muted-foreground mb-2">
                 Step 1 of {totalSteps}
               </div>

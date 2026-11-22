@@ -456,7 +456,7 @@ export default function ActivityLogsPage() {
               placeholder="Search logs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-full text-sm"
+              className="pl-10 w-full text-sm"
             />
           </div>
           

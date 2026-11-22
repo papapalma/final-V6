@@ -5,7 +5,7 @@
  * It is conditionally rendered when the user clicks the Print button on the ReportsPage.
  * The component transforms chart data into tabular formats suitable for printing.
  * 
- * Requirements: 2.1, 7.1, 7.2, 7.3
+ * Requirements: 2.1, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
  */
 
 import {
@@ -15,6 +15,8 @@ import {
   formatReportType,
   formatPrintValue,
 } from '../utils/printFormatters';
+import { useBranding } from '../contexts/BrandingContext';
+import { BrandLogo } from './BrandLogo';
 
 /**
  * Props interface for the PrintableReport component
@@ -43,7 +45,7 @@ export interface PrintableReportProps {
 
 /**
  * PrintHeader Sub-component
- * Displays the report title and organization logo (if available)
+ * Displays the report title, institution logo, and official header
  * 
  * Requirement: 7.1
  */
@@ -52,10 +54,29 @@ interface PrintHeaderProps {
 }
 
 function PrintHeader({ reportTitle }: PrintHeaderProps) {
+  const branding = useBranding();
+
   return (
-    <div className="print-header">
-      <h1>{reportTitle}</h1>
-      {/* TODO: Add organization logo if available */}
+    <div className="print-header mb-4 border-b pb-3">
+      <div className="flex items-center gap-3 mb-2">
+        {branding.logoUrl && (
+          <BrandLogo
+            size="md"
+            logoUrl={branding.logoUrl}
+            companyName={branding.companyName}
+            className="border-0 shadow-none bg-transparent"
+          />
+        )}
+        <div>
+          <h2 className="text-base font-bold text-gray-900 tracking-tight leading-tight m-0">
+            {branding.companyName}
+          </h2>
+          <p className="text-xs text-gray-600 m-0 leading-tight">
+            {branding.tagline}
+          </p>
+        </div>
+      </div>
+      <h1 className="text-xl font-black text-gray-950 mt-2 mb-0 tracking-tight">{reportTitle}</h1>
     </div>
   );
 }
@@ -75,17 +96,23 @@ interface PrintMetadataProps {
 
 function PrintMetadata({ dateFrom, dateTo, reportType, generatedAt }: PrintMetadataProps) {
   return (
-    <div className="print-metadata">
-      <p><strong>Date Range:</strong> {formatPrintDate(dateFrom)} - {formatPrintDate(dateTo)}</p>
-      <p><strong>Report Type:</strong> {formatReportType(reportType)}</p>
-      <p><strong>Generated:</strong> {formatPrintTimestamp(new Date(generatedAt))}</p>
+    <div className="print-metadata mb-4 p-2.5 bg-gray-50 border border-gray-200 rounded text-xs space-y-1">
+      <p className="m-0 text-gray-800">
+        <strong className="font-semibold text-gray-900">Date Range:</strong> {formatPrintDate(dateFrom)} - {formatPrintDate(dateTo)}
+      </p>
+      <p className="m-0 text-gray-800">
+        <strong className="font-semibold text-gray-900">Report Type:</strong> {formatReportType(reportType)}
+      </p>
+      <p className="m-0 text-gray-800">
+        <strong className="font-semibold text-gray-900">Generated:</strong> {formatPrintTimestamp(new Date(generatedAt))}
+      </p>
     </div>
   );
 }
 
 /**
  * SummaryStatsTable Sub-component
- * Displays summary statistics in a 2x2 table layout
+ * Displays summary statistics in a clean 2x2 table layout with borders
  * 
  * Requirement: 7.3, 3.4
  */
@@ -100,21 +127,23 @@ interface SummaryStatsTableProps {
 
 function SummaryStatsTable({ stats }: SummaryStatsTableProps) {
   return (
-    <div className="summary-stats-table">
-      <h2>Summary Statistics</h2>
-      <table>
+    <div className="summary-stats-table print-avoid-break mb-4">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 border-b pb-1 mb-2">
+        Summary Statistics
+      </h2>
+      <table className="print-table w-full border-collapse border border-gray-300 text-xs">
         <tbody>
-          <tr>
-            <th>Total Lendings</th>
-            <td>{formatPrintValue(stats.totalLendings)}</td>
-            <th>Items Returned</th>
-            <td>{formatPrintValue(stats.itemsReturned)}</td>
+          <tr className="border-b border-gray-300">
+            <th className="bg-gray-100 text-left p-2 border-r border-gray-300 w-1/4 font-semibold text-gray-700">Total Lendings</th>
+            <td className="p-2 border-r border-gray-300 w-1/4 font-bold text-gray-900">{formatPrintValue(stats.totalLendings)}</td>
+            <th className="bg-gray-100 text-left p-2 border-r border-gray-300 w-1/4 font-semibold text-gray-700">Items Returned</th>
+            <td className="p-2 w-1/4 font-bold text-gray-900">{formatPrintValue(stats.itemsReturned)}</td>
           </tr>
           <tr>
-            <th>Active Loans</th>
-            <td>{formatPrintValue(stats.activeLoans)}</td>
-            <th>New Trainees</th>
-            <td>{formatPrintValue(stats.newTrainees)}</td>
+            <th className="bg-gray-100 text-left p-2 border-r border-gray-300 w-1/4 font-semibold text-gray-700">Active Loans</th>
+            <td className="p-2 border-r border-gray-300 w-1/4 font-bold text-gray-900">{formatPrintValue(stats.activeLoans)}</td>
+            <th className="bg-gray-100 text-left p-2 border-r border-gray-300 w-1/4 font-semibold text-gray-700">New Trainees</th>
+            <td className="p-2 w-1/4 font-bold text-gray-900">{formatPrintValue(stats.newTrainees)}</td>
           </tr>
         </tbody>
       </table>
@@ -134,27 +163,29 @@ interface ActivityTrendTableProps {
 
 function ActivityTrendTable({ data }: ActivityTrendTableProps) {
   return (
-    <div className="activity-trend-table">
-      <h2>Lending Activity Trend</h2>
-      <table>
+    <div className="activity-trend-table print-avoid-break mb-4">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 border-b pb-1 mb-2">
+        Lending Activity Trend
+      </h2>
+      <table className="print-table w-full border-collapse border border-gray-300 text-xs">
         <thead>
-          <tr>
-            <th>Date</th>
-            <th>Borrowed</th>
-            <th>Returned</th>
+          <tr className="bg-gray-100 border-b border-gray-300">
+            <th className="p-2 border-r border-gray-300 text-left font-semibold text-gray-700">Date</th>
+            <th className="p-2 border-r border-gray-300 text-right font-semibold text-gray-700">Borrowed</th>
+            <th className="p-2 text-right font-semibold text-gray-700">Returned</th>
           </tr>
         </thead>
         <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan={3} className="text-center">No data available for selected period</td>
+              <td colSpan={3} className="p-3 text-center text-gray-500 border border-gray-300">No data available for selected period</td>
             </tr>
           ) : (
             data.map((row, index) => (
-              <tr key={index}>
-                <td>{row.date}</td>
-                <td>{formatPrintValue(row.borrowed)}</td>
-                <td>{formatPrintValue(row.returned)}</td>
+              <tr key={index} className="border-b border-gray-200 odd:bg-white even:bg-gray-50/50">
+                <td className="p-2 border-r border-gray-300 text-gray-800">{row.date}</td>
+                <td className="p-2 border-r border-gray-300 text-right font-medium text-gray-900">{formatPrintValue(row.borrowed)}</td>
+                <td className="p-2 text-right font-medium text-gray-900">{formatPrintValue(row.returned)}</td>
               </tr>
             ))
           )}
@@ -178,27 +209,29 @@ function CategoryDistributionTable({ data }: CategoryDistributionTableProps) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   
   return (
-    <div className="category-distribution-table">
-      <h2>Items by Category</h2>
-      <table>
+    <div className="category-distribution-table print-avoid-break mb-4">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 border-b pb-1 mb-2">
+        Items by Category
+      </h2>
+      <table className="print-table w-full border-collapse border border-gray-300 text-xs">
         <thead>
-          <tr>
-            <th>Category</th>
-            <th>Count</th>
-            <th>Percentage</th>
+          <tr className="bg-gray-100 border-b border-gray-300">
+            <th className="p-2 border-r border-gray-300 text-left font-semibold text-gray-700">Category</th>
+            <th className="p-2 border-r border-gray-300 text-right font-semibold text-gray-700">Count</th>
+            <th className="p-2 text-right font-semibold text-gray-700">Percentage</th>
           </tr>
         </thead>
         <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan={3} className="text-center">No data available for selected period</td>
+              <td colSpan={3} className="p-3 text-center text-gray-500 border border-gray-300">No data available for selected period</td>
             </tr>
           ) : (
             data.map((row, index) => (
-              <tr key={index}>
-                <td>{row.name}</td>
-                <td>{formatPrintValue(row.value)}</td>
-                <td>{calculatePercentage(row.value, total)}</td>
+              <tr key={index} className="border-b border-gray-200 odd:bg-white even:bg-gray-50/50">
+                <td className="p-2 border-r border-gray-300 text-gray-800">{row.name}</td>
+                <td className="p-2 border-r border-gray-300 text-right font-medium text-gray-900">{formatPrintValue(row.value)}</td>
+                <td className="p-2 text-right font-medium text-gray-900">{calculatePercentage(row.value, total)}</td>
               </tr>
             ))
           )}
@@ -220,25 +253,27 @@ interface ProgramEnrollmentTableProps {
 
 function ProgramEnrollmentTable({ data }: ProgramEnrollmentTableProps) {
   return (
-    <div className="program-enrollment-table">
-      <h2>Trainees by Program</h2>
-      <table>
+    <div className="program-enrollment-table print-avoid-break mb-4">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 border-b pb-1 mb-2">
+        Trainees by Program
+      </h2>
+      <table className="print-table w-full border-collapse border border-gray-300 text-xs">
         <thead>
-          <tr>
-            <th>Program</th>
-            <th>Trainees</th>
+          <tr className="bg-gray-100 border-b border-gray-300">
+            <th className="p-2 border-r border-gray-300 text-left font-semibold text-gray-700">Program</th>
+            <th className="p-2 text-right font-semibold text-gray-700">Trainees</th>
           </tr>
         </thead>
         <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan={2} className="text-center">No data available for selected period</td>
+              <td colSpan={2} className="p-3 text-center text-gray-500 border border-gray-300">No data available for selected period</td>
             </tr>
           ) : (
             data.map((row, index) => (
-              <tr key={index}>
-                <td>{row.program}</td>
-                <td>{formatPrintValue(row.trainees)}</td>
+              <tr key={index} className="border-b border-gray-200 odd:bg-white even:bg-gray-50/50">
+                <td className="p-2 border-r border-gray-300 text-gray-800">{row.program}</td>
+                <td className="p-2 text-right font-medium text-gray-900">{formatPrintValue(row.trainees)}</td>
               </tr>
             ))
           )}
@@ -260,9 +295,8 @@ interface PrintFooterProps {
 
 function PrintFooter({ generatedAt }: PrintFooterProps) {
   return (
-    <div className="print-footer">
-      <p>Generated: {formatPrintTimestamp(new Date(generatedAt))}</p>
-      {/* Page numbers will be handled by CSS @page rules */}
+    <div className="print-footer mt-6 pt-3 border-t border-gray-300 text-center text-[10px] text-gray-500">
+      <p className="m-0">Bongabong Manpower Development Center • Generated on {formatPrintTimestamp(new Date(generatedAt))}</p>
     </div>
   );
 }
@@ -287,7 +321,7 @@ export default function PrintableReport(props: PrintableReportProps) {
   } = props;
 
   return (
-    <div className="print-container">
+    <div className="print-container printable-report-container">
       <PrintHeader reportTitle={reportTitle} />
       
       <PrintMetadata

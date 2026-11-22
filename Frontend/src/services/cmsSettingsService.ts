@@ -102,13 +102,20 @@ class CMSSettingsService {
    * Get all CMS settings from the database
    * Returns comprehensive customization structure or null if not found
    */
-  async getSettings(): Promise<CMSSettings | null> {
+  async getSettings(tenantId?: string): Promise<CMSSettings | null> {
     try {
-      const response = await api.get('/landing-content');
-      if (!response.success || !response.data) {
+      const params = tenantId ? { tenantId } : undefined;
+      let response: any = null;
+      try {
+        response = await api.get('/cms-settings', params);
+      } catch {
+        response = await api.get('/landing-content', params);
+      }
+      if (!response?.success || !response?.data) {
         return null;
       }
-      return response.data as CMSSettings;
+      const raw = response.data as any;
+      return (raw.settingsData?.content || raw.content || raw) as CMSSettings;
     } catch (error) {
       console.error('Failed to fetch CMS settings:', error);
       return null;

@@ -4,6 +4,8 @@ import lendingService from '../services/lendingService';
 import { toast } from 'sonner';
 import { Printer, Home } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { BrandLogo } from '../components/BrandLogo';
+import { useBranding } from '../contexts/BrandingContext';
 
 interface LendingData {
   id: string;
@@ -32,6 +34,7 @@ interface LendingData {
 
 export default function PrintSlipPage() {
   const { id } = useParams<{ id: string }>();
+  const { companyName, tagline } = useBranding();
   const [lending, setLending] = useState<LendingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +157,13 @@ export default function PrintSlipPage() {
         <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm print:shadow-none p-8 print:p-12">
           {/* Header */}
           <div className="border-b-2 border-slate-300 pb-6 mb-8">
+            <div className="flex items-center gap-4 mb-4">
+              <BrandLogo size="md" />
+              <div className="min-w-0">
+                <p className="text-base font-bold text-slate-900 leading-tight">{companyName}</p>
+                <p className="text-xs text-slate-600">{tagline}</p>
+              </div>
+            </div>
             <h2 className="text-3xl font-bold text-slate-900">BORROWING SLIP</h2>
             <p className="text-slate-600 mt-1">Official Record of Item Loan</p>
             <div className="mt-4 text-sm text-slate-600">

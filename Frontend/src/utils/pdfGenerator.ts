@@ -1,5 +1,18 @@
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { getCachedBranding, getCachedLogoDataUrl, getBrandInitials } from '../contexts/BrandingContext';
+
+function tryAddBrandLogo(pdf: jsPDF, x: number, y: number, width: number, height: number): boolean {
+  const logoDataUrl = getCachedLogoDataUrl();
+  if (!logoDataUrl) return false;
+  try {
+    const format = logoDataUrl.startsWith('data:image/jpeg') || logoDataUrl.startsWith('data:image/jpg') ? 'JPEG' : 'PNG';
+    pdf.addImage(logoDataUrl, format, x, y, width, height);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface TraineeData {
   id: number;
@@ -59,12 +72,14 @@ export function generateTraineePDF(trainee: TraineeData) {
   pdf.setLineWidth(0.5);
   pdf.rect(15, 10, pageWidth - 30, 20);
   
-  // Logo placeholder (left)
+  // Organization logo (left) — uses uploaded CMS logo with fallback placeholder
   pdf.setLineWidth(0.3);
   pdf.rect(20, 12, 15, 15);
-  pdf.setFontSize(8);
-  pdf.text('TESDA', 23, 20);
-  pdf.text('LOGO', 23.5, 23);
+  if (!tryAddBrandLogo(pdf, 20.5, 12.5, 14, 14)) {
+    pdf.setFontSize(8);
+    pdf.text('TESDA', 23, 20);
+    pdf.text('LOGO', 23.5, 23);
+  }
   
   // Title
   pdf.setFontSize(9);
@@ -491,20 +506,25 @@ interface ItemData {
 export function generateItemsPDF(items: ItemData[], title: string = 'Items Inventory Report') {
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
+  const branding = getCachedBranding();
+  const shortBrand = getBrandInitials(branding.companyName);
   
   // Header
-  pdf.setFillColor(25, 118, 210); // BMDC Blue
+  pdf.setFillColor(37, 99, 235); // Brand Blue
   pdf.rect(0, 0, pageWidth, 35, 'F');
   
-  // Logo/Title area
+  // Embedded Organization Logo (left side of header)
+  tryAddBrandLogo(pdf, 14, 6.5, 22, 22);
+  
+  // Title area
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(20);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('BMDC', pageWidth / 2, 15, { align: 'center' });
+  pdf.text(shortBrand, pageWidth / 2, 15, { align: 'center' });
   
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'normal');
-  pdf.text('Bongabong Manpower Development Center', pageWidth / 2, 22, { align: 'center' });
+  pdf.text(branding.companyName, pageWidth / 2, 22, { align: 'center' });
   pdf.text(title, pageWidth / 2, 28, { align: 'center' });
   
   // Date generated
@@ -612,20 +632,25 @@ interface LendingData {
 export function generateLendingsPDF(lendings: LendingData[], title: string = 'Lending Records Report') {
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
+  const branding = getCachedBranding();
+  const shortBrand = getBrandInitials(branding.companyName);
   
   // Header
-  pdf.setFillColor(25, 118, 210); // BMDC Blue
+  pdf.setFillColor(37, 99, 235); // Brand Blue
   pdf.rect(0, 0, pageWidth, 35, 'F');
   
-  // Logo/Title area
+  // Embedded Organization Logo (left side of header)
+  tryAddBrandLogo(pdf, 14, 6.5, 22, 22);
+  
+  // Title area
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(20);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('BMDC', pageWidth / 2, 15, { align: 'center' });
+  pdf.text(shortBrand, pageWidth / 2, 15, { align: 'center' });
   
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'normal');
-  pdf.text('Bongabong Manpower Development Center', pageWidth / 2, 22, { align: 'center' });
+  pdf.text(branding.companyName, pageWidth / 2, 22, { align: 'center' });
   pdf.text(title, pageWidth / 2, 28, { align: 'center' });
   
   // Date generated

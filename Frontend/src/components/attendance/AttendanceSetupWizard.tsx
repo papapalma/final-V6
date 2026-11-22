@@ -487,7 +487,7 @@ export default function AttendanceSetupWizard({
         </div>
 
         {/* ── Step cards ── */}
-        <div className="grid grid-cols-3 gap-3 px-6 pt-5 pb-2">
+        <div className="grid grid-cols-3 gap-3 px-6 pt-6 pb-2">
           {STEPS.map(s => {
             const Icon = s.icon;
             const isActive    = step === s.id;
@@ -519,13 +519,13 @@ export default function AttendanceSetupWizard({
         </div>
 
         {/* ── Scrollable step content ── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-6 py-6">
 
           {/* ════════════════════════════════════════════════
               STEP 1 — Generate Sessions
           ════════════════════════════════════════════════ */}
           {step === 1 && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {/* Existing sessions note */}
               {sessionCount > 0 && (
                 <div className="flex items-center gap-2.5 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 px-4 py-2.5 text-sm">
@@ -675,7 +675,7 @@ export default function AttendanceSetupWizard({
               STEP 2 — Time Windows
           ════════════════════════════════════════════════ */}
           {step === 2 && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {/* Presets */}
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">Quick Start — choose a preset</Label>
@@ -766,10 +766,10 @@ export default function AttendanceSetupWizard({
               STEP 3 — Activate
           ════════════════════════════════════════════════ */}
           {step === 3 && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {activated ? (
                 /* Success state */
-                <div className="flex flex-col items-center gap-5 py-8 text-center">
+                <div className="flex flex-col items-center gap-6 py-8 text-center">
                   <div className="flex size-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30"
                     style={{ animation: 'scaleIn 0.3s ease-out' }}>
                     <CheckCircle2 className="size-10 text-green-600 dark:text-green-400" />
@@ -810,7 +810,7 @@ export default function AttendanceSetupWizard({
               ) : (
                 /* Pre-activation state */
                 <div className="space-y-4">
-                  <div className="rounded-xl border bg-muted/30 p-5 space-y-3">
+                  <div className="rounded-xl border bg-muted/30 p-6 space-y-3">
                     <p className="text-sm font-semibold">Ready to activate</p>
                     <div className="space-y-2 text-sm">
                       {[

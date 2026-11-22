@@ -2,11 +2,11 @@
 
 ## Overview
 
-This document describes the print-specific CSS styling implemented in `globals.css` for the Admin Report Print Button feature.
+This document describes the print-specific CSS styling implemented in `print.css` (imported by `src/index.css`) for the Admin Report Print Button feature.
 
 ## Implementation Location
 
-All print-specific styles are located in `Frontend/src/styles/globals.css` under the `@media print` section.
+All print-specific styles are located in `Frontend/src/styles/print.css` under the `@media print` section.
 
 ## Features Implemented
 

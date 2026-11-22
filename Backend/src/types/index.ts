@@ -72,6 +72,9 @@ export interface Trainee {
   registration_reviewed_at?: string | null;
   // Soft delete fields
   deleted_at?: string | null;
+  // Optional batched enrichments
+  enrollments?: Array<Record<string, any>>;
+  latest_remark?: string | null;
 }
 
 export interface Program {
@@ -85,6 +88,7 @@ export interface Program {
   max_trainees: number;
   enrollment_limit?: number | null;
   current_enrollment?: number;
+  total_registrations?: number;
   instructor?: string | null;
   type_of_funding: string;
   image_path?: string;

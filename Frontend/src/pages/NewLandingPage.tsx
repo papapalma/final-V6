@@ -1,6 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranding } from '../contexts/BrandingContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { usePrograms } from '../contexts/ProgramsContext';
+import { BrandLogo } from '../components/BrandLogo';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -10,6 +13,8 @@ import { motion, useScroll, useTransform } from 'motion/react';
 import LoginModal from '../components/LoginModal';
 import RegistrationModal from '../components/RegistrationModal';
 import ProgramDetailsModal from '../components/ProgramDetailsModal';
+import AnnouncementsSection from '../components/AnnouncementsSection';
+import ImageWithSkeleton from '../components/ui/ImageWithSkeleton';
 import { getFileUrl, api } from '../services/api';
 import { type Program } from '../utils/programHelpers';
 import logger from '../utils/logger';
@@ -33,6 +38,8 @@ import {
   Clock,
   Compass,
   ChevronDown,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import {
   Select,
@@ -224,6 +231,8 @@ const AnimatedCounter = ({ value, suffix = '' }: { value: number | string; suffi
 
 export default function LandingPage() {
   const { isAuthenticated } = useAuth();
+  const { applyBrandingContent } = useBranding();
+  const { isDark, toggleTheme } = useTheme();
   const { programs: contextPrograms } = usePrograms();
   const location = useLocation();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -232,11 +241,13 @@ export default function LandingPage() {
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [heroImgLoaded, setHeroImgLoaded] = useState(false);
   const heroRef = useRef<HTMLElement>(null);
+  const heroImgRef = useRef<HTMLImageElement>(null);
   const [allTenants, setAllTenants] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [cmsSettings, setCmsSettings] = useState<CMSSettings>(defaultCmsSettings);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'upcoming' | 'active'>('all');
+  const [hasHeroAnnouncements, setHasHeroAnnouncements] = useState(true);
 
   // Parallax scroll effect for hero background
   const { scrollY } = useScroll();
@@ -271,9 +282,9 @@ export default function LandingPage() {
     const loadCmsSettings = async () => {
       if (!selectedTenantId) return;
       try {
-        let response = await api.get('/cms-settings');
+        let response = await api.get('/cms-settings', { tenantId: selectedTenantId });
         if (!response || !response.success || !response.data) {
-          response = await api.get('/landing-content');
+          response = await api.get('/landing-content', { tenantId: selectedTenantId });
         }
         if (response && response.success && response.data) {
           // Transform new comprehensive structure to old structure for backward compatibility
@@ -313,6 +324,7 @@ export default function LandingPage() {
             },
           };
           setCmsSettings(transformedSettings);
+          applyBrandingContent(transformedSettings);
         }
       } catch (error) {
         logger.warn('Failed to load CMS settings, using defaults', { error });
@@ -398,36 +410,42 @@ export default function LandingPage() {
     ? getFileUrl(cmsSettings.appearance.heroBackground)
     : '';
 
+  // Ensure cached or newly updated hero background images never stay hidden at opacity-0
+  useEffect(() => {
+    if (!heroBackground) {
+      setHeroImgLoaded(false);
+      return;
+    }
+    const img = heroImgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setHeroImgLoaded(true);
+    } else {
+      setHeroImgLoaded(false);
+    }
+  }, [heroBackground]);
+
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/20 selection:text-primary">
       {/* ─── STICKY HEADER ─── */}
-      <header className="sticky top-0 z-50 border-b border-white/30 bg-white/30 dark:bg-black/30 backdrop-blur-3xl transition-all shadow-2xl">
+      <header className="sticky top-0 z-50 border-b border-border/80 bg-background/95 backdrop-blur-md transition-all shadow-sm">
         <div className="container mx-auto flex h-16 md:h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, x: -16 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.4 }}
-            className="flex items-center gap-3"
+            className="flex items-center gap-3 min-w-0"
           >
-            {cmsSettings?.appearance?.logo ? (
-              <img
-                src={getFileUrl(cmsSettings.appearance.logo)}
-                alt="BMDC Logo"
-                className="h-10 w-10 md:h-12 md:w-12 rounded-xl object-contain shadow-sm border border-border"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
-            ) : (
-              <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-xl bg-primary shadow-sm text-primary-foreground">
-                <GraduationCap className="size-6 text-white" />
-              </div>
-            )}
-            <div className="hidden sm:block">
-              <p className="text-sm md:text-base font-bold leading-none tracking-tight text-foreground">
+            <BrandLogo
+              logoUrl={cmsSettings?.appearance?.logo || null}
+              companyName={getValue(cmsSettings?.footer?.companyName) || 'BMDC Training Center'}
+              fallbackVariant="icon"
+              className="h-10 w-10 md:h-12 md:w-12"
+            />
+            <div className="hidden sm:block min-w-0 max-w-[260px] md:max-w-xs lg:max-w-md">
+              <p className="text-sm md:text-base font-bold leading-tight tracking-tight text-foreground truncate">
                 {getValue(cmsSettings?.footer?.companyName) || 'BMDC Training Center'}
               </p>
-              <p className="mt-1 text-xs font-medium text-muted-foreground">
+              <p className="mt-0.5 text-xs font-medium text-muted-foreground truncate">
                 {getValue(cmsSettings?.footer?.tagline) || 'Empowering Communities'}
               </p>
             </div>
@@ -472,6 +490,18 @@ export default function LandingPage() {
             </a>
 
             <div className="flex items-center gap-2">
+              {/* Theme Toggle (Light / Dark Mode) */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                className="size-9 rounded-full text-foreground/80 hover:text-foreground hover:bg-muted transition-colors"
+                aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {isDark ? <Sun className="size-4 text-amber-400" /> : <Moon className="size-4 text-slate-700" />}
+              </Button>
+
               {isAuthenticated ? (
                 <Link to="/dashboard">
                   <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm">
@@ -508,17 +538,28 @@ export default function LandingPage() {
         <motion.div className="absolute inset-0" style={{ y: heroParallax }}>
           {heroBackground ? (
             <>
+              {/* Shimmering Skeleton Preloader */}
+              {!heroImgLoaded && (
+                <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center">
+                  <div className="w-full h-full bg-gradient-to-r from-transparent via-slate-800/40 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
+                </div>
+              )}
               <img
+                ref={heroImgRef}
                 src={heroBackground}
                 alt=""
                 aria-hidden="true"
+                loading="eager"
+                decoding="async"
                 onLoad={() => setHeroImgLoaded(true)}
-                className={`h-full w-full object-cover transition-opacity duration-1000 scale-105 ${
-                  heroImgLoaded ? 'opacity-35' : 'opacity-0'
+                onError={() => setHeroImgLoaded(true)}
+                className={`h-full w-full object-cover transition-opacity duration-700 scale-105 ${
+                  heroImgLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-slate-950/60" />
-              <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-transparent" />
+              {/* Balanced scrim: keeps hero image vibrant while guaranteeing legible white copy */}
+              <div className="absolute inset-0 bg-gradient-to-r from-slate-950/75 via-slate-950/45 to-slate-950/20" />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-slate-950/30" />
             </>
           ) : (
             <div className="h-full w-full bg-[radial-gradient(ellipse_at_top,#1e3a8a_0%,#0f172a_50%,#020617_100%)]" />
@@ -533,80 +574,91 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_40%,#000_70%,transparent_100%)]" />
         </div>
 
-        <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 z-10">
-          <div className="max-w-4xl">
-            <motion.div initial="hidden" animate="visible" variants={staggerContainer} className="space-y-8">
-              {/* Badge */}
-              <motion.div variants={fadeInUp}>
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur-md shadow-sm">
-                  <Sparkles className="size-4 text-white" />
-                  <span>{getValue(cmsSettings?.hero?.badge) || 'Technical & Vocational Skills Training'}</span>
-                </div>
-              </motion.div>
+        <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 z-10 max-w-7xl">
+          <div className={hasHeroAnnouncements ? "flex flex-col gap-8 lg:grid lg:grid-cols-[1.618fr_1fr] lg:items-center lg:gap-12 xl:gap-16 w-full" : "max-w-4xl"}>
+            {/* Left Column (Hero Copy, CTAs, and Stats) */}
+            <div className={hasHeroAnnouncements ? "space-y-6 sm:space-y-8 min-w-0" : ""}>
+              <motion.div initial="hidden" animate="visible" variants={staggerContainer} className="space-y-6 sm:space-y-8">
+                {/* Badge */}
+                <motion.div variants={fadeInUp}>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur-md shadow-sm">
+                    <Sparkles className="size-4 text-white" />
+                    <span>{getValue(cmsSettings?.hero?.badge) || 'Technical & Vocational Skills Training'}</span>
+                  </div>
+                </motion.div>
 
-              {/* Headline */}
-              <motion.h1 variants={fadeInUp} className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1] text-white drop-shadow-lg">
-                {getValue(cmsSettings?.hero?.title) || 'Shape Your Future With Real-World Technical Skills'}
-              </motion.h1>
-
-              {/* Subtitle */}
-              <motion.p variants={fadeInUp} className="text-lg sm:text-xl md:text-2xl text-white leading-relaxed max-w-3xl font-semibold drop-shadow-md">
-                {getValue(cmsSettings?.hero?.subtitle) ||
-                  'Join government-recognized vocational programs. Learn hands-on in equipped labs, earn industry credentials, and build a resilient career.'}
-              </motion.p>
-
-              {/* Action Buttons */}
-              <motion.div variants={fadeInUp} className="flex flex-wrap items-center gap-4 pt-4">
-                <Button
-                  size="lg"
-                  onClick={() => setIsRegistrationModalOpen(true)}
-                  className="bg-primary hover:bg-primary/90 text-white font-bold px-10 h-14 text-lg shadow-xl shadow-primary/50 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-primary/70 relative overflow-hidden group"
+                {/* Headline */}
+                <motion.h1 
+                  variants={fadeInUp} 
+                  className={`text-3xl sm:text-5xl ${hasHeroAnnouncements ? 'lg:text-4xl xl:text-5xl' : 'lg:text-7xl'} font-black tracking-tight leading-[1.1] text-white drop-shadow-lg`}
                 >
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 group-hover:animate-pulse" />
-                  {getValue(cmsSettings?.hero?.ctaPrimary) || 'Enroll Now'}
-                  <ArrowRight className="size-5 ml-2" />
-                </Button>
+                  {getValue(cmsSettings?.hero?.title) || 'Shape Your Future With Real-World Technical Skills'}
+                </motion.h1>
 
-                <a href="#programs">
+                {/* Subtitle */}
+                <motion.p variants={fadeInUp} className="text-base sm:text-lg md:text-xl text-white leading-relaxed max-w-2xl font-semibold drop-shadow-md">
+                  {getValue(cmsSettings?.hero?.subtitle) ||
+                    'Join government-recognized vocational programs. Learn hands-on in equipped labs, earn industry credentials, and build a resilient career.'}
+                </motion.p>
+
+                {/* Action Buttons */}
+                <motion.div variants={fadeInUp} className="flex flex-wrap items-center gap-3 sm:gap-4 pt-2">
                   <Button
-                    variant="outline"
                     size="lg"
-                    className="border-2 border-white bg-white/10 hover:bg-white/20 text-white font-bold px-10 h-14 text-lg backdrop-blur-sm transition-all hover:shadow-lg hover:shadow-white/30 group relative overflow-hidden"
+                    onClick={() => setIsRegistrationModalOpen(true)}
+                    className="bg-primary hover:bg-primary/90 text-white font-bold px-8 h-12 sm:h-14 text-base sm:text-lg shadow-xl shadow-primary/50 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-primary/70 relative overflow-hidden group"
                   >
-                    <span className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    {getValue(cmsSettings?.hero?.ctaSecondary) || 'Browse Programs'}
+                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 group-hover:animate-pulse" />
+                    {getValue(cmsSettings?.hero?.ctaPrimary) || 'Enroll Now'}
+                    <ArrowRight className="size-5 ml-2" />
                   </Button>
-                </a>
 
-                {getValue(cmsSettings?.contact?.facebook) && (
-                  <a
-                    href={getValue(cmsSettings?.contact?.facebook)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm text-white hover:text-blue-200 transition-colors px-4 py-3 bg-white/10 rounded-lg backdrop-blur-sm font-semibold"
-                  >
-                    <Facebook className="size-5" />
-                    <span>Join Community</span>
+                  <a href="#programs">
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="border-2 border-white bg-white/10 hover:bg-white/20 text-white font-bold px-8 h-12 sm:h-14 text-base sm:text-lg backdrop-blur-sm transition-all hover:shadow-lg hover:shadow-white/30 group relative overflow-hidden"
+                    >
+                      <span className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      {getValue(cmsSettings?.hero?.ctaSecondary) || 'Browse Programs'}
+                    </Button>
                   </a>
-                )}
-              </motion.div>
 
-              {/* Trust Indicators / Stats */}
-              <motion.div variants={fadeInUp} className="pt-12 border-t border-white/20 grid grid-cols-3 gap-6 text-left">
-                <div className="space-y-2 bg-white/5 p-4 rounded-lg backdrop-blur-sm hover:bg-white/10 transition-all">
-                  <AnimatedCounter value={100} suffix="%" />
-                  <p className="text-sm text-white font-semibold">Practical Hands-On Training</p>
-                </div>
-                <div className="space-y-2 bg-white/5 p-4 rounded-lg backdrop-blur-sm hover:bg-white/10 transition-all">
-                  <p className="text-3xl font-black text-white">Certified</p>
-                  <p className="text-sm text-white font-semibold">Accredited Programs</p>
-                </div>
-                <div className="space-y-2 bg-white/5 p-4 rounded-lg backdrop-blur-sm hover:bg-white/10 transition-all">
-                  <p className="text-3xl font-black text-white">Career Ready</p>
-                  <p className="text-sm text-white font-semibold">Job Placement</p>
-                </div>
+                  {getValue(cmsSettings?.contact?.facebook) && (
+                    <a
+                      href={getValue(cmsSettings?.contact?.facebook)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-white hover:text-blue-200 transition-colors px-4 py-3 bg-white/10 rounded-lg backdrop-blur-sm font-semibold"
+                    >
+                      <Facebook className="size-5" />
+                      <span>Join Community</span>
+                    </a>
+                  )}
+                </motion.div>
+
+                {/* Trust Indicators / Stats */}
+                <motion.div variants={fadeInUp} className="pt-8 sm:pt-12 border-t border-white/20 grid grid-cols-3 gap-3 sm:gap-6 text-left">
+                  <div className="space-y-1.5 bg-white/5 p-3.5 sm:p-4 rounded-lg backdrop-blur-sm hover:bg-white/10 transition-all">
+                    <AnimatedCounter value={100} suffix="%" />
+                    <p className="text-xs sm:text-sm text-white font-semibold">Practical Hands-On</p>
+                  </div>
+                  <div className="space-y-1.5 bg-white/5 p-3.5 sm:p-4 rounded-lg backdrop-blur-sm hover:bg-white/10 transition-all">
+                    <p className="text-2xl sm:text-3xl font-black text-white">Certified</p>
+                    <p className="text-xs sm:text-sm text-white font-semibold">Accredited</p>
+                  </div>
+                  <div className="space-y-1.5 bg-white/5 p-3.5 sm:p-4 rounded-lg backdrop-blur-sm hover:bg-white/10 transition-all">
+                    <p className="text-2xl sm:text-3xl font-black text-white">Career Ready</p>
+                    <p className="text-xs sm:text-sm text-white font-semibold">Job Placement</p>
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
+            </div>
+
+            {/* Right Column (Hero Announcement Gallery Card - inside user's red box) */}
+            <div className={hasHeroAnnouncements ? "w-full max-w-lg mx-auto lg:max-w-none" : "hidden"}>
+              <AnnouncementsSection inHero onHasAnnouncements={setHasHeroAnnouncements} />
+            </div>
           </div>
         </div>
 
@@ -664,10 +716,10 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PROGRAMS CATALOG SECTION ─── */}
-      <section id="programs" className="py-16 md:py-24 bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="programs" className="py-20 md:py-28 lg:py-32 bg-muted/30">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
           {/* Section Header */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 md:mb-16">
             <div className="space-y-3 max-w-xl">
               <Badge variant="outline" className="px-3.5 py-1 text-xs font-semibold border-primary/30 text-primary bg-primary/5">
                 Vocational Tracks
@@ -688,7 +740,7 @@ export default function LandingPage() {
                   placeholder="Search courses..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-full sm:w-60 h-10 bg-background"
+                  className="pl-10 w-full sm:w-60 h-10 bg-background"
                 />
               </div>
 
@@ -723,7 +775,7 @@ export default function LandingPage() {
 
           {/* Programs Grid */}
           {filteredPrograms.length > 0 ? (
-            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 sm:gap-8 lg:gap-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {filteredPrograms.map((program, i) => {
                 const isUpcoming = isProgramUpcoming(program.startDate);
                 const days = isUpcoming ? daysUntilStart(program.startDate) : 0;
@@ -737,72 +789,71 @@ export default function LandingPage() {
                     transition={{ delay: (i % 6) * 0.06, duration: 0.4 }}
                   >
                     <Card
-                      className="group flex flex-col h-full overflow-hidden border-gray-200 bg-white hover:shadow-md transition-all duration-200 cursor-pointer"
+                      interactive
+                      className="group flex flex-col h-full overflow-hidden border-border/80 bg-card rounded-2xl"
                       onClick={() => setSelectedProgram(program)}
                     >
-                      {/* Course Image */}
-                      {program.photoUrl ? (
-                        <div className="relative w-full h-40 overflow-hidden bg-gray-100 border-b border-gray-200">
-                          <img
+                      {/* Course Image: 16:9 Aspect Ratio with Shimmer Skeleton */}
+                      <div className="relative w-full aspect-video overflow-hidden border-b border-border/60 bg-muted/30">
+                        {program.photoUrl ? (
+                          <ImageWithSkeleton
                             src={program.photoUrl}
                             alt={program.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
+                            className="group-hover:scale-105 transition-transform duration-300"
+                            fallbackIcon={<BookOpen className="size-8 stroke-1 text-primary/40 mb-1" />}
                           />
-                          <div className="absolute top-2 right-2">
-                            <Badge className="bg-black/80 text-white text-xs font-semibold">
-                              {program.status || 'Active'}
-                            </Badge>
+                        ) : (
+                          <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 text-primary p-4">
+                            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-1">
+                              <GraduationCap className="size-5" />
+                            </div>
+                            <span className="text-[11px] font-medium text-muted-foreground/80 text-center line-clamp-1 max-w-[85%]">
+                              {program.name}
+                            </span>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="relative w-full h-32 bg-gray-100 flex items-center justify-between p-4 border-b border-gray-200">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                            <BookOpen className="h-5 w-5" />
-                          </div>
-                          <Badge variant="outline" className="bg-white text-xs font-semibold text-black border-gray-300">
+                        )}
+                        <div className="absolute top-2.5 right-2.5 z-10">
+                          <Badge className="bg-black/75 backdrop-blur-sm text-white text-[10px] font-semibold px-2 py-0.5 shadow-sm">
                             {program.status || 'Active'}
                           </Badge>
                         </div>
-                      )}
+                      </div>
 
-                      <CardHeader className="p-4 pb-2">
-                        <div className="flex items-center justify-between gap-2 mb-1">
+                      <CardHeader className="px-6 pt-6 pb-2 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
                           {isUpcoming && (
-                            <span className="text-xs font-semibold text-blue-600 flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
+                            <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                              <Clock className="size-3.5" />
                               Starts in {days} {days === 1 ? 'day' : 'days'}
                             </span>
                           )}
                           {program.duration && (
-                            <span className="text-xs text-gray-500 ml-auto font-medium">
+                            <span className="text-xs text-muted-foreground ml-auto font-medium">
                               {program.duration}
                             </span>
                           )}
                         </div>
-                        <CardTitle className="text-base font-bold line-clamp-2 text-black group-hover:text-primary transition-colors">
+                        <CardTitle className="text-base sm:text-lg font-bold line-clamp-2 text-foreground group-hover:text-primary transition-colors leading-snug">
                           {program.name}
                         </CardTitle>
                       </CardHeader>
 
-                      <CardContent className="p-4 pt-2 flex flex-col flex-1 justify-between space-y-3">
-                        <CardDescription className="text-xs line-clamp-2 text-gray-600 font-medium">
+                      <CardContent className="px-6 pb-6 pt-0 flex flex-col flex-1 justify-between space-y-4">
+                        <CardDescription className="text-xs sm:text-sm line-clamp-2 text-muted-foreground font-normal leading-relaxed">
                           {program.description || 'Comprehensive technical training program designed to prepare trainees for industry roles.'}
                         </CardDescription>
 
-                        <div className="space-y-1 border-t border-gray-200 pt-2 text-xs text-gray-600">
+                        <div className="space-y-2 border-t border-border/60 pt-3.5 text-xs text-muted-foreground">
                           {program.instructor && (
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Instructor:</span>
-                              <span className="text-black truncate max-w-[140px]">{program.instructor}</span>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-foreground/80">Instructor:</span>
+                              <span className="text-foreground truncate font-medium text-right max-w-[160px]">{program.instructor}</span>
                             </div>
                           )}
                           {program.startDate && (
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">Start:</span>
-                              <span className="text-black">{formatDate(program.startDate)}</span>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-foreground/80">Start:</span>
+                              <span className="text-foreground font-medium">{formatDate(program.startDate)}</span>
                             </div>
                           )}
                         </div>
@@ -814,9 +865,9 @@ export default function LandingPage() {
                             e.stopPropagation();
                             setSelectedProgram(program);
                           }}
-                          className="w-full text-xs font-semibold bg-white border-2 border-black text-black hover:bg-gray-100 transition-colors"
+                          className="w-full h-9 text-xs sm:text-sm font-semibold bg-background border border-border/80 hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-200 rounded-xl"
                         >
-                          <Eye className="h-3 w-3 mr-1.5" />
+                          <Eye className="size-3.5 mr-1.5" />
                           View Details
                         </Button>
                       </CardContent>
@@ -910,19 +961,19 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CTA BANNER ─── */}
-      <section className="relative py-16 md:py-20 overflow-hidden bg-gray-100">
+      <section className="relative py-16 md:py-20 overflow-hidden border-y border-border bg-muted/40">
         <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 z-10">
           <div className="max-w-3xl mx-auto text-center space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-semibold text-black">
-              <Sparkles className="size-3.5 text-black" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-foreground shadow-xs">
+              <Sparkles className="size-3.5 text-primary" />
               <span>{getValue(cmsSettings?.ctaBanner?.badge) || defaultCmsSettings.ctaBanner!.badge}</span>
             </div>
 
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-black leading-tight">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
               {getValue(cmsSettings?.ctaBanner?.heading) || defaultCmsSettings.ctaBanner!.heading}
             </h2>
 
-            <p className="text-black text-sm sm:text-base md:text-lg leading-relaxed max-w-xl mx-auto font-medium">
+            <p className="text-muted-foreground text-sm sm:text-base md:text-lg leading-relaxed max-w-xl mx-auto font-medium">
               {getValue(cmsSettings?.ctaBanner?.description) || defaultCmsSettings.ctaBanner!.description}
             </p>
 
@@ -930,7 +981,7 @@ export default function LandingPage() {
               <Button
                 size="lg"
                 onClick={() => setIsRegistrationModalOpen(true)}
-                className="bg-primary hover:bg-primary/90 text-white font-bold px-8 h-12"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-8 h-12"
               >
                 {getValue(cmsSettings?.ctaBanner?.ctaPrimaryText) || defaultCmsSettings.ctaBanner!.ctaPrimaryText}
                 <ArrowRight className="size-4 ml-2" />
@@ -939,7 +990,7 @@ export default function LandingPage() {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="border-2 border-black bg-white hover:bg-gray-100 text-black font-bold px-6 h-12"
+                  className="border-2 border-border bg-card hover:bg-muted text-foreground font-bold px-6 h-12"
                 >
                   {getValue(cmsSettings?.ctaBanner?.ctaSecondaryText) || defaultCmsSettings.ctaBanner!.ctaSecondaryText}
                 </Button>
@@ -965,7 +1016,7 @@ export default function LandingPage() {
           </div>
 
           <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-border bg-card p-5 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <MapPin className="size-5" />
               </div>
@@ -976,7 +1027,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Phone className="size-5" />
               </div>
@@ -989,7 +1040,7 @@ export default function LandingPage() {
               </a>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Mail className="size-5" />
               </div>
@@ -1002,7 +1053,7 @@ export default function LandingPage() {
               </a>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Facebook className="size-5" />
               </div>
@@ -1021,24 +1072,15 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FOOTER ─── */}
-      <footer className="border-t border-border bg-card py-10">
+      <footer className="border-t border-border bg-card py-12">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3 text-center md:text-left">
-              {cmsSettings?.appearance?.logo ? (
-                <img
-                  src={getFileUrl(cmsSettings.appearance.logo)}
-                  alt="BMDC Logo"
-                  className="size-10 rounded-xl object-contain border border-border"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              ) : (
-                <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-sm">
-                  BMDC
-                </div>
-              )}
+              <BrandLogo
+                logoUrl={cmsSettings?.appearance?.logo || null}
+                companyName={getValue(cmsSettings?.footer?.companyName) || 'Bongabong Manpower Development Center'}
+                size="sm"
+              />
               <div>
                 <p className="text-sm font-bold text-foreground">
                   {getValue(cmsSettings?.footer?.companyName) || 'Bongabong Manpower Development Center'}
@@ -1054,9 +1096,6 @@ export default function LandingPage() {
               <a href="#features" className="hover:text-primary transition-colors">Features</a>
               <a href="#about" className="hover:text-primary transition-colors">About Us</a>
               <a href="#contact" className="hover:text-primary transition-colors">Contact</a>
-              <button onClick={() => setIsLoginModalOpen(true)} className="hover:text-primary transition-colors">
-                Staff Portal
-              </button>
             </div>
 
             <p className="text-xs text-muted-foreground text-center md:text-right">

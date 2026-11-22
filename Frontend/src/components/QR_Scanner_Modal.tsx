@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import inventoryService, { InventoryItem } from '../services/inventoryService';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationBadge } from './ui/notification-badge';
 
 interface ScannedItemResult {
   item: InventoryItem;
@@ -415,60 +416,65 @@ export default function QR_Scanner_Modal({
       onClick={handleClose}
     >
       <div 
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-2xl sm:max-h-[90dvh] sm:w-96 sm:rounded-xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl sm:max-h-[90dvh] sm:w-96"
         onClick={(e) => e.stopPropagation()}
       >
         <canvas ref={canvasRef} className="hidden" />
 
         {/* ── Header ────────────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-200 shrink-0">
+        <div className="flex items-center justify-between border-b border-border p-4 shrink-0">
           <div className="flex items-center gap-2">
-            <QrCode className="h-5 w-5 text-slate-700" />
+            <QrCode className="size-5 text-primary" />
             <div>
-              <h1 className="text-base font-bold text-slate-900">Lending QR Scan</h1>
-              <p className="text-xs text-slate-600">Scan items to borrow</p>
+              <h2 className="text-base font-bold text-foreground">Lending QR Scan</h2>
+              <p className="text-xs text-muted-foreground">Scan items to borrow</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={handleClose}
-            className="p-1 hover:bg-slate-100 rounded-lg text-slate-600"
+            aria-label="Close QR scanner"
+            className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <X className="h-5 w-5" />
+            <X className="size-5" />
           </button>
         </div>
 
         {/* ── Mode & Status ─────────────────────────────────────────────────────── */}
-        <div className="px-4 pt-3 pb-2 border-b border-slate-200 shrink-0">
+        <div className="border-b border-border px-4 pt-3 pb-2 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <div className="flex gap-2">
               <button 
+                type="button"
                 onClick={() => setSelectedMode('borrow')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded transition ${
+                className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   selectedMode === 'borrow'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-muted text-foreground hover:bg-muted/80'
                 }`}
               >
                 BORROW
               </button>
               <button 
+                type="button"
                 onClick={() => setSelectedMode('return')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded transition ${
+                className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   selectedMode === 'return'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-muted text-foreground hover:bg-muted/80'
                 }`}
               >
                 RETURN
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="text-sm">Status:</span>
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-1.5 w-1.5 animate-ping rounded-full bg-green-500 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
-            </span>
+            <NotificationBadge
+              variant="status"
+              status={cameraError ? 'error' : 'online'}
+              position="inline"
+            />
             {cameraError ? 'Error' : 'Ready'}
           </div>
         </div>
@@ -510,11 +516,12 @@ export default function QR_Scanner_Modal({
 
         {/* ── Camera Control ────────────────────────────────────────────────────── */}
         {videoDevices.length > 1 && !cameraError && (
-          <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between gap-2">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2">
             <select 
               value={selectedDeviceId} 
               onChange={(e) => handleCameraDeviceChange(e.target.value)}
-              className="flex-1 h-8 text-xs rounded border border-slate-200 bg-white px-2 text-slate-900"
+              aria-label="Select camera"
+              className="h-8 flex-1 rounded-md border border-input bg-input-background px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {videoDevices.map((device, index) => (
                 <option key={device.deviceId} value={device.deviceId}>
@@ -527,7 +534,7 @@ export default function QR_Scanner_Modal({
               aria-label="Switch Camera"
               onClick={handleSwitchCamera}
               disabled={isSwitching}
-              className="h-8 px-3 text-xs bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 disabled:opacity-50"
+              className="h-8 rounded-md border border-border bg-muted px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted/80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {isSwitching ? 'Switching...' : 'Switch Camera'}
             </button>

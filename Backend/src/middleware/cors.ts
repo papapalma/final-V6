@@ -8,8 +8,16 @@ import { logger } from '@/utils/logger';
  * Origins not in the allowlist are denied (SEC-19, Req 21.1, 21.2).
  */
 const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
   'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002',
+  'http://127.0.0.1:3003',
+  'http://127.0.0.1:5173',
   'https://bmdc.online',
   'https://www.bmdc.online',
   process.env.FRONTEND_URL,
@@ -46,8 +54,8 @@ function isOriginAllowed(origin: string | null): boolean {
     return false;
   }
 
-  // Development: allow any localhost origin
-  if (process.env.NODE_ENV === 'development' && origin.startsWith('http://localhost')) {
+  // Development: allow any localhost or 127.0.0.1 origin
+  if (process.env.NODE_ENV === 'development' && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))) {
     return true;
   }
 
@@ -113,6 +121,9 @@ export function corsResponse(
   init?: ResponseInit
 ): NextResponse {
   const origin = request.headers.get('origin');
+  if (data instanceof NextResponse) {
+    return addCorsHeaders(data, origin);
+  }
   const response = NextResponse.json(data, init);
   return addCorsHeaders(response, origin);
 }

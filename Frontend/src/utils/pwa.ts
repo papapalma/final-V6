@@ -65,38 +65,56 @@ export async function promptPWAInstall(): Promise<{ outcome: 'accepted' | 'dismi
 }
 
 export function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then(registration => {
-          logger.debug('Service worker registered', { scope: registration.scope });
-          
-          // Check for updates periodically
-          setInterval(() => {
-            registration.update();
-          }, 60 * 60 * 1000); // Check every hour
-          
-          // Listen for new service worker
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  // New service worker available
-                  if (confirm('New version available! Reload to update?')) {
-                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                    window.location.reload();
-                  }
+  if (!('serviceWorker' in navigator)) {
+    return;
+  }
+
+  // Never intercept Vite dev modules/HMR with a Service Worker; clean up any stale dev SW
+  if (import.meta.env.DEV) {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((reg) => reg.unregister())))
+      .then(() => clearAllCaches())
+      .catch(() => {});
+    return;
+  }
+
+  const doRegister = () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then(registration => {
+        logger.debug('Service worker registered', { scope: registration.scope });
+        
+        // Check for updates periodically
+        setInterval(() => {
+          registration.update();
+        }, 60 * 60 * 1000); // Check every hour
+        
+        // Listen for new service worker
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New service worker available
+                if (confirm('New version available! Reload to update?')) {
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                  window.location.reload();
                 }
-              });
-            }
-          });
-        })
-        .catch(registrationError => {
-          logger.error('Service worker registration failed', { error: registrationError });
+              }
+            });
+          }
         });
-    });
+      })
+      .catch(registrationError => {
+        logger.error('Service worker registration failed', { error: registrationError });
+      });
+  };
+
+  if (document.readyState === 'complete') {
+    doRegister();
+  } else {
+    window.addEventListener('load', doRegister, { once: true });
   }
 }
 

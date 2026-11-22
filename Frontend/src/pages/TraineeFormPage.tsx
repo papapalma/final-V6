@@ -1402,7 +1402,7 @@ export default function TraineeFormPage() {
                     <AlertDescription>
                       <div className="space-y-2">
                         <p className="font-semibold">Missing Required Files:</p>
-                        <ul className="list-disc pl-5 space-y-1">
+                        <ul className="list-disc pl-6 space-y-1">
                           {Object.entries(validationErrors).map(([key, error]) => (
                             <li key={key} className="text-sm">{error}</li>
                           ))}
@@ -1708,7 +1708,7 @@ export default function TraineeFormPage() {
                     isDraggingPhoto
                       ? 'border-primary bg-primary/5 scale-[1.01]'
                       : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                  } ${photoPreview ? 'p-3' : 'p-10'}`}
+                  } ${photoPreview ? 'p-3' : 'p-8'}`}
                 >
                   <input
                     ref={photoInputRef}

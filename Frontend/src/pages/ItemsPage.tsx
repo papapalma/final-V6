@@ -9,6 +9,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
+import { FilterPill } from '../components/ui/filter-pill';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Search, PackagePlus, QrCode, Edit, Package, LayoutGrid, TableIcon, Download, Eye, Building2, AlertTriangle, X } from 'lucide-react';
@@ -344,57 +345,52 @@ export default function ItemsPage() {
                   Stock:
                 </span>
                 
-                <button
-                  type="button"
+                <FilterPill
+                  tone="neutral"
+                  active={filterStockStatus === 'all'}
                   onClick={() => setFilterStockStatus('all')}
-                  className={`stock-pill-base ${
-                    filterStockStatus === 'all' ? 'stock-pill-all-active' : 'stock-pill-all'
-                  }`}
                 >
                   All ({items.length})
-                </button>
+                </FilterPill>
 
-                <button
-                  type="button"
+                <FilterPill
+                  tone="danger"
+                  active={filterStockStatus === 'out'}
                   onClick={() => setFilterStockStatus(filterStockStatus === 'out' ? 'all' : 'out')}
-                  className={`stock-pill-base ${
-                    filterStockStatus === 'out' ? 'stock-pill-out-active' : 'stock-pill-out'
-                  }`}
                 >
                   <span
-                    className="size-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: filterStockStatus === 'out' ? '#FFFFFF' : '#FF3B30' }}
+                    className={`size-1.5 rounded-full shrink-0 ${
+                      filterStockStatus === 'out' ? 'bg-white' : 'bg-red-500'
+                    }`}
                   />
                   Out of Stock ({outOfStockCount})
-                </button>
+                </FilterPill>
 
-                <button
-                  type="button"
+                <FilterPill
+                  tone="warning"
+                  active={filterStockStatus === 'low'}
                   onClick={() => setFilterStockStatus(filterStockStatus === 'low' ? 'all' : 'low')}
-                  className={`stock-pill-base ${
-                    filterStockStatus === 'low' ? 'stock-pill-low-active' : 'stock-pill-low'
-                  }`}
                 >
                   <span
-                    className="size-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: filterStockStatus === 'low' ? '#FFFFFF' : '#FF9500' }}
+                    className={`size-1.5 rounded-full shrink-0 ${
+                      filterStockStatus === 'low' ? 'bg-white' : 'bg-amber-500'
+                    }`}
                   />
                   Low Stock ({lowStockCount})
-                </button>
+                </FilterPill>
 
-                <button
-                  type="button"
+                <FilterPill
+                  tone="success"
+                  active={filterStockStatus === 'good'}
                   onClick={() => setFilterStockStatus(filterStockStatus === 'good' ? 'all' : 'good')}
-                  className={`stock-pill-base ${
-                    filterStockStatus === 'good' ? 'stock-pill-good-active' : 'stock-pill-good'
-                  }`}
                 >
                   <span
-                    className="size-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: filterStockStatus === 'good' ? '#FFFFFF' : '#34C759' }}
+                    className={`size-1.5 rounded-full shrink-0 ${
+                      filterStockStatus === 'good' ? 'bg-white' : 'bg-emerald-500'
+                    }`}
                   />
                   In Stock ({inStockCount})
-                </button>
+                </FilterPill>
               </div>
 
               {/* Live search feedback counter & clear */}
@@ -658,7 +654,7 @@ export default function ItemsPage() {
                 ? `No items match "${searchQuery}". Try checking your spelling or clearing search filters.`
                 : 'No equipment items currently match the active filters.'}
             </p>
-            <div className="mt-5 flex justify-center gap-2">
+            <div className="mt-6 flex justify-center gap-2">
               <Button
                 variant="outline"
                 size="sm"

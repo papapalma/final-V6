@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import DashboardLayout from '../components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -88,10 +88,33 @@ export default function RegistrationsPage() {
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
   const [rejectionReason, setRejectionReason] = useState('');
   const [processing, setProcessing] = useState(false);
+  const fetchRequestIdRef = useRef(0);
+  const didMountSearchRef = useRef(false);
+  const prevStatusFilterRef = useRef(statusFilter);
 
+  // Fetch on mount, immediately on statusFilter change, or 300ms-debounced on searchQuery change.
+  // Pagination (page / pageSize) is handled client-side without redundant network calls.
   useEffect(() => {
-    fetchRegistrations();
-  }, [statusFilter, page, pageSize]);
+    const statusChanged = prevStatusFilterRef.current !== statusFilter;
+    prevStatusFilterRef.current = statusFilter;
+
+    if (!didMountSearchRef.current) {
+      didMountSearchRef.current = true;
+      fetchRegistrations({ status: statusFilter, search: searchQuery });
+      return;
+    }
+
+    const delayMs = statusChanged ? 0 : 300;
+    const timer = setTimeout(() => {
+      fetchRegistrations({
+        status: statusFilter,
+        search: searchQuery,
+        isSearch: !statusChanged,
+      });
+    }, delayMs);
+
+    return () => clearTimeout(timer);
+  }, [statusFilter, searchQuery]);
 
   useEffect(() => {
     if (selectedRegistration) {
@@ -115,45 +138,47 @@ export default function RegistrationsPage() {
     }
   };
 
-  const fetchRegistrations = async () => {
+  const fetchRegistrations = async (options?: { status?: typeof statusFilter; search?: string; isSearch?: boolean }) => {
+    const requestId = ++fetchRequestIdRef.current;
+    const activeStatus = options?.status ?? statusFilter;
+    const activeSearch = (options?.search ?? searchQuery).trim();
+
     try {
-      setLoading(true);
+      if (options?.isSearch) {
+        setSearching(true);
+      } else {
+        setLoading(true);
+      }
       const filters: any = {
-        status: statusFilter,
+        status: activeStatus,
       };
-      if (searchQuery) {
-        filters.search = searchQuery;
+      if (activeSearch) {
+        filters.search = activeSearch;
       }
 
       const response = await registrationService.getRegistrations(filters);
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
       setRegistrations((response as any) || []);
       setTotal(response?.length || 0);
     } catch (error) {
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
       logger.error('Failed to fetch registrations', { error });
-      toast.error('Failed to load registrations');
+      toast.error(options?.isSearch ? 'Search failed' : 'Failed to load registrations');
     } finally {
-      setLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+        setSearching(false);
+      }
     }
   };
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = (query: string) => {
     setSearchQuery(query);
     setPage(1);
-    if (query.length > 0) {
-      setSearching(true);
-      try {
-        const response = await registrationService.getRegistrations({ search: query });
-        setRegistrations((response as any) || []);
-        setTotal(response?.length || 0);
-      } catch (error) {
-        logger.error('Search failed', { error });
-        toast.error('Search failed');
-      } finally {
-        setSearching(false);
-      }
-    } else {
-      await fetchRegistrations();
-    }
   };
 
   const handleApprove = async () => {
@@ -260,8 +285,7 @@ export default function RegistrationsPage() {
               placeholder="Search by name, email, or username..."
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
-              className="pl-9 h-9 text-sm"
-              disabled={searching}
+              className="pl-10 h-9 text-sm"
             />
           </div>
           <Select value={statusFilter} onValueChange={(value: any) => {
@@ -415,17 +439,13 @@ export default function RegistrationsPage() {
 
       {/* View Details Dialog */}
       <Dialog open={viewDetailsOpen} onOpenChange={setViewDetailsOpen}>
-        <DialogContent 
-          className="w-[94vw] max-w-2xl p-0 overflow-hidden rounded-2xl sm:rounded-3xl border border-border/80 shadow-2xl flex flex-col max-h-[92vh] apple-modal-dialog"
-          style={{ backgroundColor: 'var(--card)' }}
+        <DialogContent
+          className="flex max-h-[92vh] w-[94vw] max-w-2xl flex-col gap-0 overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-2xl sm:rounded-3xl"
         >
           {selectedRegistration && (
             <>
-              {/* Apple-style Hero Header */}
-              <div 
-                className="border-b border-border/60 bg-muted/20 apple-modal-header"
-                style={{ padding: '1.5rem 1.5rem 1rem 1.5rem' }}
-              >
+              {/* Hero Header */}
+              <div className="border-b border-border/60 bg-muted/20 px-6 pt-6 pb-4">
                 <div className="flex items-start justify-between gap-4 pr-8">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
@@ -456,10 +476,7 @@ export default function RegistrationsPage() {
               </div>
 
               {/* Scrollable Inset Grouped Content */}
-              <div 
-                className="space-y-4 overflow-y-auto flex-1 apple-modal-body"
-                style={{ padding: '1.5rem', maxHeight: 'calc(92vh - 180px)' }}
-              >
+              <div className="flex-1 space-y-4 overflow-y-auto p-6 max-h-[calc(92vh-180px)]">
                 {/* Inset Group 1: Personal & Contact Information */}
                 <div className="rounded-xl border border-border/70 bg-muted/30 dark:bg-muted/15 p-4 space-y-3.5">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -538,7 +555,7 @@ export default function RegistrationsPage() {
                       <span>Loading documents...</span>
                     </div>
                   ) : requirementFiles.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center p-5 rounded-lg border border-dashed border-border/70 bg-background/50 text-center">
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-background/50 p-6 text-center">
                       <FileText className="size-6 text-muted-foreground/60 mb-1" />
                       <p className="text-xs font-semibold text-foreground">No documents uploaded</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -592,12 +609,9 @@ export default function RegistrationsPage() {
                 )}
               </div>
 
-              {/* Apple Balanced Action Footer */}
+              {/* Balanced Action Footer */}
               {selectedRegistration.registration_status === 'pending' && (
-                <div 
-                  className="border-t border-border/60 bg-muted/20 shrink-0 apple-modal-footer"
-                  style={{ padding: '1.25rem 1.5rem' }}
-                >
+                <div className="shrink-0 border-t border-border/60 bg-muted/20 px-6 py-4">
                   <div className="flex flex-col sm:flex-row gap-3 w-full">
                     <Button
                       onClick={() => {
@@ -610,13 +624,13 @@ export default function RegistrationsPage() {
                       <span>Approve Registration</span>
                     </Button>
                     <Button
+                      variant="destructive"
                       onClick={() => {
                         setActionType('reject');
                         setRejectionReason('');
                         setActionDialogOpen(true);
                       }}
-                      style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
-                      className="notif-badge-red flex-1 h-11 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] bg-red-600 hover:bg-red-700 text-white flex items-center justify-center gap-2 border-none"
+                      className="flex-1 h-11 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                     >
                       <X className="size-4.5 stroke-[2.5]" />
                       <span>Reject Registration</span>
@@ -631,10 +645,7 @@ export default function RegistrationsPage() {
 
       {/* Action Dialog (Approve/Reject) */}
       <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
-        <DialogContent 
-          className="w-[92vw] max-w-sm rounded-2xl sm:rounded-3xl border border-border/80 shadow-2xl apple-modal-dialog"
-          style={{ padding: '1.5rem', backgroundColor: 'var(--card)' }}
-        >
+        <DialogContent className="w-[92vw] max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl sm:rounded-3xl">
           <DialogHeader className="text-center sm:text-center pb-1">
             <div className={`mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl ${
               actionType === 'approve' 
@@ -684,11 +695,10 @@ export default function RegistrationsPage() {
             <Button
               onClick={actionType === 'approve' ? handleApprove : handleReject}
               disabled={processing || (actionType === 'reject' && !rejectionReason.trim())}
-              style={actionType === 'reject' ? { backgroundColor: '#FF3B30', color: '#ffffff' } : undefined}
               className={`flex-1 h-10 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] order-1 sm:order-2 ${
                 actionType === 'approve' 
                   ? 'bg-primary hover:bg-primary/90 text-primary-foreground' 
-                  : 'notif-badge-red bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-red-600 hover:bg-red-700 text-white'
               }`}
             >
               {processing && <Loader className="size-4 mr-2 animate-spin" />}

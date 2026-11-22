@@ -11,15 +11,6 @@ import {
   ArrowRight,
   Zap,
 } from 'lucide-react';
-import {
-  Dashboard,
-  EventNote,
-  Person,
-  School,
-  AssignmentTurnedIn,
-  ChevronRight,
-  Bolt,
-} from '@mui/icons-material';
 
 interface QuickActionItem {
   label: string;

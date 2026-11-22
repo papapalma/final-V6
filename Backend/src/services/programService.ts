@@ -60,29 +60,121 @@ export class ProgramService {
   }
 
   /**
-   * Enrich a program or array of programs with current enrollment count
-   * 
+   * Enrich a program or array of programs with current enrollment count (and
+   * optionally staff-only registration counts) using batched queries instead of
+   * per-program N+1 roundtrips.
+   *
    * @param programs - Single program or array of programs
-   * @returns Program(s) with current_enrollment field added
+   * @param options - Optional enrichment flags (includeRegistrationCounts is strictly RBAC-gated by callers)
+   * @returns Program(s) with current_enrollment (and optionally total_registrations) added
    */
   async enrichProgramWithEnrollment(
-    programs: Program | Program[]
+    programs: Program | Program[],
+    options?: { includeRegistrationCounts?: boolean }
   ): Promise<Program | Program[]> {
     const isArray = Array.isArray(programs);
     const programsList = isArray ? programs : [programs];
 
-    const enriched = await Promise.all(
-      programsList.map(async (program) => {
-        const currentEnrollment = await this.getCurrentEnrollmentCount(
-          program.id,
-          program.tenant_id || ''
+    if (programsList.length === 0) {
+      return isArray ? [] : programs;
+    }
+
+    const programIds = programsList.map((p) => p.id).filter(Boolean);
+    const includeRegistrations = options?.includeRegistrationCounts === true;
+
+    const enrollmentsPromise = supabaseAdmin
+      .from('enrollments')
+      .select('program_id, tenant_id')
+      .in('program_id', programIds)
+      .eq('status', 'enrolled');
+
+    const registrationsPromise = includeRegistrations
+      ? supabaseAdmin
+          .from('enrollments')
+          .select('program_id, trainee_id, trainee:trainees!inner(id, tenant_id, registration_status)')
+          .in('program_id', programIds)
+          .in('trainee.registration_status', ['pending', 'approved'])
+      : Promise.resolve({ data: null, error: null });
+
+    const [enrollmentsRes, registrationsRes] = await Promise.all([
+      enrollmentsPromise,
+      registrationsPromise,
+    ]);
+
+    if (enrollmentsRes.error) {
+      throw new Error(`Failed to count enrollments: ${enrollmentsRes.error.message}`);
+    }
+
+    // Count enrollments keyed by (tenant_id, program_id) to preserve strict tenant isolation
+    const enrollmentCountsByTenantAndProgram = new Map<string, number>();
+    const enrollmentCountsByProgram = new Map<string, number>();
+    for (const row of (enrollmentsRes.data || []) as Array<{ program_id: string; tenant_id?: string | null }>) {
+      enrollmentCountsByProgram.set(
+        row.program_id,
+        (enrollmentCountsByProgram.get(row.program_id) || 0) + 1
+      );
+      if (row.tenant_id) {
+        const key = `${row.tenant_id}:${row.program_id}`;
+        enrollmentCountsByTenantAndProgram.set(
+          key,
+          (enrollmentCountsByTenantAndProgram.get(key) || 0) + 1
         );
+      }
+    }
+
+    // Deduplicate registered trainees per (tenant_id, program_id) when requested
+    const registeredTraineesByTenantAndProgram = new Map<string, Set<string>>();
+    const registeredTraineesByProgram = new Map<string, Set<string>>();
+    if (includeRegistrations && !registrationsRes.error && registrationsRes.data) {
+      for (const row of registrationsRes.data as Array<{
+        program_id: string;
+        trainee_id: string;
+        trainee: { id: string; tenant_id?: string | null; registration_status: string } | Array<{ id: string; tenant_id?: string | null; registration_status: string }>;
+      }>) {
+        const trainee = Array.isArray(row.trainee) ? row.trainee[0] : row.trainee;
+        if (!trainee || !row.program_id || !row.trainee_id) continue;
+
+        let byProg = registeredTraineesByProgram.get(row.program_id);
+        if (!byProg) {
+          byProg = new Set<string>();
+          registeredTraineesByProgram.set(row.program_id, byProg);
+        }
+        byProg.add(row.trainee_id);
+
+        if (trainee.tenant_id) {
+          const key = `${trainee.tenant_id}:${row.program_id}`;
+          let byTenantProg = registeredTraineesByTenantAndProgram.get(key);
+          if (!byTenantProg) {
+            byTenantProg = new Set<string>();
+            registeredTraineesByTenantAndProgram.set(key, byTenantProg);
+          }
+          byTenantProg.add(row.trainee_id);
+        }
+      }
+    }
+
+    const enriched = programsList.map((program) => {
+      const currentEnrollment = program.tenant_id
+        ? (enrollmentCountsByTenantAndProgram.get(`${program.tenant_id}:${program.id}`) ?? 0)
+        : (enrollmentCountsByProgram.get(program.id) ?? 0);
+
+      if (!includeRegistrations) {
         return {
           ...program,
           current_enrollment: currentEnrollment,
         };
-      })
-    );
+      }
+
+      const totalRegistrations = program.tenant_id
+        ? (registeredTraineesByTenantAndProgram.get(`${program.tenant_id}:${program.id}`)?.size ?? 0)
+        : (registeredTraineesByProgram.get(program.id)?.size ?? 0);
+
+      return {
+        ...program,
+        current_enrollment: currentEnrollment,
+        total_registrations: totalRegistrations,
+      };
+    });
 
     return isArray ? enriched : enriched[0];
   }

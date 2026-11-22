@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
+import { BrandingProvider } from './contexts/BrandingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProgramsProvider } from './contexts/ProgramsContext';
+import { MessengerProvider } from './contexts/MessengerContext';
 import { Toaster } from './components/ui/sonner';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useEffect } from 'react';
@@ -67,9 +69,11 @@ const RegistrationsPage = lazyPage(() => import('./pages/RegistrationsPage'));
 const TraineeApplicationsPage = lazyPage(() => import('./pages/TraineeApplicationsPage'));
 const ProgramEnrollmentPage = lazyPage(() => import('./pages/ProgramEnrollmentPage'));
 const LandingContentEditorPage = lazyPage(() => import('./pages/LandingContentEditorPage'));
+const AnnouncementsManagementPage = lazyPage(() => import('./pages/AnnouncementsManagementPage'));
 const RequirementsManagementPage = lazyPage(() => import('./pages/RequirementsManagementPage'));
 const RequirementDetailPage = lazyPage(() => import('./pages/RequirementDetailPage'));
 const ArchivePage = lazyPage(() => import('./pages/ArchivePage'));
+const MessagesPage = lazyPage(() => import('./pages/MessagesPage'));
 
 
 // Redirect components for login and register
@@ -99,6 +103,12 @@ function AppRoutes() {
   }, [location.pathname]);
 
   return null;
+}
+
+// Route-scoped boundary so an error on one page resets automatically on navigation
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
 }
 
 export default function App() {
@@ -157,12 +167,15 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <ErrorBoundary>
           <AuthProvider>
-            <ProgramsProvider>
-              <BrowserRouter>
+            <BrandingProvider>
+              <ProgramsProvider>
+              <MessengerProvider>
+                <BrowserRouter>
                 <AppRoutes />
                 <OfflineIndicator />
                 <PWAInstallPrompt />
                 <OverdueNotification />
+                <RouteErrorBoundary>
                 <Routes>
                   {/* ── Public Routes (Accessible without authentication) ── */}
                   <Route path="/share" element={<LinkHandlerPage />} />
@@ -192,6 +205,7 @@ export default function App() {
                   <Route path="/activity-logs"         element={<ProtectedRoute><ActivityLogsPage /></ProtectedRoute>} />
                   <Route path="/settings"              element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
                   <Route path="/admin/landing-content" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><LandingContentEditorPage /></ProtectedRoute>} />
+                  <Route path="/admin/announcements" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><AnnouncementsManagementPage /></ProtectedRoute>} />
                   <Route path="/admin/requirements" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><RequirementsManagementPage /></ProtectedRoute>} />
                   <Route path="/admin/requirements/new" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><RequirementDetailPage /></ProtectedRoute>} />
                   <Route path="/admin/requirements/:id" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><RequirementDetailPage /></ProtectedRoute>} />
@@ -200,6 +214,7 @@ export default function App() {
                   <Route path="/account-management"    element={<ProtectedRoute><AccountManagementPage /></ProtectedRoute>} />
                   <Route path="/non-attendance-dates"  element={<ProtectedRoute><NonAttendanceDatesPage /></ProtectedRoute>} />
                   <Route path="/registrations"        element={<ProtectedRoute><RegistrationsPage /></ProtectedRoute>} />
+                  <Route path="/messages"             element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
 
                   {/* ── Trainee-only Routes ── */}
                   <Route path="/trainee/dashboard"    element={<ProtectedRoute allowedRoles={['trainee']}><TraineeDashboardPage /></ProtectedRoute>} />
@@ -220,10 +235,13 @@ export default function App() {
                   <Route path="/404" element={<NotFoundPage />} />
                   <Route path="*" element={<Navigate to="/404" replace />} />
                 </Routes>
+                </RouteErrorBoundary>
                 <Toaster />
               </BrowserRouter>
-            </ProgramsProvider>
-          </AuthProvider>
+            </MessengerProvider>
+          </ProgramsProvider>
+            </BrandingProvider>
+        </AuthProvider>
         </ErrorBoundary>
       </QueryClientProvider>
     </ThemeProvider>

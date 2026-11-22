@@ -44,6 +44,8 @@ interface Program {
   instructor?: string | null;
   duration_weeks?: number;
   max_trainees?: number;
+  enrollment_limit?: number | null;
+  current_enrollment?: number;
   thumbnail_path?: string;
   image_path?: string;
   icon?: string;
@@ -151,6 +153,8 @@ export default function TraineeProgramsPage() {
         instructor: serviceProgram.instructor,
         duration_weeks: serviceProgram.duration_weeks,
         max_trainees: serviceProgram.max_trainees,
+        enrollment_limit: serviceProgram.enrollment_limit,
+        current_enrollment: serviceProgram.current_enrollment,
         thumbnail_path: serviceProgram.thumbnail_path,
         image_path: serviceProgram.image_path,
         icon: serviceProgram.icon || 'GraduationCap',
@@ -272,20 +276,23 @@ export default function TraineeProgramsPage() {
           </div>
 
           {/* Search Bar */}
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-            <Search className="h-5 w-5 text-gray-400 shrink-0" />
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/25">
+            <Search className="size-5 shrink-0 text-muted-foreground" />
             <Input
               placeholder="Search programs by name, instructor, or topic..."
+              aria-label="Search programs"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="border-0 bg-transparent focus:outline-none focus:ring-0"
+              className="border-0 bg-transparent shadow-none focus-visible:ring-0"
             />
             {searchQuery && (
               <button
+                type="button"
+                aria-label="Clear search"
                 onClick={() => setSearchQuery('')}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-900 rounded transition-colors shrink-0"
+                className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <X className="h-4 w-4 text-gray-400" />
+                <X className="size-4" />
               </button>
             )}
           </div>
@@ -350,11 +357,15 @@ export default function TraineeProgramsPage() {
                           instructor: program.instructor,
                           duration_weeks: program.duration_weeks,
                           max_trainees: program.max_trainees,
+                          enrollment_limit: program.enrollment_limit,
+                          current_enrollment: program.current_enrollment,
                           thumbnail_path: program.thumbnail_path,
                           image_path: program.image_path,
                           icon: IconComponent,
                         }}
                         photoUrl={photoUrl || undefined}
+                        enrollmentLimit={program.enrollment_limit}
+                        enrolledCount={program.current_enrollment ?? 0}
                         isEnrolled={enrollment?.isEnrolled || false}
                         enrollmentStatus={enrollment?.enrollmentStatus || 'accepting'}
                         enrollmentDate={enrollment?.enrollmentDate}
@@ -387,7 +398,7 @@ export default function TraineeProgramsPage() {
             </DialogDescription>
           </DialogHeader>
           {selectedProgram && (
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-gray-50 to-gray-100/50 dark:from-gray-900/50 dark:to-gray-800/30 p-5 space-y-4">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gradient-to-br from-gray-50 to-gray-100/50 dark:from-gray-900/50 dark:to-gray-800/30 p-6 space-y-4">
               <div>
                 <h3 className="font-bold text-lg text-gray-900 dark:text-white">{selectedProgram.name}</h3>
                 {selectedProgram.description && (

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Calendar, Clock, User, Users, BarChart3 } from 'lucide-react';
+import { Calendar, Clock, User, Users, BarChart3, GraduationCap } from 'lucide-react';
 import { EnrollmentButton, EnrollmentStatus, getEnrollmentButtonState } from './EnrollmentButton';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useNavigate } from 'react-router-dom';
@@ -72,29 +72,39 @@ export function ProgramCard({
   // Use media query hook to detect desktop viewport (1024px+)
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
-  // Fetch program stats when card mounts or program ID changes
+  // Fetch program stats only for non-trainee callers when capacity isn't already provided on program
   useEffect(() => {
+    let isTrainee = false;
+    try {
+      const saved = sessionStorage.getItem('bmdc-user');
+      isTrainee = saved ? JSON.parse(saved)?.role === 'trainee' : false;
+    } catch {
+      isTrainee = false;
+    }
+
+    // Trainees always receive 403 from /programs/:id/stats; avoid N failing requests per page load
+    if (!program.id || isTrainee) {
+      return;
+    }
+
     const fetchStats = async () => {
       try {
         setStatsLoading(true);
         const statsData = await programService.getProgramSpecificStats(program.id);
         setStats(statsData);
       } catch (error) {
-        // Silently fail - stats are optional enhancements for trainee view
-        // 403 errors are expected when user lacks permissions
+        // Silently fail - stats are optional enhancements
       } finally {
         setStatsLoading(false);
       }
     };
 
-    if (program.id) {
-      fetchStats();
-    }
+    fetchStats();
   }, [program.id]);
 
-  // Calculate capacity state using stats or props
-  const enrollmentCount = stats?.current_enrollment ?? enrolledCount;
-  const enrollmentCapacity = stats?.enrollment_limit ?? enrollmentLimit;
+  // Calculate capacity state using stats, program fields, or props
+  const enrollmentCount = stats?.current_enrollment ?? program.current_enrollment ?? enrolledCount;
+  const enrollmentCapacity = stats?.enrollment_limit ?? program.enrollment_limit ?? enrollmentLimit;
   const isAtCapacity = enrollmentCapacity
     ? enrollmentCount >= enrollmentCapacity
     : false;
@@ -170,38 +180,48 @@ export function ProgramCard({
       onBlur={handleCardBlur}
       tabIndex={0}
     >
-      {/* Program Image */}
-      {photoUrl && (
-        <div className="w-full h-48 rounded-t-lg overflow-hidden border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
-          <img
-            src={photoUrl}
-            alt={program.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-          />
-        </div>
-      )}
-
       {/* Program Header */}
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
-            {program.icon}
+      <CardHeader className="p-4 pb-2">
+        <div className="flex items-start gap-3">
+          {/* Compact 44px Avatar / Icon */}
+          <div className="size-11 rounded-xl overflow-hidden bg-primary/10 group-hover:bg-primary/20 transition-colors shrink-0 flex items-center justify-center border border-primary/10">
+            {photoUrl && !photoUrl.includes('blank-thumbnail') ? (
+              <img
+                src={photoUrl}
+                alt={program.name}
+                className="size-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            ) : (
+              program.icon || <GraduationCap className="size-5 text-primary" />
+            )}
           </div>
-          <Badge variant={program.status === 'active' ? 'default' : 'secondary'}>
-            {program.status}
-          </Badge>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-1">
+              <CardTitle className="text-sm sm:text-base font-semibold leading-snug line-clamp-2">{program.name}</CardTitle>
+              <Badge variant={program.status === 'active' ? 'default' : 'secondary'} className="text-[11px] px-1.5 py-0 shrink-0">
+                {program.status}
+              </Badge>
+            </div>
+            {program.duration_weeks && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <Badge variant="outline" className="text-[11px] px-1.5 py-0 font-normal">
+                  {program.duration_weeks} week{program.duration_weeks !== 1 ? 's' : ''}
+                </Badge>
+              </div>
+            )}
+          </div>
         </div>
-        <CardTitle className="mt-2 text-base leading-snug">{program.name}</CardTitle>
-        {program.description && (
-          <CardDescription className="line-clamp-2">{program.description}</CardDescription>
-        )}
       </CardHeader>
 
       {/* Program Content */}
-      <CardContent className="flex flex-col flex-1 gap-3">
+      <CardContent className="flex flex-col flex-1 gap-2.5 p-4 pt-1">
+        {program.description && (
+          <CardDescription className="line-clamp-2 text-xs text-muted-foreground leading-relaxed">{program.description}</CardDescription>
+        )}
         <div className="space-y-1.5 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Calendar className="size-3.5 shrink-0" />

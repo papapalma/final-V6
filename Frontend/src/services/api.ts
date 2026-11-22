@@ -1,5 +1,91 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { logger } from '../utils/logger';
+import { getEncryptedToken, setEncryptedToken } from '../utils/encryption';
+
+// ---------------------------------------------------------------------------
+// Secure Short-Lived In-Memory GET Cache & In-Flight Request Deduplication
+// ---------------------------------------------------------------------------
+const DEFAULT_GET_CACHE_TTL_MS = 15_000;
+const MAX_GET_CACHE_ENTRIES = 100;
+const NON_CACHEABLE_PREFIXES = ['/auth/', '/messages', '/notifications', '/csrf'];
+
+interface CachedGetEntry {
+  data: any;
+  expiresAt: number;
+}
+
+const getResponseCache = new Map<string, CachedGetEntry>();
+const inFlightGetRequests = new Map<string, Promise<any>>();
+
+function clearGetCacheStore(): void {
+  getResponseCache.clear();
+  inFlightGetRequests.clear();
+}
+
+function isNonCacheableUrl(url: string): boolean {
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return NON_CACHEABLE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+function hashString(input: string): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = ((h << 5) - h) + input.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h).toString(16);
+}
+
+function getSessionCacheScope(): string {
+  if (typeof sessionStorage === 'undefined') return 'anon';
+  try {
+    const encryptedToken = sessionStorage.getItem('bmdc-auth-token');
+    const savedUser = sessionStorage.getItem('bmdc-user') || '';
+    if (!encryptedToken && !savedUser) return 'anon';
+    return hashString(`${encryptedToken || ''}|${savedUser}`);
+  } catch {
+    return 'anon';
+  }
+}
+
+function stableSerializeParams(params: unknown): string {
+  if (!params || typeof params !== 'object') return '';
+  const entries = Object.entries(params as Record<string, unknown>)
+    .filter(([, value]) => value !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries);
+}
+
+function cloneCachedValue<T>(value: T): T {
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return value;
+  }
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(value);
+    } catch {
+      // Fallback below
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch {
+    return value;
+  }
+}
+
+function setCacheEntry(key: string, data: any): void {
+  if (getResponseCache.size >= MAX_GET_CACHE_ENTRIES) {
+    const oldestKey = getResponseCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      getResponseCache.delete(oldestKey);
+    }
+  }
+  getResponseCache.set(key, {
+    data: cloneCachedValue(data),
+    expiresAt: Date.now() + DEFAULT_GET_CACHE_TTL_MS,
+  });
+}
 
 /**
  * API Configuration
@@ -37,10 +123,7 @@ const apiClient: AxiosInstance = axios.create({
  */
 apiClient.interceptors.request.use(
   async (config) => {
-    // Import here to avoid circular dependency
-    const { getEncryptedToken } = await import('../utils/encryption');
-    
-    // Get encrypted token from sessionStorage and decrypt
+    // Get encrypted token from sessionStorage (cached by ciphertext in memory)
     const token = await getEncryptedToken('bmdc-auth-token');
     
     if (token) {
@@ -77,6 +160,12 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
+    // Invalidate GET cache on any mutating request (covers direct apiClient callers too)
+    const method = response.config.method?.toLowerCase();
+    if (method && method !== 'get' && method !== 'head' && method !== 'options') {
+      clearGetCacheStore();
+    }
+
     // Log response in development
     if (import.meta.env.DEV) {
       logger.debug(`[API Response] ${response.config.url}`);
@@ -116,6 +205,7 @@ apiClient.interceptors.response.use(
 
       // Avoid infinite loop when refresh endpoint itself fails.
       if (originalRequest.url?.includes('/auth/refresh')) {
+        clearGetCacheStore();
         sessionStorage.removeItem('bmdc-user');
         window.location.href = '/';
         return Promise.reject(error);
@@ -135,16 +225,16 @@ apiClient.interceptors.response.use(
         // Store refreshed tokens encrypted in sessionStorage
         // API response structure: { success, data: { token, refreshToken, user }, message }
         if (response.data.data?.token) {
-          const { setEncryptedToken } = await import('../utils/encryption');
-          
           await setEncryptedToken('bmdc-auth-token', response.data.data.token);
           if (response.data.data.refreshToken) {
             await setEncryptedToken('bmdc-refresh-token', response.data.data.refreshToken);
           }
+          clearGetCacheStore();
         }
         
         return apiClient(originalRequest);
       } catch (refreshError) {
+        clearGetCacheStore();
         sessionStorage.removeItem('bmdc-user');
         window.location.href = '/';
         return Promise.reject(refreshError);
@@ -213,22 +303,80 @@ export interface ApiError {
  */
 class ApiService {
   /**
-   * GET Request
+   * Clear all cached GET responses and in-flight deduplication entries.
+   * Called automatically on writes, auth transitions, and manual refreshes.
+   */
+  clearCache(): void {
+    clearGetCacheStore();
+  }
+
+  /**
+   * GET Request (with 15s session-scoped cache & in-flight deduplication)
    */
   async get<T = any>(
     url: string,
     params?: any,
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> {
-    try {
-      const response = await apiClient.get<ApiResponse<T>>(url, {
-        params,
-        ...config,
-      });
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error as AxiosError);
+    const rawHeaders = (config?.headers || {}) as Record<string, any>;
+    const skipCache =
+      Boolean(rawHeaders['X-Skip-Cache'] || rawHeaders['x-skip-cache']) ||
+      config?.responseType === 'blob' ||
+      Boolean(config?.signal) ||
+      isNonCacheableUrl(url);
+
+    // Strip internal cache-control header so CORS preflight never sees an unlisted header
+    let requestConfig = config;
+    if (rawHeaders['X-Skip-Cache'] || rawHeaders['x-skip-cache']) {
+      const { 'X-Skip-Cache': _a, 'x-skip-cache': _b, ...cleanHeaders } = rawHeaders;
+      requestConfig = { ...config, headers: cleanHeaders };
     }
+
+    const cacheKey = skipCache
+      ? null
+      : `${getSessionCacheScope()}::${url}::${stableSerializeParams(params)}`;
+
+    if (cacheKey) {
+      const cached = getResponseCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return cloneCachedValue(cached.data) as ApiResponse<T>;
+      }
+      if (cached) {
+        getResponseCache.delete(cacheKey);
+      }
+
+      const existingInFlight = inFlightGetRequests.get(cacheKey);
+      if (existingInFlight) {
+        const sharedData = await existingInFlight;
+        return cloneCachedValue(sharedData) as ApiResponse<T>;
+      }
+    }
+
+    const requestPromise = (async () => {
+      try {
+        const response = await apiClient.get<ApiResponse<T>>(url, {
+          params,
+          ...requestConfig,
+        });
+        if (cacheKey) {
+          setCacheEntry(cacheKey, response.data);
+        }
+        return response.data;
+      } catch (error) {
+        throw this.handleError(error as AxiosError);
+      } finally {
+        if (cacheKey) {
+          inFlightGetRequests.delete(cacheKey);
+        }
+      }
+    })();
+
+    if (cacheKey) {
+      inFlightGetRequests.set(cacheKey, requestPromise);
+    }
+
+    const data = await requestPromise;
+    return cacheKey ? cloneCachedValue(data) : data;
   }
 
   /**
@@ -249,6 +397,7 @@ class ApiService {
         },
       };
       const response = await apiClient.post<ApiResponse<T>>(url, data, finalConfig);
+      clearGetCacheStore();
       return response.data;
     } catch (error) {
       throw this.handleError(error as AxiosError);
@@ -265,6 +414,7 @@ class ApiService {
   ): Promise<ApiResponse<T>> {
     try {
       const response = await apiClient.put<ApiResponse<T>>(url, data, config);
+      clearGetCacheStore();
       return response.data;
     } catch (error) {
       throw this.handleError(error as AxiosError);
@@ -281,6 +431,7 @@ class ApiService {
   ): Promise<ApiResponse<T>> {
     try {
       const response = await apiClient.patch<ApiResponse<T>>(url, data, config);
+      clearGetCacheStore();
       return response.data;
     } catch (error) {
       throw this.handleError(error as AxiosError);
@@ -296,6 +447,7 @@ class ApiService {
   ): Promise<ApiResponse<T>> {
     try {
       const response = await apiClient.delete<ApiResponse<T>>(url, config);
+      clearGetCacheStore();
       return response.data;
     } catch (error) {
       throw this.handleError(error as AxiosError);
@@ -320,6 +472,7 @@ class ApiService {
         },
         onUploadProgress,
       });
+      clearGetCacheStore();
       return response.data;
     } catch (error) {
       throw this.handleError(error as AxiosError);

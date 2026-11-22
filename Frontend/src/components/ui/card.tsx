@@ -2,13 +2,19 @@ import * as React from "react";
 
 import { cn } from "./utils";
 
-const Card = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
-  ({ className, ...props }, ref) => (
+interface CardProps extends React.ComponentProps<"div"> {
+  interactive?: boolean;
+}
+
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, interactive = false, ...props }, ref) => (
     <div
       ref={ref}
       data-slot="card"
+      data-interactive={interactive ? "true" : undefined}
       className={cn(
         "ds-card bg-card text-card-foreground flex flex-col gap-6 rounded-xl border",
+        interactive && "ds-card-interactive cursor-pointer",
         className,
       )}
       {...props}

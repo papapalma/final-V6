@@ -179,7 +179,7 @@ export const OTPInput = React.forwardRef<HTMLDivElement, OTPInputProps>(
                 className={cn(
                   'w-10 h-12 text-center text-sm font-semibold rounded border border-2 transition-all',
                   'bg-input-background dark:bg-input/30',
-                  'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20',
+                  'focus:outline-none focus:border-primary focus:ring-2 focus:ring-ring/30',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   'placeholder:text-muted-foreground/40',
                   // Error state
@@ -218,7 +218,7 @@ export const OTPInput = React.forwardRef<HTMLDivElement, OTPInputProps>(
                 className={cn(
                   'w-10 h-12 text-center text-sm font-semibold rounded border border-2 transition-all',
                   'bg-input-background dark:bg-input/30',
-                  'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20',
+                  'focus:outline-none focus:border-primary focus:ring-2 focus:ring-ring/30',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   'placeholder:text-muted-foreground/40',
                   // Error state
@@ -257,7 +257,7 @@ export const OTPInput = React.forwardRef<HTMLDivElement, OTPInputProps>(
                 className={cn(
                   'w-10 h-12 text-center text-sm font-semibold rounded border border-2 transition-all',
                   'bg-input-background dark:bg-input/30',
-                  'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20',
+                  'focus:outline-none focus:border-primary focus:ring-2 focus:ring-ring/30',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   'placeholder:text-muted-foreground/40',
                   // Error state

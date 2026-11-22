@@ -515,7 +515,7 @@ export default function ProgramDetailsModal({
                 {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
               </div>
             ) : sessions.length === 0 ? (
-              <div className="flex flex-col items-center py-14 text-muted-foreground">
+              <div className="flex flex-col items-center py-12 text-muted-foreground">
                 <CalendarDays className="size-10 mb-3 opacity-40" />
                 <p className="text-sm">No sessions have been created for this program.</p>
               </div>
@@ -628,7 +628,7 @@ export default function ProgramDetailsModal({
                 {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
               </div>
             ) : !stats || stats.total === 0 ? (
-              <div className="flex flex-col items-center py-14 text-muted-foreground">
+              <div className="flex flex-col items-center py-12 text-muted-foreground">
                 <BarChart3 className="size-10 mb-3 opacity-40" />
                 <p className="text-sm">No attendance records yet.</p>
                 <p className="text-xs mt-1">Scan trainee QR codes during sessions to start recording.</p>
@@ -739,7 +739,7 @@ export default function ProgramDetailsModal({
                 {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
               </div>
             ) : enrollments.length === 0 ? (
-              <div className="flex flex-col items-center py-14 text-muted-foreground">
+              <div className="flex flex-col items-center py-12 text-muted-foreground">
                 <Users className="size-10 mb-3 opacity-40" />
                 <p className="text-sm">No trainees are enrolled in this program yet.</p>
               </div>
@@ -822,7 +822,7 @@ export default function ProgramDetailsModal({
                 {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
               </div>
             ) : registrations.length === 0 ? (
-              <div className="flex flex-col items-center py-14 text-muted-foreground">
+              <div className="flex flex-col items-center py-12 text-muted-foreground">
                 <Users className="size-10 mb-3 opacity-40" />
                 <p className="text-sm">No registrations for this program.</p>
               </div>

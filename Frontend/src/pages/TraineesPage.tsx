@@ -8,10 +8,11 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
+import { FilterPill } from '../components/ui/filter-pill';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Search, UserPlus, Edit, MoreVertical, RefreshCw, Download, LayoutGrid, TableIcon, QrCode, Eye, Building2, Trash2, Save, KeyRound, ShieldCheck, Copy, Check, X, RotateCcw } from 'lucide-react';
+import { Search, UserPlus, Edit, MoreVertical, RefreshCw, Download, LayoutGrid, TableIcon, QrCode, Eye, Building2, Trash2, Save, KeyRound, ShieldCheck, Copy, Check, X, RotateCcw, FileSpreadsheet } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Separator } from '../components/ui/separator';
 import PaginationWrapper from '../components/PaginationWrapper';
@@ -23,6 +24,7 @@ import {
   DropdownMenuSeparator,
 } from '../components/ui/dropdown-menu';
 import { generateTraineePDF } from '../utils/pdfGenerator';
+import { exportTraineesToExcel } from '../utils/excelExport';
 import { traineeLogger } from '../utils/activityLogger';
 import traineeService from '../services/traineeService';
 import programService from '../services/programService';
@@ -76,6 +78,10 @@ export default function TraineesPage() {
   const [trainees, setTrainees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [programMap, setProgramMap] = useState<Record<string, string>>({});
+  const programMapRef = useRef<Record<string, string>>({});
+  const fetchRequestIdRef = useRef(0);
+  const didMountFiltersRef = useRef(false);
+  const prevStatusRef = useRef(filterStatus);
   const [selectedTraineeForDeletion, setSelectedTraineeForDeletion] = useState<any | null>(null);
   const [deletionConfirmDialogOpen, setDeletionConfirmDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -90,53 +96,88 @@ export default function TraineesPage() {
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [savingRemark, setSavingRemark] = useState<Record<string, boolean>>({});
 
-  // Fetch programs then trainees on mount
+  // Fetch programs and trainees in parallel on mount
   useEffect(() => {
     const init = async () => {
-      try {
-        const progRes = await programService.getPrograms();
-        const map: Record<string, string> = {};
-        (progRes.data || []).forEach((p: any) => { map[p.id] = p.name; });
-        setProgramMap(map);
-        await fetchTrainees();
-      } catch {
-        await fetchTrainees();
-      }
+      const programsPromise = programService
+        .getPrograms()
+        .then((progRes) => {
+          const map: Record<string, string> = {};
+          (progRes.data || []).forEach((p: any) => {
+            map[p.id] = p.name;
+          });
+          programMapRef.current = map;
+          setProgramMap(map);
+          return map;
+        })
+        .catch(() => ({} as Record<string, string>));
+
+      await Promise.all([programsPromise, fetchTrainees({ search: '', status: 'all' })]);
     };
     init();
   }, []);
 
-  const fetchTrainees = async () => {
+  const fetchTrainees = async (options?: { search?: string; status?: string; silent?: boolean }) => {
+    const requestId = ++fetchRequestIdRef.current;
+    const activeSearch = options?.search !== undefined ? options.search : searchQuery;
+    const activeStatus = options?.status !== undefined ? options.status : filterStatus;
+
     try {
-      setLoading(true);
+      if (!options?.silent) {
+        setLoading(true);
+      }
       const response = await traineeService.getTrainees({
-        search: searchQuery || undefined,
-        status: filterStatus !== 'all' ? filterStatus : undefined
+        search: activeSearch || undefined,
+        status: activeStatus !== 'all' ? activeStatus : undefined
       });
-      
-      // Fetch enrollments for each trainee to get their actual programs
-      const mappedTraineesPromises = (response.data || []).map(async (trainee: any) => {
+
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
+
+      const rawTrainees = response.data || [];
+      const embeddedRemarks: Record<string, string> = {};
+      const missingRemarkIds: string[] = [];
+
+      // Use embedded enrollments from GET /trainees when available (0 extra HTTP requests);
+      // fall back to per-trainee fetchEnrollments only if a legacy mock omits enrollments.
+      const mappedTraineesPromises = rawTrainees.map(async (trainee: any) => {
+        if (!isTrainingStaff) {
+          if (typeof trainee.latest_remark === 'string') {
+            embeddedRemarks[trainee.id] = trainee.latest_remark;
+          } else {
+            missingRemarkIds.push(trainee.id);
+          }
+        }
+
         try {
-          // Fetch enrollments for this trainee
-          const enrollments = await enrollmentService.fetchEnrollments(trainee.id);
-          
-          // Get all enrolled programs
+          const enrollments = Array.isArray(trainee.enrollments)
+            ? trainee.enrollments
+            : await enrollmentService.fetchEnrollments(trainee.id);
+
+          const resolveProgramName = (enrollment: any): string =>
+            enrollment.program?.name ||
+            enrollment.programs?.name ||
+            programMapRef.current[enrollment.program_id] ||
+            'Unknown Program';
+
           const enrolledPrograms = enrollments
-            .filter((e: any) => e.program?.name)
-            .map((e: any) => e.program.name);
-          
-          // Transform enrollments to Training format
+            .map((e: any) => resolveProgramName(e))
+            .filter((name: string) => name && name !== 'Unknown Program');
+
           const trainings = enrollments.map((enrollment: any) => ({
-            program: enrollment.program?.name || 'Unknown Program',
-            status: enrollment.status.charAt(0).toUpperCase() + enrollment.status.slice(1),
-            dateEnrolled: enrollment.enrollment_date 
-              ? new Date(enrollment.enrollment_date).toLocaleDateString() 
+            program: resolveProgramName(enrollment),
+            status: enrollment.status
+              ? enrollment.status.charAt(0).toUpperCase() + enrollment.status.slice(1)
+              : 'Enrolled',
+            dateEnrolled: enrollment.enrollment_date
+              ? new Date(enrollment.enrollment_date).toLocaleDateString()
               : '',
             dateCompleted: enrollment.completion_date
               ? new Date(enrollment.completion_date).toLocaleDateString()
               : null,
           }));
-          
+
           return {
             id: trainee.id,
             traineeId: trainee.id.slice(0, 8),
@@ -152,12 +193,11 @@ export default function TraineesPage() {
             programId: trainee.program_id,
             programName: enrolledPrograms.length > 0 ? enrolledPrograms.join(', ') : null,
             employmentStatus: trainee.employment_status || 'Unknown',
-            trainings: trainings,
+            trainings,
             createdAt: trainee.created_at,
             updatedAt: trainee.updated_at
           };
         } catch (error) {
-          // If fetching enrollments fails, return trainee without program info
           logger.warn('Failed to fetch enrollments for trainee', { traineeId: trainee.id, error });
           return {
             id: trainee.id,
@@ -180,19 +220,33 @@ export default function TraineesPage() {
           };
         }
       });
-      
+
       const mappedTrainees = await Promise.all(mappedTraineesPromises);
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
+
       setTrainees(mappedTrainees);
-      
+
       if (!isTrainingStaff) {
-        await fetchAllRemarks(mappedTrainees.map(t => t.id));
+        if (Object.keys(embeddedRemarks).length > 0) {
+          setRemarks((prev) => ({ ...prev, ...embeddedRemarks }));
+        }
+        if (missingRemarkIds.length > 0) {
+          await fetchAllRemarks(missingRemarkIds);
+        }
       }
     } catch (error) {
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
       logger.error('Failed to fetch trainees', { error });
       toast.error('Failed to load trainees');
       setTrainees([]);
     } finally {
-      setLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -238,11 +292,23 @@ export default function TraineesPage() {
     }
   };
 
-  // Refetch when filters change
+  // Debounced (300ms) server search & immediate status refetch with stale-response protection
   useEffect(() => {
-    if (!loading) {
-      fetchTrainees();
+    if (!didMountFiltersRef.current) {
+      didMountFiltersRef.current = true;
+      prevStatusRef.current = filterStatus;
+      return;
     }
+
+    const statusChanged = prevStatusRef.current !== filterStatus;
+    prevStatusRef.current = filterStatus;
+
+    const delayMs = statusChanged ? 0 : 300;
+    const timer = setTimeout(() => {
+      fetchTrainees({ search: searchQuery, status: filterStatus, silent: trainees.length > 0 });
+    }, delayMs);
+
+    return () => clearTimeout(timer);
   }, [searchQuery, filterStatus]);
 
   // Load view mode from localStorage
@@ -316,6 +382,7 @@ export default function TraineesPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    api.clearCache?.();
     await fetchTrainees();
     setRefreshing(false);
   };
@@ -576,7 +643,24 @@ export default function TraineesPage() {
               Manage trainee profiles and registrations for {user?.tenantName || 'your organization'}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              variant="outline" 
+              className="flex-1 sm:flex-none"
+              onClick={() => {
+                try {
+                  exportTraineesToExcel(filteredTrainees);
+                  toast.success(`Exported ${filteredTrainees.length} trainees to Excel`);
+                  traineeLogger.exported('Excel', filteredTrainees.length);
+                } catch (err: any) {
+                  toast.error(err.message || 'Failed to export Excel file');
+                }
+              }}
+              disabled={filteredTrainees.length === 0}
+            >
+              <FileSpreadsheet className="mr-2 size-4 text-emerald-600" />
+              Export Excel ({filteredTrainees.length})
+            </Button>
             <Button 
               variant="outline" 
               className="flex-1 sm:flex-none"
@@ -707,28 +791,28 @@ export default function TraineesPage() {
                 </span>
 
                 {[
-                  { key: 'all', label: 'All', count: statusCounts.all },
-                  { key: 'active', label: 'Active', count: statusCounts.active },
-                  { key: 'completed', label: 'Completed', count: statusCounts.completed },
-                  { key: 'inactive', label: 'Inactive', count: statusCounts.inactive },
+                  { key: 'all', label: 'All', count: statusCounts.all, tone: 'neutral' as const },
+                  { key: 'active', label: 'Active', count: statusCounts.active, tone: 'success' as const },
+                  { key: 'completed', label: 'Completed', count: statusCounts.completed, tone: 'info' as const },
+                  { key: 'inactive', label: 'Inactive', count: statusCounts.inactive, tone: 'muted' as const },
                 ].map((status) => {
                   const isActive = filterStatus === status.key;
                   return (
-                    <button
+                    <FilterPill
                       key={status.key}
-                      type="button"
+                      tone={status.tone}
+                      active={isActive}
                       onClick={() => setFilterStatus(status.key)}
-                      className={`trainee-pill-base ${isActive ? `trainee-pill-${status.key}-active` : `trainee-pill-${status.key}`}`}
                     >
                       <span>{status.label}</span>
                       <span
-                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-semibold transition-colors ${
-                          isActive ? 'bg-white/25 text-white' : 'bg-black/5 dark:bg-white/10 text-muted-foreground'
+                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
+                          isActive ? 'bg-white/25 text-current' : 'bg-black/5 dark:bg-white/10 text-muted-foreground'
                         }`}
                       >
                         {status.count}
                       </span>
-                    </button>
+                    </FilterPill>
                   );
                 })}
               </div>
@@ -799,7 +883,7 @@ export default function TraineesPage() {
                   {paginatedTrainees.map((trainee) => (
                     <TableRow 
                       key={trainee.id} 
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="group cursor-pointer hover:bg-muted/50"
                       onClick={() => handleTraineeClick(trainee)}
                     >
                       <TableCell>
@@ -880,7 +964,12 @@ export default function TraineesPage() {
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Actions for ${trainee.name}`}
+                              className="opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto data-[state=open]:opacity-100 data-[state=open]:pointer-events-auto"
+                            >
                               <MoreVertical className="size-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -986,7 +1075,12 @@ export default function TraineesPage() {
                       </Badge>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                          <Button variant="outline" size="icon" className="size-8 h-8 w-8 border-border bg-background p-0 text-foreground hover:bg-muted">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label={`Actions for ${trainee.name}`}
+                            className="size-8 h-8 w-8 border-border bg-background p-0 text-foreground hover:bg-muted opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto data-[state=open]:opacity-100 data-[state=open]:pointer-events-auto"
+                          >
                             <MoreVertical className="size-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -1043,7 +1137,7 @@ export default function TraineesPage() {
                     </div>
                   </div>
                   
-                  <div className="mb-4 space-y-2 text-sm">
+                  <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2">
                       <span className="text-muted-foreground">Email:</span>
                       <span className="truncate">{trainee.email}</span>
@@ -1085,7 +1179,7 @@ export default function TraineesPage() {
                     )}
                   </div>
 
-                  <div className="mt-4 overflow-hidden">
+                  <div className="mt-0 max-h-0 overflow-hidden opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:mt-4 group-hover:max-h-16 group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-focus-within:mt-4 group-focus-within:max-h-16 group-focus-within:opacity-100 group-focus-within:translate-y-0 group-focus-within:pointer-events-auto">
                     <div className="flex gap-2">
                       <Button 
                         variant="outline" 
@@ -1257,7 +1351,7 @@ export default function TraineesPage() {
                   variant="outline"
                   size="sm"
                   onClick={resetFilters}
-                  className="mt-5 rounded-xl border-input text-xs font-medium"
+                  className="mt-6 rounded-xl border-input text-xs font-medium"
                 >
                   <RotateCcw className="mr-1.5 size-3.5" />
                   Reset all filters

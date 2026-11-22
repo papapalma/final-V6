@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth, TenantSelectionRequired } from '../contexts/AuthContext';
+import { BrandLogo } from '../components/BrandLogo';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -155,9 +156,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           {/* Logo */}
           <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
-              <span className="text-xl font-bold">BMDC</span>
-            </div>
+            <BrandLogo size="lg" className="mx-auto mb-4 shadow-lg" />
             <h2 className="mb-2 text-foreground">Welcome Back</h2>
             {isProcessingAuth ? (
               <p className="text-muted-foreground">Logging you in and preparing program details...</p>

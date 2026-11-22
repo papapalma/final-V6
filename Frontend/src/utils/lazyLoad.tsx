@@ -53,6 +53,57 @@ export function withSuspense<P extends object>(
   };
 }
 
+const CHUNK_RELOAD_STORAGE_KEY = 'bmdc-chunk-reload-ts';
+const CHUNK_RELOAD_COOLDOWN_MS = 15_000;
+
+export function isChunkLoadError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : typeof error === 'string'
+        ? error
+        : '';
+  return (
+    /Failed to fetch dynamically imported module/i.test(message) ||
+    /Importing a module script failed/i.test(message) ||
+    /error loading dynamically imported module/i.test(message) ||
+    /ChunkLoadError/i.test(message) ||
+    /Loading chunk [\d]+ failed/i.test(message) ||
+    /Outdated Optimize Dep/i.test(message)
+  );
+}
+
+/**
+ * Retry a dynamic page import once on chunk-load failures (e.g. Vite dep
+ * re-optimization or freshly deployed hashed bundles) before falling back to a
+ * single cooldown-guarded page reload.
+ */
+export async function importWithChunkRetry<T>(importFn: () => Promise<T>): Promise<T> {
+  try {
+    return await importFn();
+  } catch (firstError) {
+    if (!isChunkLoadError(firstError)) {
+      throw firstError;
+    }
+
+    try {
+      return await importFn();
+    } catch (retryError) {
+      if (typeof window !== 'undefined' && isChunkLoadError(retryError)) {
+        const lastReload = Number(sessionStorage.getItem(CHUNK_RELOAD_STORAGE_KEY) || '0');
+        const now = Date.now();
+        if (!lastReload || now - lastReload > CHUNK_RELOAD_COOLDOWN_MS) {
+          sessionStorage.setItem(CHUNK_RELOAD_STORAGE_KEY, String(now));
+          window.location.reload();
+          // Keep Suspense pending while the browser navigates
+          return new Promise<T>(() => {});
+        }
+      }
+      throw retryError;
+    }
+  }
+}
+
 /**
  * Lazy load a page component
  * @param importFn Dynamic import function
@@ -60,7 +111,7 @@ export function withSuspense<P extends object>(
 export function lazyPage<P extends object>(
   importFn: () => Promise<{ default: ComponentType<P> }>
 ) {
-  const Component = lazy(importFn);
+  const Component = lazy(() => importWithChunkRetry(importFn));
   return withSuspense(Component);
 }
 

@@ -5,6 +5,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { NotificationBadge } from '../components/ui/notification-badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -320,14 +321,18 @@ export default function AccountManagementPage() {
               <BookOpen className="mr-1 sm:mr-2 size-4" />
               <span className="hidden sm:inline">Pending Registrations</span>
               <span className="sm:hidden">Registrations</span>
-              {pendingCount > 0 && (
-                <span 
-                  style={{ backgroundColor: '#FF3B30', color: '#ffffff' }}
-                  className="notif-badge-red ml-1 flex min-w-5 h-5 px-1.5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white flex-shrink-0 shadow-sm ring-2 ring-card"
-                >
-                  {pendingCount > 99 ? '99+' : pendingCount}
-                </span>
-              )}
+              <NotificationBadge
+                variant="count"
+                count={pendingCount}
+                position="inline"
+                ringClassName="ring-card"
+                className="ml-1.5"
+                ariaLabel={
+                  pendingCount > 0
+                    ? `${pendingCount} pending registration${pendingCount === 1 ? '' : 's'}`
+                    : undefined
+                }
+              />
             </TabsTrigger>
           </TabsList>
 
@@ -337,7 +342,7 @@ export default function AccountManagementPage() {
               <CardContent className="p-3 sm:p-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input placeholder="Search users..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 text-sm" />
+                  <Input placeholder="Search users..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10 text-sm" />
                 </div>
               </CardContent>
             </Card>
@@ -492,7 +497,7 @@ export default function AccountManagementPage() {
                 <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center">
                   <div className="relative flex-1 min-w-0">
                     <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input placeholder="Search registrations..." value={regSearch} onChange={e => setRegSearch(e.target.value)} className="pl-9 text-sm" />
+                    <Input placeholder="Search registrations..." value={regSearch} onChange={e => setRegSearch(e.target.value)} className="pl-10 text-sm" />
                   </div>
                   <Select value={regStatusFilter} onValueChange={setRegStatusFilter}>
                     <SelectTrigger className="w-full sm:w-40 text-sm"><SelectValue /></SelectTrigger>

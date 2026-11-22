@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -6,11 +6,12 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
-import { Download, FileText, ChevronDown, Printer, Loader2 } from 'lucide-react';
+import { Download, FileText, ChevronDown, Printer, Loader2, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import reportService from '../services/reportService';
 import logger from '../utils/logger';
 import PrintableReport from '../components/PrintableReport';
+import { exportReportsToExcel } from '../utils/excelExport';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LineChart,
@@ -55,6 +56,7 @@ export default function ReportsPage() {
   const [newTrainees, setNewTrainees] = useState(0);
   const [totalTrainees, setTotalTrainees] = useState(0);
   const [totalPrograms, setTotalPrograms] = useState(0);
+  const reportRequestIdRef = useRef(0);
 
   const COLORS = ['#1976D2', '#43A047', '#FBC02D', '#00ACC1'];
 
@@ -82,6 +84,7 @@ export default function ReportsPage() {
   };
 
   const fetchReportData = async () => {
+    const requestId = ++reportRequestIdRef.current;
     try {
       setLoading(true);
       const filters = {
@@ -98,29 +101,61 @@ export default function ReportsPage() {
         ...(traineeStatusFilter !== 'all' ? { trainee_status: traineeStatusFilter } : {}),
       };
 
+      const shouldFetchActivity = !isTrainingStaff && hasPermission('canViewActivityLogs');
+
+      // Fire all role-permitted report endpoints in parallel instead of sequentially
+      const [
+        summaryResult,
+        employmentResult,
+        activityResult,
+        inventoryResult,
+        programResult,
+      ] = await Promise.allSettled([
+        isTrainingStaff
+          ? reportService.getTraineeReport(traineeReportFilters)
+          : reportService.getDashboardStats(filters),
+        isLocalAdmin
+          ? reportService.getTraineeReport(employmentReportFilters)
+          : Promise.resolve(null),
+        shouldFetchActivity
+          ? reportService.getActivityAnalytics(filters)
+          : Promise.resolve(null),
+        !isTrainingStaff
+          ? reportService.getInventoryReport(filters)
+          : Promise.resolve(null),
+        !isInventoryStaff
+          ? reportService.getProgramReport(filters)
+          : Promise.resolve(null),
+      ]);
+
+      if (requestId !== reportRequestIdRef.current) {
+        return;
+      }
+
       if (isTrainingStaff) {
-        try {
-          const traineeResponse = await reportService.getTraineeReport(traineeReportFilters);
-          setNewTrainees(traineeResponse.totalEnrollments || 0);
-        } catch (error) {
-          if (!isForbidden(error)) logger.error('Failed to fetch trainee report', { error });
+        if (summaryResult.status === 'fulfilled') {
+          setNewTrainees((summaryResult.value as any)?.totalEnrollments || 0);
+        } else {
+          if (!isForbidden(summaryResult.reason)) {
+            logger.error('Failed to fetch trainee report', { error: summaryResult.reason });
+          }
           setNewTrainees(0);
         }
         setTotalLendings(0);
         setItemsReturned(0);
         setActiveLoans(0);
       } else {
-        try {
-          const dashboardStats = await reportService.getDashboardStats(filters);
+        if (summaryResult.status === 'fulfilled') {
+          const dashboardStats = summaryResult.value as any;
           setTotalLendings(dashboardStats.lending.total);
           setItemsReturned(dashboardStats.lending.returned);
           setActiveLoans(dashboardStats.lending.active);
           setNewTrainees(dashboardStats.trainees.total);
           setTotalTrainees(dashboardStats.trainees.total);
           setTotalPrograms(dashboardStats.programs.total);
-        } catch (error) {
-          if (!isForbidden(error)) {
-            logger.error('Failed to fetch dashboard stats', { error });
+        } else {
+          if (!isForbidden(summaryResult.reason)) {
+            logger.error('Failed to fetch dashboard stats', { error: summaryResult.reason });
           }
           setTotalTrainees(0);
           setTotalPrograms(0);
@@ -128,21 +163,21 @@ export default function ReportsPage() {
       }
 
       if (isLocalAdmin) {
-        try {
-          const traineeResponse = await reportService.getTraineeReport(employmentReportFilters);
-          setEmploymentStatusRecords(traineeResponse.employmentStatusRecords || []);
-        } catch (error) {
-          if (!isForbidden(error)) logger.error('Failed to fetch employment status report', { error });
+        if (employmentResult.status === 'fulfilled') {
+          setEmploymentStatusRecords((employmentResult.value as any)?.employmentStatusRecords || []);
+        } else {
+          if (!isForbidden(employmentResult.reason)) {
+            logger.error('Failed to fetch employment status report', { error: employmentResult.reason });
+          }
           setEmploymentStatusRecords([]);
         }
       } else {
         setEmploymentStatusRecords([]);
       }
 
-      // Fetch activity analytics (currently not implemented in backend)
-      if (!isTrainingStaff && hasPermission('canViewActivityLogs')) {
-        try {
-          const activityResponse: any = await reportService.getActivityAnalytics(filters);
+      if (shouldFetchActivity) {
+        if (activityResult.status === 'fulfilled') {
+          const activityResponse: any = activityResult.value;
           if (activityResponse?.trend) {
             setActivityData(activityResponse.trend.map((item: any) => ({
               date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -150,71 +185,67 @@ export default function ReportsPage() {
               returned: item.returned || 0
             })));
           } else {
-            // If no trend data, use empty array
             setActivityData([]);
           }
-        } catch (error) {
-          if (!isForbidden(error)) {
-            logger.error('Failed to fetch activity analytics', { error });
+        } else {
+          if (!isForbidden(activityResult.reason)) {
+            logger.error('Failed to fetch activity analytics', { error: activityResult.reason });
           }
-          // Use empty array instead of mock data when API fails
           setActivityData([]);
         }
       } else {
-        // Use empty array instead of mock data when no permissions
         setActivityData([]);
       }
 
       if (isTrainingStaff) {
         setCategoryData([]);
-      } else {
-        try {
-          const inventoryResponse = await reportService.getInventoryReport(filters);
-          if (inventoryResponse?.byCategory) {
-            const categoryEntries = Object.entries(inventoryResponse.byCategory);
-            setCategoryData(categoryEntries.map(([name, value]) => ({ name, value })));
-          } else {
-            setCategoryData([]);
-          }
-        } catch (error) {
-          if (!isForbidden(error)) {
-            logger.error('Failed to fetch inventory report', { error });
-          }
+      } else if (inventoryResult.status === 'fulfilled') {
+        const inventoryResponse: any = inventoryResult.value;
+        if (inventoryResponse?.byCategory) {
+          const categoryEntries = Object.entries(inventoryResponse.byCategory);
+          setCategoryData(categoryEntries.map(([name, value]) => ({ name, value })));
+        } else {
           setCategoryData([]);
         }
+      } else {
+        if (!isForbidden(inventoryResult.reason)) {
+          logger.error('Failed to fetch inventory report', { error: inventoryResult.reason });
+        }
+        setCategoryData([]);
       }
 
-      // Program enrollment is outside the inventory staff report scope.
       if (isInventoryStaff) {
         setProgramData([]);
-      } else {
-        try {
-          const programResponse = await reportService.getProgramReport(filters);
-          if (programResponse?.programStats) {
-            setProgramData(programResponse.programStats.map((item: any) => ({
-              id: item.id,
-              program: item.name,
-              students: item.students || []
-            })));
-          } else {
-            setProgramData([]);
-          }
-        } catch (error) {
-          if (!isForbidden(error)) {
-            logger.error('Failed to fetch program report', { error });
-          }
+      } else if (programResult.status === 'fulfilled') {
+        const programResponse: any = programResult.value;
+        if (programResponse?.programStats) {
+          setProgramData(programResponse.programStats.map((item: any) => ({
+            id: item.id,
+            program: item.name,
+            students: item.students || []
+          })));
+        } else {
           setProgramData([]);
         }
+      } else {
+        if (!isForbidden(programResult.reason)) {
+          logger.error('Failed to fetch program report', { error: programResult.reason });
+        }
+        setProgramData([]);
       }
     } catch (error) {
+      if (requestId !== reportRequestIdRef.current) {
+        return;
+      }
       logger.error('Failed to fetch reports', { error });
       toast.error('Failed to load report data');
-      // Set empty data on error
       setActivityData([]);
       setCategoryData([]);
       setProgramData([]);
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -309,7 +340,7 @@ export default function ReportsPage() {
         />
       )}
       
-      <div className={`space-y-4 sm:space-y-6 ${isPrinting ? 'print-hidden' : ''}`}>
+      <div className={`space-y-4 sm:space-y-6 ${isPrinting ? 'hidden print:hidden no-print' : ''}`}>
         {/* Header */}
         <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
@@ -323,6 +354,36 @@ export default function ReportsPage() {
               <FileText className="mr-1 sm:mr-2 size-3 sm:size-4" />
               <span className="hidden sm:inline">Export CSV</span>
               <span className="inline sm:hidden">CSV</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                try {
+                  exportReportsToExcel({
+                    reportTitle: isInventoryStaff ? 'Inventory Reports' : isTrainingStaff ? 'Trainee & Program Reports' : 'Reports & Analytics',
+                    dateFrom,
+                    dateTo,
+                    summaryStats: {
+                      totalLendings,
+                      itemsReturned,
+                      activeLoans,
+                      newTrainees,
+                    },
+                    activityData,
+                    categoryData,
+                    programData,
+                  });
+                  toast.success('Exported report to Excel');
+                } catch (err: any) {
+                  toast.error(err.message || 'Failed to export report to Excel');
+                }
+              }}
+              className="flex-1 sm:flex-none h-9 text-xs sm:text-sm"
+            >
+              <FileSpreadsheet className="mr-1 sm:mr-2 size-3 sm:size-4 text-emerald-600" />
+              <span className="hidden sm:inline">Export Excel</span>
+              <span className="inline sm:hidden">Excel</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleExport('pdf')} className="flex-1 sm:flex-none h-9 text-xs sm:text-sm">
               <Download className="mr-1 sm:mr-2 size-3 sm:size-4" />
@@ -626,7 +687,7 @@ export default function ReportsPage() {
               </Select>
             </CardHeader>
             <CardContent>
-              <div className="max-h-[300px] space-y-5 overflow-y-auto">
+              <div className="max-h-[300px] space-y-6 overflow-y-auto">
                 {programData.filter((program) => selectedProgram === 'all' || program.program === selectedProgram).length > 0 ? (
                   programData
                     .filter((program) => selectedProgram === 'all' || program.program === selectedProgram)

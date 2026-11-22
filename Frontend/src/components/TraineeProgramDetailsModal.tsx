@@ -136,7 +136,7 @@ export default function TraineeProgramDetailsModal({
         }}
         hideCloseButton={true}
       >
-        <DialogHeader className="space-y-0.5 sm:space-y-1 px-3 sm:px-6 pt-3 sm:pt-5 pb-2 sm:pb-3 border-b">
+        <DialogHeader className="space-y-0.5 sm:space-y-1 px-3 sm:px-6 pt-3 sm:pt-6 pb-2 sm:pb-3 border-b">
           <DialogTitle className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-lg">
             <GraduationCap className="size-4 sm:size-6" />
             <span className="line-clamp-2">{program.name}</span>

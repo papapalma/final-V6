@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import { api, getFileUrl } from '../services/api';
@@ -1035,7 +1035,7 @@ export default function ProgramFormPage() {
 
           <Separator />
 
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
 
             {/* Section 1 — Date Range */}
             <div className="space-y-3">
@@ -1406,7 +1406,7 @@ export default function ProgramFormPage() {
                 ))}
               </div>
             ) : sessions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-14 text-muted-foreground">
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <div className="flex size-14 items-center justify-center rounded-2xl bg-muted mb-3">
                   <CalendarDays className="size-7 opacity-40" />
                 </div>

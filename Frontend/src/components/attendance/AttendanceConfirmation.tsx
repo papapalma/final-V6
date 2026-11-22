@@ -61,7 +61,7 @@ export default function AttendanceConfirmation({
   const hasGps    = record.gps_lat != null && record.gps_lng != null;
 
   return (
-    <div className="flex flex-col items-center gap-5 px-4 py-8 text-center max-w-sm mx-auto">
+    <div className="flex flex-col items-center gap-6 px-4 py-8 text-center max-w-sm mx-auto">
 
       {/* Animated success checkmark */}
       <div

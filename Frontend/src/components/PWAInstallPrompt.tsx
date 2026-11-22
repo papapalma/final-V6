@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Download, X, Smartphone, Monitor } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
+import { useBranding, getBrandInitials } from '../contexts/BrandingContext';
 import { toast } from 'sonner';
 import { isStandalone, isIOS as checkIsIOS, isDesktop as checkIsDesktop, subscribeInstallPrompt, promptPWAInstall } from '../utils/pwa';
 
 export default function PWAInstallPrompt() {
+  const { companyName } = useBranding();
+  const shortBrand = getBrandInitials(companyName);
   const [canInstall, setCanInstall] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
@@ -90,9 +94,9 @@ export default function PWAInstallPrompt() {
         <Card className="border-2 border-primary shadow-xl">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2">
-                <Smartphone className="size-5 text-primary" />
-                <CardTitle className="text-lg">Install BMDC App</CardTitle>
+              <div className="flex items-center gap-2.5">
+                <BrandLogo size="xs" />
+                <CardTitle className="text-lg">Install {shortBrand} App</CardTitle>
               </div>
               <Button
                 variant="ghost"
@@ -138,9 +142,9 @@ export default function PWAInstallPrompt() {
       <Card className="border-2 border-primary shadow-xl">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <Download className="size-5 text-primary" />
-              <CardTitle className="text-lg">Install BMDC App</CardTitle>
+            <div className="flex items-center gap-2.5">
+              <BrandLogo size="xs" />
+              <CardTitle className="text-lg">Install {shortBrand} App</CardTitle>
             </div>
             <Button
               variant="ghost"

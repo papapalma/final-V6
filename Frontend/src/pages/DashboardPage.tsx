@@ -66,10 +66,23 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
-      // Fetch dashboard stats
-      const data = await reportService.getDashboardStats();
-      
+
+      const shouldFetchActivity = !isTrainingStaff && hasPermission('canViewActivityLogs');
+      const shouldFetchAnalytics = !isTrainingStaff;
+
+      // Fire all independent dashboard requests in parallel (capped recent activity logs)
+      const [statsResult, activityResult, analyticsResult] = await Promise.allSettled([
+        reportService.getDashboardStats(),
+        shouldFetchActivity ? activityLogService.getActivityLogs({ limit: 50 }) : Promise.resolve(null),
+        shouldFetchAnalytics ? reportService.getActivityAnalytics() : Promise.resolve(null),
+      ]);
+
+      if (statsResult.status === 'rejected') {
+        throw statsResult.reason;
+      }
+
+      const data = statsResult.value;
+
       // Map backend stats to cards
       const statsCards = [
         ...(!isInventoryStaff ? [{
@@ -167,54 +180,51 @@ export default function DashboardPage() {
           color: 'text-emerald-600 dark:text-emerald-400'
         }] : [])
       ];
-      
+
       setStats(statsCards);
-      
-      // Activity logs are outside the trainee/program scope for training staff.
-      if (!isTrainingStaff && hasPermission('canViewActivityLogs')) {
-        try {
-          const activityData = await activityLogService.getActivityLogs({});
+
+      if (shouldFetchActivity) {
+        if (activityResult.status === 'fulfilled') {
+          const activityData = activityResult.value;
           if (activityData && activityData.length > 0) {
             setRecentActivity(activityData);
           }
-        } catch (activityError) {
-          // Silently handle activity log errors - user can still see stats
-          logger.warn('Failed to fetch activity logs', { error: activityError });
+        } else {
+          logger.warn('Failed to fetch activity logs', { error: activityResult.reason });
         }
       }
 
-      // Fetch analytics data for dashboard visualization
-      if (!isTrainingStaff) try {
-        const analytics = await reportService.getActivityAnalytics();
-        if (analytics && Object.keys(analytics).length > 0) {
-          // Transform the analytics data into the format expected by the UI
-          const analyticsArray = [
-            {
-              category: 'Activity by Module',
-              data: Object.entries(analytics.byModule || {}).map(([module, count]: [string, any]) => ({
-                label: module,
-                value: count,
-                percentage: ((count as number) / (analytics.totalActions || 1)) * 100,
-                color: 'bg-blue-500'
-              }))
-            },
-            {
-              category: 'Activity by Action',
-              data: Object.entries(analytics.byAction || {}).map(([action, count]: [string, any]) => ({
-                label: action,
-                value: count,
-                percentage: ((count as number) / (analytics.totalActions || 1)) * 100,
-                color: 'bg-sky-500'
-              }))
-            }
-          ];
-          setAnalyticsData(analyticsArray);
+      if (shouldFetchAnalytics) {
+        if (analyticsResult.status === 'fulfilled') {
+          const analytics = analyticsResult.value;
+          if (analytics && Object.keys(analytics).length > 0) {
+            const analyticsArray = [
+              {
+                category: 'Activity by Module',
+                data: Object.entries(analytics.byModule || {}).map(([module, count]: [string, any]) => ({
+                  label: module,
+                  value: count,
+                  percentage: ((count as number) / (analytics.totalActions || 1)) * 100,
+                  color: 'bg-blue-500'
+                }))
+              },
+              {
+                category: 'Activity by Action',
+                data: Object.entries(analytics.byAction || {}).map(([action, count]: [string, any]) => ({
+                  label: action,
+                  value: count,
+                  percentage: ((count as number) / (analytics.totalActions || 1)) * 100,
+                  color: 'bg-sky-500'
+                }))
+              }
+            ];
+            setAnalyticsData(analyticsArray);
+          }
+        } else {
+          logger.warn('Failed to fetch analytics data', { error: analyticsResult.reason });
         }
-      } catch (analyticsError) {
-        // Silently handle analytics errors - UI shows "No analytics data available"
-        logger.warn('Failed to fetch analytics data', { error: analyticsError });
       }
-      
+
     } catch (error) {
       logger.error('Failed to fetch dashboard data', { error });
       toast.error('Failed to load dashboard data');

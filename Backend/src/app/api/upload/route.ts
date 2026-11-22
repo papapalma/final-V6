@@ -29,8 +29,8 @@ const FileUploadSchema = z.object({
       },
       { message: 'Invalid base64 encoding' }
     ),
-  category: z.enum(['items', 'trainees', 'programs', 'cms', 'qrcodes', 'documents'], {
-    message: 'Category must be one of: items, trainees, programs, cms, qrcodes, documents'
+  category: z.enum(['items', 'trainees', 'programs', 'cms', 'qrcodes', 'documents', 'announcements'], {
+    message: 'Category must be one of: items, trainees, programs, cms, qrcodes, documents, announcements'
   }),
   filename: z.string()
     .min(1, 'Filename is required')

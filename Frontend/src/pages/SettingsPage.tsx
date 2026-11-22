@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import PWAStatus from '../components/PWAStatus';
+import { BrandLogo } from '../components/BrandLogo';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranding } from '../contexts/BrandingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -40,7 +43,8 @@ import {
 } from '../utils/pwa';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const { companyName, tagline } = useBranding();
   const { isDark, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(false);
@@ -351,6 +355,25 @@ export default function SettingsPage() {
                   onCheckedChange={toggleTheme}
                 />
               </div>
+              {hasPermission('canManageCMS') && (
+                <>
+                  <Separator />
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <BrandLogo size="sm" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">Organization Logo &amp; Branding</p>
+                        <p className="text-sm text-muted-foreground">
+                          Update the logo used across sidebar, login, browser tab, printouts, and landing page
+                        </p>
+                      </div>
+                    </div>
+                    <Link to="/admin/landing-content">
+                      <Button variant="outline" size="sm">Manage Logo</Button>
+                    </Link>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -405,8 +428,13 @@ export default function SettingsPage() {
           {/* About */}
           <Card>
             <CardHeader>
-              <CardTitle>About BMDC</CardTitle>
-              <CardDescription>Application & system information</CardDescription>
+              <div className="flex items-center gap-3">
+                <BrandLogo size="sm" />
+                <div>
+                  <CardTitle>About {companyName}</CardTitle>
+                  <CardDescription>{tagline || 'Application & system information'}</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex justify-between text-sm">

@@ -42,3 +42,17 @@ This project is indexed by GitNexus as **FIinal-v5** (17199 symbols, 34415 relat
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+# Global Project Rules
+
+## UI & Design System: The Golden Rule (1:1.618) & Proximity
+All UI development, component styling, layout structures, and CSS modifications MUST adhere to the **Golden Rule Design System** documented in:
+- [`.agents/rules/golden-rule-design.md`](file:///c:/Users/Paolo%20Amor%20P.%20Palma/Downloads/FIinal-v5/.agents/rules/golden-rule-design.md)
+- [`Frontend/src/guidelines/CENTRALIZED_DESIGN_SYSTEM.md`](file:///c:/Users/Paolo%20Amor%20P.%20Palma/Downloads/FIinal-v5/Frontend/src/guidelines/CENTRALIZED_DESIGN_SYSTEM.md)
+
+Key requirements:
+1. **Harmonic 8pt/4pt Spatial Grid**: All spacing (`margin`, `padding`, `gap`) must use the harmonic scale: 2px, 4px, 8px, 12px, 16px, 24px, 32px, 48px, 64px. No arbitrary pixel fractions (`gap-[7px]`, `p-[11px]`).
+2. **Gestalt Law of Proximity**: Related items must be noticeably closer than unrelated items. Headings must be closer to the content below them than to the content above (`mt >= 1.618 * mb`).
+3. **Golden Padding Ratio**: Interactive elements (buttons, inputs, badges) must use horizontal padding approximately $1.618\times$ vertical padding (e.g. `py-2 px-3.5` or `py-2.5 px-4`).
+4. **Golden Split Proportions**: Split-pane layouts (sidebars, master-detail, messenger drawers) should target the $\approx 62\% / 38\%$ golden ratio balance.
+

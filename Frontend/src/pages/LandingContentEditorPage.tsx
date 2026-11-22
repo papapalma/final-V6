@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import DashboardLayout from '../components/DashboardLayout';
+import { useBranding } from '../contexts/BrandingContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -25,10 +26,9 @@ import {
 } from '../components/ui/form';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
 import api, { getFileUrl } from '../services/api';
-import { AlertCircle, Eye, Plus, Trash2, FileText } from 'lucide-react';
-import { Alert, AlertDescription } from '../components/ui/alert';
+import { AlertCircle, Eye, FileText, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { Skeleton } from '../components/ui/skeleton';
 import ImageUpload from '../components/ImageUpload';
 
 // Zod validation schema
@@ -76,23 +76,57 @@ const cmsContentSchema = z.object({
 
 type CMSContentFormData = z.infer<typeof cmsContentSchema>;
 
-interface CMSSettingsResponse {
-  success: boolean;
-  data: {
-    id: string;
-    tenantId: string;
-    settingsData: {
-      content: CMSContentFormData;
-      appearance?: Record<string, any>;
-      layout?: Record<string, any>;
-    };
-    createdAt: string;
-    updatedAt: string;
+interface CMSSettingsData {
+  content?: CMSContentFormData;
+  settingsId?: string;
+  settingsData?: {
+    content?: CMSContentFormData;
   };
+  [key: string]: any;
 }
+
+const DEFAULT_CONTENT: CMSContentFormData = {
+  hero: {
+    badge: 'Official Training & Workforce Development',
+    heading: 'Shape Your Future with Practical Skills',
+    subheading: 'Join Bongabong Manpower Development Center and acquire industry-standard technical skills.',
+    ctaText: 'Enroll Now',
+  },
+  appearance: {
+    logo: '',
+    heroBackground: '',
+  },
+  mission: 'To provide accessible, high-quality technical-vocational training and education to empower individuals and strengthen community growth.',
+  vision: 'A premier center of excellence producing globally competent, innovative, and value-driven professionals.',
+  features: [
+    { icon: 'Wrench', title: 'Practical Hands-on Training', description: 'Real-world workshops and state-of-the-art tools' },
+    { icon: 'Award', title: 'TESDA Certified Programs', description: 'Industry-recognized national certifications' },
+    { icon: 'Users2', title: 'Expert Instructors', description: 'Experienced trainers dedicated to your growth' },
+    { icon: 'Compass', title: 'Career Guidance & Support', description: 'Comprehensive pathways to employment' },
+  ],
+  ctaBanner: {
+    badge: 'Get Started Today',
+    heading: 'Ready to Transform Your Career?',
+    description: 'Enroll in our certified training programs and start building practical skills today.',
+    ctaPrimaryText: 'Enroll Now',
+    ctaSecondaryText: 'View Programs',
+  },
+  contact: {
+    address: 'Bongabong, Oriental Mindoro',
+    addressLine2: 'Philippines',
+    phone: '+63 912 345 6789',
+    email: 'info@bmdc.edu.ph',
+    facebook: '',
+  },
+  footer: {
+    companyName: 'Bongabong Manpower Development Center',
+    tagline: 'Empowering Communities Through Practical Skills',
+  },
+};
 
 export default function LandingContentEditorPage() {
   const { user } = useAuth();
+  const { applyBrandingContent } = useBranding();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -101,12 +135,12 @@ export default function LandingContentEditorPage() {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-screen">
-          <Card className="w-full max-w-md border-red-200 bg-red-50">
+          <Card className="w-full max-w-md border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/30 rounded-2xl shadow-sm">
             <CardContent className="flex items-start gap-3 py-6">
-              <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+              <AlertCircle className="size-5 text-red-600 mt-0.5 shrink-0" />
               <div>
-                <h3 className="font-semibold text-red-900">Access Denied</h3>
-                <p className="text-sm text-red-800 mt-1">
+                <h3 className="font-semibold text-red-900 dark:text-red-300">Access Denied</h3>
+                <p className="text-sm text-red-800 dark:text-red-400 mt-1">
                   You don't have permission to access the landing page content editor. Only administrators can make these changes.
                 </p>
               </div>
@@ -120,44 +154,7 @@ export default function LandingContentEditorPage() {
   const form = useForm<CMSContentFormData>({
     resolver: zodResolver(cmsContentSchema),
     mode: 'onBlur',
-    defaultValues: {
-      hero: {
-        badge: '',
-        heading: '',
-        subheading: '',
-        ctaText: 'Enroll Now',
-      },
-      appearance: {
-        logo: '',
-        heroBackground: '',
-      },
-      mission: '',
-      vision: '',
-      features: [
-        { icon: 'Wrench', title: '', description: '' },
-        { icon: 'Award', title: '', description: '' },
-        { icon: 'Users2', title: '', description: '' },
-        { icon: 'Compass', title: '', description: '' },
-      ],
-      ctaBanner: {
-        badge: '',
-        heading: '',
-        description: '',
-        ctaPrimaryText: 'Enroll Now',
-        ctaSecondaryText: 'View Programs',
-      },
-      contact: {
-        address: '',
-        addressLine2: '',
-        phone: '',
-        email: '',
-        facebook: '',
-      },
-      footer: {
-        companyName: '',
-        tagline: '',
-      },
-    },
+    defaultValues: DEFAULT_CONTENT,
   });
 
   const { fields: featureFields } = useFieldArray({
@@ -172,11 +169,18 @@ export default function LandingContentEditorPage() {
     const loadCmsSettings = async () => {
       setIsLoading(true);
       try {
-        const response = await api.get<CMSSettingsResponse>('/cms-settings');
+        let response: any = null;
+        try {
+          response = await api.get<CMSSettingsData>('/cms-settings');
+        } catch (firstErr) {
+          // Automatic resilient fallback to /landing-content
+          response = await api.get<CMSSettingsData>('/landing-content');
+        }
+
         if (isCancelled) return;
-        if (response.success && response.data) {
+        if (response && response.success && response.data) {
           const content = (response.data as any)?.settingsData?.content || (response.data as any)?.content;
-                    if (content) {
+          if (content) {
             // Convert file paths to URLs for preview in ImageUpload
             const contentWithUrls = {
               ...content,
@@ -211,18 +215,35 @@ export default function LandingContentEditorPage() {
   const onSubmit = async (data: CMSContentFormData) => {
     setIsSaving(true);
     try {
-      const response = await api.post<CMSSettingsResponse>('/cms-settings', {
-        content: data,
-      });
+      let response: any;
+      try {
+        response = await api.post<CMSSettingsData>('/cms-settings', {
+          content: data,
+        });
+      } catch (firstPostErr) {
+        response = await api.post<CMSSettingsData>('/landing-content', {
+          content: data,
+        });
+      }
 
-      if (response.success) {
-        form.reset(data);
+      if (response && response.success) {
+        const savedContent = response.data?.content || data;
+        applyBrandingContent(savedContent);
+        const resetData = {
+          ...savedContent,
+          appearance: {
+            ...savedContent.appearance,
+            logo: savedContent.appearance?.logo ? getFileUrl(savedContent.appearance.logo) : '',
+            heroBackground: savedContent.appearance?.heroBackground ? getFileUrl(savedContent.appearance.heroBackground) : '',
+          },
+        };
+        form.reset(resetData);
         toast.success('Changes saved successfully', {
-          description: 'Your landing page content has been updated.',
+          description: 'Your organization branding and landing page content have been updated across the app.',
         });
       } else {
         toast.error('Failed to save changes', {
-          description: response.message || 'Please try again.',
+          description: response?.message || 'Please try again.',
         });
       }
     } catch (error: any) {
@@ -243,11 +264,40 @@ export default function LandingContentEditorPage() {
 
   if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-primary border-r-transparent mb-3"></div>
-            <p className="text-muted-foreground">Loading landing page content...</p>
+      <DashboardLayout title="Landing Page Content Editor">
+        <div className="flex justify-center">
+          <div className="space-y-6 max-w-4xl w-full pb-16">
+            {/* Header Skeleton */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="size-12 rounded-2xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-7 w-64 rounded-lg" />
+                  <p className="text-muted-foreground text-sm font-medium">Loading landing page content...</p>
+                </div>
+              </div>
+              <Skeleton className="h-10 w-28 rounded-xl" />
+            </div>
+
+            {/* Section Card Skeletons */}
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="rounded-2xl border border-border/60 bg-card shadow-xs">
+                <CardHeader className="p-6 pb-4 border-b border-border/40 space-y-2">
+                  <Skeleton className="h-5 w-48 rounded-md" />
+                  <Skeleton className="h-3.5 w-72 rounded-md" />
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-20 rounded-md" />
+                    <Skeleton className="h-10 w-full rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-28 rounded-md" />
+                    <Skeleton className="h-20 w-full rounded-xl" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </DashboardLayout>
@@ -257,254 +307,416 @@ export default function LandingContentEditorPage() {
   return (
     <DashboardLayout title="Landing Page Content Editor">
       <div className="flex justify-center">
-        <div className="space-y-6 max-w-4xl w-full">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold">
-              <FileText className="size-8" />
-              Landing Page Content
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Edit the content that appears on your public landing page
-            </p>
+        <div className="space-y-6 max-w-4xl w-full pb-20">
+          {/* Header (Apple HIG Design) */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3.5">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/10 shadow-xs shrink-0">
+                <FileText className="size-6" />
+              </div>
+              <div>
+                <h1 className="flex items-center gap-2 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+                  Landing Page Content
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                  Customize and publish the real-time public content for your training center
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <Button
+                variant="outline"
+                onClick={previewLandingPage}
+                className="gap-2 rounded-xl border-input bg-card shadow-xs hover:bg-muted active:scale-[0.98] transition-all"
+              >
+                <Eye className="size-4" />
+                Preview
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={previewLandingPage}
-              className="gap-2"
-            >
-              <Eye className="size-4" />
-              Preview
-            </Button>
-          </div>
-        </div>
 
-        {/* Unsaved Changes Alert */}
-        {hasUnsavedChanges && (
-          <Alert className="border-yellow-200 bg-yellow-50">
-            <AlertCircle className="h-4 w-4 text-yellow-600" />
-            <AlertDescription className="text-yellow-800">
-              You have unsaved changes. Don't forget to save before leaving the page.
-            </AlertDescription>
-          </Alert>
-        )}
+          {/* Unsaved Changes Alert (Apple Capsule) */}
+          {hasUnsavedChanges && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/15 p-4 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200 shadow-xs backdrop-blur-sm animate-in fade-in-0 duration-200">
+              <div className="flex items-center gap-3">
+                <div className="size-8 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <AlertCircle className="size-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <p className="text-xs sm:text-sm font-medium">
+                  You have unsaved changes. Don't forget to save before leaving the page.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => form.reset()}
+                className="text-xs text-amber-900 dark:text-amber-200 hover:bg-amber-500/20 rounded-xl shrink-0 active:scale-95 transition-all"
+              >
+                Reset
+              </Button>
+            </div>
+          )}
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            {/* Hero Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Hero Section</CardTitle>
-                <CardDescription>
-                  The main banner that appears at the top of your landing page
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="hero.badge"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Badge</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Official Training & Workforce Development" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              {/* Hero Section */}
+              <Card className="rounded-2xl border border-border/60 bg-card shadow-xs backdrop-blur-sm overflow-hidden transition-all hover:border-border/80">
+                <CardHeader className="p-6 pb-4 border-b border-border/40">
+                  <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                    Hero Section
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    The main banner that appears at the top of your landing page
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="hero.badge"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Badge</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Official Training & Workforce Development"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="hero.heading"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Heading</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Shape Your Future With Real-World Skills" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="hero.heading"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Heading</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Shape Your Future With Real-World Skills"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="hero.subheading"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Subheading</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="e.g., Acquire industry-standard technical training..."
-                          className="min-h-24"
-                          {...field}
+                  <FormField
+                    control={form.control}
+                    name="hero.subheading"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Subheading</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="e.g., Acquire industry-standard technical training..."
+                            className="min-h-24 rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="hero.ctaText"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Primary CTA Button Text</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Enroll Now"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Appearance Section - Logo & Hero Background */}
+              <Card className="rounded-2xl border border-border/60 bg-card shadow-xs backdrop-blur-sm overflow-hidden transition-all hover:border-border/80">
+                <CardHeader className="p-6 pb-4 border-b border-border/40">
+                  <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                    Appearance
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    Organization logo (applied across sidebar, login, browser tab, print slips, reports, PDFs, and landing page) and hero banner
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="appearance.logo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Logo</FormLabel>
+                        <FormControl>
+                          <ImageUpload
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            label=""
+                            description="Upload your organization logo (PNG, JPG, etc. up to 5MB)"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="appearance.heroBackground"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Hero Background Image</FormLabel>
+                        <FormControl>
+                          <ImageUpload
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            label=""
+                            description="Upload a background image for your hero section (optional, PNG, JPG, etc. up to 5MB)"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Mission & Vision Section */}
+              <Card className="rounded-2xl border border-border/60 bg-card shadow-xs backdrop-blur-sm overflow-hidden transition-all hover:border-border/80">
+                <CardHeader className="p-6 pb-4 border-b border-border/40">
+                  <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                    Mission & Vision
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    Your organization's core purpose and future direction
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="mission"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mission Statement</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="What is your organization's core purpose?"
+                            className="min-h-24 rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="vision"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Vision Statement</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="What is your future direction and aspiration?"
+                            className="min-h-24 rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Features Section */}
+              <Card className="rounded-2xl border border-border/60 bg-card shadow-xs backdrop-blur-sm overflow-hidden transition-all hover:border-border/80">
+                <CardHeader className="p-6 pb-4 border-b border-border/40">
+                  <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                    Why Choose Us (Features)
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    Exactly 4 features that highlight your unique value proposition
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {featureFields.map((field, index) => (
+                      <div
+                        key={field.id}
+                        className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-3.5 hover:bg-muted/30 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-semibold text-xs tracking-wider uppercase text-muted-foreground">
+                            Feature {index + 1}
+                          </h4>
+                          <span className="size-2 rounded-full bg-primary/40"></span>
+                        </div>
+
+                        <FormField
+                          control={form.control}
+                          name={`features.${index}.icon`}
+                          render={({ field: iconField }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">Icon</FormLabel>
+                              <Select value={iconField.value} onValueChange={iconField.onChange}>
+                                <FormControl>
+                                  <SelectTrigger className="rounded-xl border-input bg-background/80 text-sm">
+                                    <SelectValue placeholder="Select an icon" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="Wrench">Wrench (Tools)</SelectItem>
+                                  <SelectItem value="Award">Award (Achievement)</SelectItem>
+                                  <SelectItem value="Users2">Users2 (Team)</SelectItem>
+                                  <SelectItem value="Compass">Compass (Direction)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
-                <FormField
-                  control={form.control}
-                  name="hero.ctaText"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Primary CTA Button Text</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Enroll Now" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Appearance Section - Logo & Hero Background */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Appearance</CardTitle>
-                <CardDescription>
-                  Logo and banner images for your landing page (use Dropbox URLs)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="appearance.logo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Logo</FormLabel>
-                      <FormControl>
-                        <ImageUpload
-                          value={field.value || ''}
-                          onChange={field.onChange}
-                          label=""
-                          description="Upload your organization logo (PNG, JPG, etc. up to 5MB)"
+                        <FormField
+                          control={form.control}
+                          name={`features.${index}.title`}
+                          render={({ field: titleField }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">Title</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="e.g., Practical Workstations"
+                                  className="rounded-xl border-input bg-background/80 text-sm"
+                                  {...titleField}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
-                <FormField
-                  control={form.control}
-                  name="appearance.heroBackground"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Hero Background Image</FormLabel>
-                      <FormControl>
-                        <ImageUpload
-                          value={field.value || ''}
-                          onChange={field.onChange}
-                          label=""
-                          description="Upload a background image for your hero section (optional, PNG, JPG, etc. up to 5MB)"
+                        <FormField
+                          control={form.control}
+                          name={`features.${index}.description`}
+                          render={({ field: descField }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">Description</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="e.g., Real equipment and industry-standard tools..."
+                                  className="min-h-20 rounded-xl border-input bg-background/80 text-sm"
+                                  {...descField}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                      </div>
+                    ))}
+                  </div>
+                  {form.formState.errors.features && (
+                    <div className="text-xs font-medium text-destructive mt-2">
+                      {form.formState.errors.features.message}
+                    </div>
                   )}
-                />
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Mission & Vision Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Mission & Vision</CardTitle>
-                <CardDescription>
-                  Your organization's core purpose and future direction
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="mission"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Mission Statement</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="What is your organization's core purpose?"
-                          className="min-h-24"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              {/* CTA Banner Section */}
+              <Card className="rounded-2xl border border-border/60 bg-card shadow-xs backdrop-blur-sm overflow-hidden transition-all hover:border-border/80">
+                <CardHeader className="p-6 pb-4 border-b border-border/40">
+                  <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                    Call-to-Action Banner
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    The promotional banner that encourages users to take action
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="ctaBanner.badge"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Badge</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Start Your Journey"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="vision"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Vision Statement</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="What is your future direction and aspiration?"
-                          className="min-h-24"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
+                  <FormField
+                    control={form.control}
+                    name="ctaBanner.heading"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Heading</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Ready to Transform Your Career?"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-            {/* Features Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Why Choose Us (Features)</CardTitle>
-                <CardDescription>
-                  Exactly 4 features that highlight your unique value proposition
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {featureFields.map((field, index) => (
-                  <div key={field.id} className="space-y-4 p-4 border rounded-lg bg-card">
-                    <h4 className="font-semibold text-sm">Feature {index + 1}</h4>
+                  <FormField
+                    control={form.control}
+                    name="ctaBanner.description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="e.g., Join thousands of successful graduates..."
+                            className="min-h-20 rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name={`features.${index}.icon`}
+                      name="ctaBanner.ctaPrimaryText"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Icon</FormLabel>
-                          <Select value={field.value} onValueChange={field.onChange}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select an icon" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="Wrench">Wrench (Tools)</SelectItem>
-                              <SelectItem value="Award">Award (Achievement)</SelectItem>
-                              <SelectItem value="Users2">Users2 (Team)</SelectItem>
-                              <SelectItem value="Compass">Compass (Direction)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name={`features.${index}.title`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Title</FormLabel>
+                          <FormLabel>Primary Button</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., Practical Workstations" {...field} />
+                            <Input
+                              placeholder="e.g., Enroll Now"
+                              className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -513,14 +725,14 @@ export default function LandingContentEditorPage() {
 
                     <FormField
                       control={form.control}
-                      name={`features.${index}.description`}
+                      name="ctaBanner.ctaSecondaryText"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Description</FormLabel>
+                          <FormLabel>Secondary Button</FormLabel>
                           <FormControl>
-                            <Textarea
-                              placeholder="e.g., Real equipment and industry-standard tools..."
-                              className="min-h-20"
+                            <Input
+                              placeholder="e.g., View Programs"
+                              className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
                               {...field}
                             />
                           </FormControl>
@@ -529,79 +741,32 @@ export default function LandingContentEditorPage() {
                       )}
                     />
                   </div>
-                ))}
-                {form.formState.errors.features && (
-                  <div className="text-sm text-red-600">
-                    {form.formState.errors.features.message}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* CTA Banner Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Call-to-Action Banner</CardTitle>
-                <CardDescription>
-                  The promotional banner that encourages users to take action
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="ctaBanner.badge"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Badge</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Start Your Journey" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="ctaBanner.heading"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Heading</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Ready to Transform Your Career?" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="ctaBanner.description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="e.g., Join thousands of successful graduates..."
-                          className="min-h-20"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
+              {/* Contact Section */}
+              <Card className="rounded-2xl border border-border/60 bg-card shadow-xs backdrop-blur-sm overflow-hidden transition-all hover:border-border/80">
+                <CardHeader className="p-6 pb-4 border-b border-border/40">
+                  <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                    Contact Information
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    Contact details displayed in the footer and contact section
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
                   <FormField
                     control={form.control}
-                    name="ctaBanner.ctaPrimaryText"
+                    name="contact.address"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Primary Button</FormLabel>
+                        <FormLabel>Address</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Enroll Now" {...field} />
+                          <Input
+                            placeholder="e.g., Bongabong, Oriental Mindoro"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -610,180 +775,177 @@ export default function LandingContentEditorPage() {
 
                   <FormField
                     control={form.control}
-                    name="ctaBanner.ctaSecondaryText"
+                    name="contact.addressLine2"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Secondary Button</FormLabel>
+                        <FormLabel>Address Line 2 (Optional)</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., View Programs" {...field} />
+                          <Input
+                            placeholder="e.g., Philippines"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name="contact.phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., +63 XXX XXX XXXX"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="contact.email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email Address</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="e.g., info@bmdc.edu.ph"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="contact.facebook"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Facebook Profile URL (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="url"
+                            placeholder="e.g., https://www.facebook.com/profile.php?id=..."
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          Must be a valid URL starting with https://
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Footer Section */}
+              <Card className="rounded-2xl border border-border/60 bg-card shadow-xs backdrop-blur-sm overflow-hidden transition-all hover:border-border/80">
+                <CardHeader className="p-6 pb-4 border-b border-border/40">
+                  <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                    Footer
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    Information displayed at the bottom of your landing page
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="footer.companyName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Company Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Bongabong Manpower Development Center"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="footer.tagline"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tagline</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Empowering Communities Through Practical Skills"
+                            className="rounded-xl border-input bg-background/70 focus-visible:ring-2 focus-visible:ring-primary/20 text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Sticky Glassmorphic Apple Action Bar */}
+              <div className="sticky bottom-4 z-20 rounded-2xl border border-border/70 bg-card/90 backdrop-blur-md p-4 shadow-lg flex items-center justify-between gap-4 transition-all">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground select-none">
+                  {hasUnsavedChanges ? (
+                    <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-medium">
+                      <span className="size-2 rounded-full bg-amber-500 animate-pulse"></span>
+                      Unsaved changes
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                      <CheckCircle2 className="size-3.5" />
+                      All changes up to date
+                    </span>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Contact Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Contact Information</CardTitle>
-                <CardDescription>
-                  Contact details displayed in the footer and contact section
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="contact.address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Bongabong, Oriental Mindoro" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="contact.addressLine2"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address Line 2 (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Philippines" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="contact.phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone Number</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., +63 XXX XXX XXXX" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="contact.email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email Address</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="e.g., info@bmdc.edu.ph" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="contact.facebook"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Facebook Profile URL (Optional)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="url"
-                          placeholder="e.g., https://www.facebook.com/profile.php?id=..."
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Must be a valid URL starting with https://
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Footer Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Footer</CardTitle>
-                <CardDescription>
-                  Information displayed at the bottom of your landing page
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="footer.companyName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Company Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="e.g., Bongabong Manpower Development Center"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="footer.tagline"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tagline</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="e.g., Empowering Communities Through Practical Skills"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Form Actions */}
-            <div className="flex gap-4 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => form.reset()}
-                disabled={!hasUnsavedChanges || isSaving}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSaving || !form.formState.isValid}>
-                {isSaving ? (
-                  <>
-                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-r-transparent mr-2"></div>
-                    Saving...
-                  </>
-                ) : (
-                  'Save Changes'
-                )}
-              </Button>
-            </div>
-          </form>
-        </Form>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => form.reset()}
+                    disabled={!hasUnsavedChanges || isSaving}
+                    className="rounded-xl border-input px-4 text-xs font-medium active:scale-[0.98] transition-all"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSaving || !form.formState.isValid}
+                    className="rounded-xl px-4 text-xs font-medium shadow-xs active:scale-[0.98] transition-all"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="size-3.5 animate-spin mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </Form>
         </div>
       </div>
     </DashboardLayout>
   );
 }
-
