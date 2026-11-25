@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 
 const mockApiGet = vi.fn();
@@ -49,11 +49,21 @@ const mockMessengerState: any = {
   activeMessages: [],
   setActiveMessages: vi.fn(),
   syncNonce: 0,
+  getCachedThread: vi.fn().mockReturnValue(undefined),
+  setCachedThread: vi.fn((_id: string, _conv: any, msgs: any[]) => msgs),
+  sendMessage: vi.fn().mockResolvedValue(undefined),
+  retryMessage: vi.fn().mockResolvedValue(undefined),
 };
 
-vi.mock('../contexts/MessengerContext', () => ({
-  useMessenger: () => mockMessengerState,
-}));
+let useRealMessengerContext = false;
+
+vi.mock('../contexts/MessengerContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../contexts/MessengerContext')>();
+  return {
+    ...actual,
+    useMessenger: () => (useRealMessengerContext ? actual.useMessenger() : mockMessengerState),
+  };
+});
 
 import {
   messengerApi,
@@ -61,13 +71,16 @@ import {
   Message,
   UserSummary,
 } from '../services/messengerService';
+import { MessengerProvider, useMessenger } from '../contexts/MessengerContext';
 import { MessageBubble } from '../components/messenger/MessageBubble';
+import { MessageInput } from '../components/messenger/MessageInput';
 import { ConversationList } from '../components/messenger/ConversationList';
 import { ChatThread } from '../components/messenger/ChatThread';
 import { soundEffects } from '../utils/audioChime';
 
 describe('messengerApi single-unwrap contract (ApiService regression)', () => {
   beforeEach(() => {
+    useRealMessengerContext = false;
     vi.clearAllMocks();
   });
 
@@ -131,15 +144,204 @@ describe('messengerApi single-unwrap contract (ApiService regression)', () => {
   });
 });
 
-describe('ConversationList admin/staff -> trainee contact flow', () => {
+describe('MessageInput 0ms non-blocking rapid-fire composer', () => {
   beforeEach(() => {
+    useRealMessengerContext = false;
+    vi.clearAllMocks();
+  });
+
+  it('clears textarea synchronously on Enter while network POST is still pending and allows rapid consecutive sends', () => {
+    // Unresolved promise simulates slow network RTT
+    const pendingSend = vi.fn(() => new Promise<void>(() => {}));
+
+    render(<MessageInput conversationId="conv-1" onSendMessage={pendingSend} />);
+
+    const input = screen.getByLabelText(/message input/i) as HTMLTextAreaElement;
+
+    fireEvent.change(input, { target: { value: 'First message' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
+
+    // Cleared immediately in the same frame — never waits for network
+    expect(input.value).toBe('');
+    expect(input.disabled).toBe(false);
+    expect(pendingSend).toHaveBeenNthCalledWith(1, 'First message', undefined);
+
+    // Immediately fire a second message while first POST is still unresolved
+    fireEvent.change(input, { target: { value: 'Second message' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
+
+    expect(input.value).toBe('');
+    expect(pendingSend).toHaveBeenNthCalledWith(2, 'Second message', undefined);
+  });
+});
+
+describe('MessengerProvider FIFO send queue & inline Retry', () => {
+  beforeEach(() => {
+    useRealMessengerContext = true;
+    vi.clearAllMocks();
+    mockAuthState.user = { id: 'admin-1', name: 'Local Admin', email: 'admin@bmdc.ph', role: 'local_admin' };
+    // Mock EventSource cleanly in jsdom
+    (globalThis as any).EventSource = class {
+      addEventListener = vi.fn();
+      close = vi.fn();
+      onerror = null;
+    };
+  });
+
+  it('dispatches rapid-fire sends strictly FIFO per conversation, preserves clientKey on reconcile, and supports Retry on failure', async () => {
+    mockApiGet.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          id: 'dm-fifo',
+          type: 'direct',
+          title: 'Juan Dela Cruz',
+          lastMessageAt: '2026-11-23T10:00:00Z',
+          unreadCount: 0,
+          latestMessage: null,
+          participants: [],
+        },
+      ],
+    });
+
+    let resolveFirst!: (val: any) => void;
+    let rejectSecond!: (err: any) => void;
+
+    mockApiPost
+      .mockImplementationOnce(
+        () =>
+          new Promise((res) => {
+            resolveFirst = res;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((_res, rej) => {
+            rejectSecond = rej;
+          })
+      )
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: 'db-msg-2',
+          conversationId: 'dm-fifo',
+          senderId: 'admin-1',
+          senderName: 'Local Admin',
+          senderRole: 'local_admin',
+          content: 'Second',
+          isDeleted: false,
+          createdAt: '2026-11-23T10:02:00Z',
+        },
+      });
+
+    let ctxRef!: ReturnType<typeof useMessenger>;
+    function Harness() {
+      const ctx = useMessenger();
+      ctxRef = ctx;
+      return (
+        <div>
+          {ctx.activeMessages.map((m) => (
+            <div key={m.clientKey || m.id} data-testid={`msg-${m.content}`} data-key={m.clientKey} data-status={m.status} data-id={m.id}>
+              {m.content}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    render(
+      <MessengerProvider>
+        <Harness />
+      </MessengerProvider>
+    );
+
+    await waitFor(() => expect(ctxRef).toBeDefined());
+
+    act(() => {
+      ctxRef.setActiveConversationId('dm-fifo');
+    });
+
+    // Wait one tick so activeConversationIdRef syncs
+    await waitFor(() => expect(ctxRef.activeConversationId).toBe('dm-fifo'));
+
+    // Fire 2 rapid messages back-to-back
+    act(() => {
+      void ctxRef.sendMessage('dm-fifo', 'First');
+      void ctxRef.sendMessage('dm-fifo', 'Second');
+    });
+
+    // Both appear immediately at 0ms as 'sending', while ONLY First POST is in-flight (strict FIFO!)
+    const firstEl = screen.getByTestId('msg-First');
+    const secondEl = screen.getByTestId('msg-Second');
+    const initialFirstKey = firstEl.getAttribute('data-key');
+    const initialSecondKey = secondEl.getAttribute('data-key')!;
+
+    expect(firstEl.getAttribute('data-status')).toBe('sending');
+    expect(secondEl.getAttribute('data-status')).toBe('sending');
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledTimes(1);
+      expect(mockApiPost).toHaveBeenCalledWith('/messages/dm-fifo', {
+        content: 'First',
+        attachment: undefined,
+      });
+    });
+
+    // Resolve First -> Second POST now dispatches; First keeps exact same clientKey (no re-mount!)
+    await act(async () => {
+      resolveFirst({
+        success: true,
+        data: {
+          id: 'db-msg-1',
+          conversationId: 'dm-fifo',
+          senderId: 'admin-1',
+          senderName: 'Local Admin',
+          senderRole: 'local_admin',
+          content: 'First',
+          isDeleted: false,
+          createdAt: '2026-11-23T10:01:00Z',
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('msg-First').getAttribute('data-status')).toBe('sent');
+      expect(screen.getByTestId('msg-First').getAttribute('data-id')).toBe('db-msg-1');
+      expect(screen.getByTestId('msg-First').getAttribute('data-key')).toBe(initialFirstKey);
+      expect(mockApiPost).toHaveBeenCalledTimes(2);
+    });
+
+    // Reject Second -> marks failed inline, then retryMessage succeeds
+    await act(async () => {
+      rejectSecond({ message: 'Network drop' });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('msg-Second').getAttribute('data-status')).toBe('failed');
+    });
+
+    await act(async () => {
+      await ctxRef.retryMessage('dm-fifo', initialSecondKey);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('msg-Second').getAttribute('data-status')).toBe('sent');
+      expect(screen.getByTestId('msg-Second').getAttribute('data-id')).toBe('db-msg-2');
+      expect(screen.getByTestId('msg-Second').getAttribute('data-key')).toBe(initialSecondKey);
+    });
+  });
+});
+
+describe('ConversationList admin/staff -> trainee contact flow & filter tabs', () => {
+  beforeEach(() => {
+    useRealMessengerContext = false;
     vi.clearAllMocks();
     mockAuthState.user = { id: 'admin-1', name: 'Local Admin', email: 'admin@bmdc.ph', role: 'local_admin' };
     mockMessengerState.conversations = [];
     mockMessengerState.isLoading = false;
   });
 
-  it('loads trainees in New Chat modal, filters by name, and starts DM on click', async () => {
+  it('loads trainees in New Chat modal, filters by name, switches tabs smoothly, and starts DM on click', async () => {
     mockApiGet.mockResolvedValueOnce({
       success: true,
       data: [
@@ -151,6 +353,11 @@ describe('ConversationList admin/staff -> trainee contact flow', () => {
     const onSelectConversation = vi.fn();
 
     render(<ConversationList onSelectConversation={onSelectConversation} />);
+
+    // Verify segmented filter tabs toggle aria-selected cleanly
+    const directTab = screen.getByRole('tab', { name: /direct/i });
+    fireEvent.click(directTab);
+    expect(directTab.getAttribute('aria-selected')).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
 
@@ -172,11 +379,16 @@ describe('ConversationList admin/staff -> trainee contact flow', () => {
   });
 });
 
-describe('ChatThread role-scoped Program GC members', () => {
+describe('ChatThread role-scoped Program GC members & smart sticky-bottom', () => {
   beforeEach(() => {
+    useRealMessengerContext = false;
     vi.clearAllMocks();
     mockMessengerState.activeMessages = [];
     mockMessengerState.setActiveMessages = vi.fn();
+    mockMessengerState.getCachedThread = vi.fn().mockReturnValue(undefined);
+    mockMessengerState.setCachedThread = vi.fn((_id: string, _conv: any, msgs: any[]) => msgs);
+    mockMessengerState.sendMessage = vi.fn().mockResolvedValue(undefined);
+    mockMessengerState.retryMessage = vi.fn().mockResolvedValue(undefined);
     mockMessengerState.syncNonce = 0;
   });
 
@@ -212,20 +424,25 @@ describe('ChatThread role-scoped Program GC members', () => {
     await waitFor(() => {
       expect(screen.getByText('Ana Reyes')).toBeDefined();
       expect(screen.getByRole('button', { name: /message staff/i })).toBeDefined();
-      // Only 1 message button (for Local Admin), none for fellow trainee Ana Reyes
       expect(screen.getAllByRole('button', { name: /message/i })).toHaveLength(1);
     });
   });
 
-  it('deduplicates optimistic send when SSE already delivered the saved message id', async () => {
+  it('shows Jump to latest pill when scrolled away from bottom and delegates sends to context queue', async () => {
     mockAuthState.user = { id: 'admin-1', name: 'Local Admin', email: 'admin@bmdc.ph', role: 'local_admin' };
-    let currentMessages: Message[] = [];
-    mockMessengerState.activeMessages = currentMessages;
-    mockMessengerState.setActiveMessages = vi.fn((updater: any) => {
-      currentMessages = typeof updater === 'function' ? updater(currentMessages) : updater;
-      mockMessengerState.activeMessages = currentMessages;
-    });
-
+    mockMessengerState.activeMessages = [
+      {
+        id: 'm-1',
+        clientKey: 'm-1',
+        conversationId: 'dm-1',
+        senderId: 't-1',
+        senderName: 'Juan',
+        senderRole: 'trainee',
+        content: 'Hello',
+        isDeleted: false,
+        createdAt: '2026-11-23T10:00:00Z',
+      },
+    ];
     mockApiGet.mockResolvedValueOnce({
       success: true,
       data: {
@@ -233,55 +450,43 @@ describe('ChatThread role-scoped Program GC members', () => {
           id: 'dm-1',
           type: 'direct',
           title: 'Juan Dela Cruz',
-          lastMessageAt: '2026-11-22T10:00:00Z',
+          lastMessageAt: '2026-11-23T10:00:00Z',
           unreadCount: 0,
           latestMessage: null,
           participants: [],
         },
-        messages: [],
+        messages: mockMessengerState.activeMessages,
       },
     });
 
-    const savedMsg: Message = {
-      id: 'msg-real-1',
-      conversationId: 'dm-1',
-      senderId: 'admin-1',
-      senderName: 'Local Admin',
-      senderRole: 'local_admin',
-      content: 'Hi Juan!',
-      isDeleted: false,
-      createdAt: '2026-11-22T10:05:00Z',
-    };
-
-    // Simulate SSE delivering `savedMsg` BEFORE POST resolves
-    mockApiPost.mockImplementationOnce(async () => {
-      mockMessengerState.setActiveMessages((prev: Message[]) => [...prev, savedMsg]);
-      return { success: true, data: savedMsg };
-    });
-
-    render(<ChatThread conversationId="dm-1" />);
+    const { container } = render(<ChatThread conversationId="dm-1" />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/message input/i)).toBeDefined();
+      expect(screen.getByText('Juan Dela Cruz')).toBeDefined();
     });
 
-    fireEvent.change(screen.getByLabelText(/message input/i), { target: { value: 'Hi Juan!' } });
+    // Simulate user scrolling up >120px away from bottom
+    const scroller = container.querySelector('.overflow-y-auto') as HTMLDivElement;
+    Object.defineProperty(scroller, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(scroller, 'clientHeight', { value: 300, configurable: true });
+    Object.defineProperty(scroller, 'scrollTop', { value: 100, configurable: true });
+
+    fireEvent.scroll(scroller);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /jump to latest/i })).toBeDefined();
+    });
+
+    // Sending delegates immediately to MessengerContext.sendMessage
+    const input = screen.getByLabelText(/message input/i);
+    fireEvent.change(input, { target: { value: 'Quick reply' } });
     fireEvent.click(screen.getByRole('button', { name: /send message/i }));
 
-    await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/messages/dm-1', {
-        content: 'Hi Juan!',
-        attachment: undefined,
-      });
-    });
-
-    // Exactly one bubble with real DB id — optimistic placeholder was removed, not duplicated
-    expect(currentMessages).toHaveLength(1);
-    expect(currentMessages[0].id).toBe('msg-real-1');
+    expect(mockMessengerState.sendMessage).toHaveBeenCalledWith('dm-1', 'Quick reply', undefined);
   });
 });
 
-describe('MessageBubble Component & Authenticated Attachments', () => {
+describe('MessageBubble Component, Delivery States & Authenticated Attachments', () => {
   const mockMessage: Message = {
     id: 'msg-1',
     conversationId: 'conv-1',
@@ -294,6 +499,7 @@ describe('MessageBubble Component & Authenticated Attachments', () => {
   };
 
   beforeEach(() => {
+    useRealMessengerContext = false;
     vi.clearAllMocks();
   });
 
@@ -304,16 +510,38 @@ describe('MessageBubble Component & Authenticated Attachments', () => {
     expect(screen.getByText('Staff')).toBeDefined();
   });
 
-  it('renders outgoing message without extra sender avatar or header', () => {
-    render(
+  it('renders outgoing delivery states: Sending, Sent check, and Failed Retry button', () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(
       <MessageBubble
-        message={{ ...mockMessage, senderId: 'current-user', content: 'Thank you maam!' }}
+        message={{ ...mockMessage, id: 'opt-1', clientKey: 'opt-1', senderId: 'me', status: 'sending', isNew: true }}
         isCurrentUser={true}
+        onRetry={onRetry}
         showAvatar={false}
       />
     );
-    expect(screen.getByText('Thank you maam!')).toBeDefined();
-    expect(screen.queryByText('Instructor Maria')).toBeNull();
+    expect(screen.getByLabelText('Sending')).toBeDefined();
+
+    rerender(
+      <MessageBubble
+        message={{ ...mockMessage, id: 'db-1', clientKey: 'opt-1', senderId: 'me', status: 'sent', isNew: true }}
+        isCurrentUser={true}
+        onRetry={onRetry}
+        showAvatar={false}
+      />
+    );
+    expect(screen.getByLabelText('Sent')).toBeDefined();
+
+    rerender(
+      <MessageBubble
+        message={{ ...mockMessage, id: 'opt-1', clientKey: 'opt-1', senderId: 'me', status: 'failed', isNew: true }}
+        isCurrentUser={true}
+        onRetry={onRetry}
+        showAvatar={false}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledWith('opt-1');
   });
 
   it('renders unsent placeholder if message is marked deleted', () => {

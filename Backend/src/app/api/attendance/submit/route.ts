@@ -52,6 +52,7 @@ import { detectCompressionBomb } from '@/lib/security/decompression-bomb';
 import { validateGPS, validateDeviceInfo, validateJsonbSize, validateGeofence, getGeofenceForProgram } from '@/lib/security/index';
 import { maybeEncrypt, isEncryptionEnabled } from '@/lib/fileEncryption';
 import { checkDuplicateSubmission, recordSubmission } from '@/lib/duplicateSubmissionDetection';
+import { getPHTDateComponents } from '@/lib/timezone';
 
 // ---------------------------------------------------------------------------
 // Validation schema for non-file fields
@@ -112,12 +113,12 @@ async function resolveTrainee(userId: string) {
 
   if (!traineeId || !tenantId) return null;
 
-  // Get trainee's current enrollment to find program_id
+  // Get trainee's current enrollment to find program_id (supports both 'enrolled' and 'active')
   const { data: enrollment, error: enrollErr } = await supabaseAdmin
     .from('enrollments')
     .select('program_id')
     .eq('trainee_id', traineeId)
-    .eq('status', 'enrolled')
+    .in('status', ['enrolled', 'active'])
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -142,13 +143,17 @@ async function resolveTrainee(userId: string) {
   };
 }
 
+/** Return today's YYYY-MM-DD in Philippine Time (PHT, UTC+8) */
+function todayInPHT(): string {
+  const c = getPHTDateComponents(new Date());
+  const month = String(c.month + 1).padStart(2, '0');
+  const date = String(c.date).padStart(2, '0');
+  return `${c.year}-${month}-${date}`;
+}
+
 /** Find today's program_session for the trainee's program */
 async function findTodaySession(programId: string, tenantId: string) {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const date = String(now.getDate()).padStart(2, '0');
-  const today = `${year}-${month}-${date}`;
+  const today = todayInPHT();
 
   const { data, error } = await supabaseAdmin
   .from('program_sessions')
@@ -390,13 +395,8 @@ const imageBuffer = Buffer.from(await file.arrayBuffer());
 
 
 
-  // Check active schedule window
-
-const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const date = String(now.getDate()).padStart(2, '0');
-  const today = `${year}-${month}-${date}`;
+  // Check active schedule window (PHT date)
+  const today = todayInPHT();
 
   const schedule = await attendanceService.getActiveSchedule(
     trainee.program_id,
@@ -404,66 +404,39 @@ const now = new Date();
     tenantId
   );
   if (!schedule) {
-  return errorResponse('No active attendance schedule found for today', 400);
+    return errorResponse('No active attendance schedule found for today', 400);
   }
 
   // Check time window
-
-const windowStatus = await attendanceService.getCurrentWindowStatus(
-  trainee.program_id,
-  tenantId
+  const windowStatus = await attendanceService.getCurrentWindowStatus(
+    trainee.program_id,
+    tenantId
   );
   if (!windowStatus.isOpen) {
-  return errorResponse('Attendance window is currently closed', 400);
+    return errorResponse('Attendance window is currently closed', 400);
   }
 
-if (windowStatus.session_label !== fields.session_label) {
-  return errorResponse(
-  `The ${fields.session_label} window is not currently open. ` +
-  `The active window is: ${windowStatus.session_label ?? 'none'}`,
-  400
-  );
+  if (windowStatus.session_label !== fields.session_label) {
+    return errorResponse(
+      `The ${fields.session_label} window is not currently open. ` +
+      `The active window is: ${windowStatus.session_label ?? 'none'}`,
+      400
+    );
   }
 
-  // Task 18: Validate session order (morning must come before afternoon on same day)
-  // ponytail: simple O(n) query per day, marks ceiling as multi-session workflow
-  if (fields.session_label === 'afternoon') {
-    // Check if morning session was submitted today for this trainee
-    const { data: morningRecord } = await supabaseAdmin
-      .from('attendance')
-      .select('id')
-      .eq('trainee_id', trainee.id)
-      .eq('session_id', session.id)
-      .limit(1)
-      .maybeSingle();
+  // Morning and afternoon are independent half-day sessions:
+  // trainees may check in during the afternoon window even if morning was missed.
 
-    // If no morning attendance exists for today's session, reject afternoon submission
-    if (!morningRecord) {
-      return errorResponse(
-        'Must submit morning session before afternoon session',
-        400
-      );
-    }
-  }
-
-  // Check non-attendance dates (holidays/exclusions)
-
-  const nowLocal = new Date();
-  const yearLocal = nowLocal.getFullYear();
-  const monthLocal = String(nowLocal.getMonth() + 1).padStart(2, '0');
-  const dateLocal = String(nowLocal.getDate()).padStart(2, '0');
-  const todayLocal = `${yearLocal}-${monthLocal}-${dateLocal}`;
-  
-  // Check if today is an excluded date (non_attendance_date exception)
+  // Check non-attendance dates (holidays/exclusions — program-specific or global)
   if (trainee.program_id) {
-    const { data: exceptions, error: excErr } = await supabaseAdmin
+    const { data: exceptions } = await supabaseAdmin
       .from('attendance_exceptions')
       .select('id')
-      .eq('program_id', trainee.program_id)
-      .eq('exception_date', todayLocal)
-      .eq('exception_type', 'non_attendance_date')
+      .or(`program_id.eq.${trainee.program_id},program_id.is.null`)
+      .eq('exception_date', today)
+      .in('exception_type', ['no_attendance_day', 'holiday'])
       .limit(1);
-    
+
     if (exceptions && exceptions.length > 0) {
       return errorResponse('Today is a non-attendance day', 400);
     }

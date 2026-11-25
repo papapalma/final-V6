@@ -102,22 +102,29 @@ export default function TraineeProgramsPage() {
         });
       });
 
-      // Update with actual enrollment data
+      // Update with actual enrollment data (ignore 'dropped' and 'failed' so trainee can re-apply)
       enrollments.forEach((enrollment: any) => {
         const programId = enrollment.program_id;
-        if (enrollmentMap.has(programId)) {
-          // Map enrollment API status to button state values
-          const mappedStatus: 'accepting' | 'in-progress' | 'completed' = 
-            enrollment.status === 'completed' ? 'completed' : (enrollment.status ? 'in-progress' : 'accepting');
-          
-          enrollmentMap.set(programId, {
-            programId,
-            isEnrolled: true,
-            enrollmentStatus: mappedStatus,
-            enrollmentDate: enrollment.enrollment_date ? new Date(enrollment.enrollment_date) : undefined,
-            graduatedDate: enrollment.completed_date ? new Date(enrollment.completed_date) : undefined,
-          });
+        if (!enrollmentMap.has(programId)) return;
+
+        if (enrollment.status === 'dropped' || enrollment.status === 'failed') {
+          return;
         }
+
+        const mappedStatus: 'accepting' | 'in-progress' | 'completed' =
+          enrollment.status === 'completed'
+            ? 'completed'
+            : enrollment.status === 'enrolled' || enrollment.status === 'active'
+            ? 'in-progress'
+            : 'accepting';
+
+        enrollmentMap.set(programId, {
+          programId,
+          isEnrolled: mappedStatus !== 'accepting',
+          enrollmentStatus: mappedStatus,
+          enrollmentDate: enrollment.enrollment_date ? new Date(enrollment.enrollment_date) : undefined,
+          graduatedDate: enrollment.completed_date ? new Date(enrollment.completed_date) : undefined,
+        });
       });
 
       setEnrollmentData(enrollmentMap);
@@ -241,8 +248,13 @@ export default function TraineeProgramsPage() {
         });
         console.warn('[TraineeProgramsPage] Conflict error (409):', conflictMessage);
       } else {
-        // Handle other errors
-        toast.error(error?.message || 'Failed to submit application');
+        // Handle other errors with specific backend error message if present
+        const errorMessage =
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error?.message ||
+          'Failed to submit application';
+        toast.error(errorMessage);
         console.error('[TraineeProgramsPage] Error submitting registration:', error);
       }
     } finally {

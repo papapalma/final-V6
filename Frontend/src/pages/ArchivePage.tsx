@@ -45,7 +45,7 @@ import {
 const ENTITY_TYPES = [
   { value: 'trainee', label: 'Trainees', color: 'bg-blue-500/10 text-blue-700' },
   { value: 'program', label: 'Programs', color: 'bg-green-500/10 text-green-700' },
-  { value: 'item', label: 'Equipments', color: 'bg-yellow-500/10 text-yellow-700' },
+  { value: 'item', label: 'Inventory', color: 'bg-yellow-500/10 text-yellow-700' },
   { value: 'trainee_status', label: 'Trainee Status', color: 'bg-purple-500/10 text-purple-700' },
   { value: 'training_requirement_file', label: 'Training Requirement Files', color: 'bg-orange-500/10 text-orange-700' },
 ];

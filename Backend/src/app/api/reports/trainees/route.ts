@@ -36,6 +36,10 @@ const { searchParams } = new URL(request.url);
 
   const startDate = searchParams.get('startDate') || searchParams.get('start_date') || undefined;
   const endDate = searchParams.get('endDate') || searchParams.get('end_date') || undefined;
+  const endDateExclusive = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
+  if (endDateExclusive && !Number.isNaN(endDateExclusive.getTime())) {
+    endDateExclusive.setUTCDate(endDateExclusive.getUTCDate() + 1);
+  }
 
   const programId = searchParams.get('program') || searchParams.get('program_id') || undefined;
   const status = searchParams.get('status') || undefined;
@@ -55,8 +59,6 @@ const { searchParams } = new URL(request.url);
 
   if (programId) enrollmentsQuery = enrollmentsQuery.eq('program_id', programId);
   if (status) enrollmentsQuery = enrollmentsQuery.eq('status', status);
-  if (startDate) enrollmentsQuery = enrollmentsQuery.gte('enrollment_date', startDate);
-  if (endDate) enrollmentsQuery = enrollmentsQuery.lte('enrollment_date', endDate);
 
   let traineesQuery = supabaseAdmin
     .from('trainees')
@@ -73,7 +75,7 @@ const { searchParams } = new URL(request.url);
     { data: trainees, error: traineesError },
   ] = await Promise.all([
     enrollmentsQuery.order('enrollment_date', { ascending: true }),
-    supabaseAdmin.from('programs').select('id, name').eq('tenant_id', targetTenantId),
+    supabaseAdmin.from('programs').select('id, name').eq('tenant_id', targetTenantId).is('deleted_at', null),
     traineesQuery.order('last_name', { ascending: true }),
   ]);
 

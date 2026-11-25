@@ -27,13 +27,19 @@ const { searchParams } = new URL(request.url);
 
   const startDate  = searchParams.get('startDate') || searchParams.get('start_date') || undefined;
   const endDate  = searchParams.get('endDate')  || searchParams.get('end_date')  || undefined;
+  const endDateExclusive = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
+  if (endDateExclusive && !Number.isNaN(endDateExclusive.getTime())) {
+    endDateExclusive.setUTCDate(endDateExclusive.getUTCDate() + 1);
+  }
 
   const statusFilter = searchParams.get('status') || undefined;
-  const targetTenantId = isSuperAdmin  ? (searchParams.get('tenant_id') || tenantId)  : tenantId;  let programsQuery = supabaseAdmin  .from('programs')  .select('id, name, status, max_trainees, start_date, end_date, created_at')  .eq('tenant_id', targetTenantId);
+  const targetTenantId = isSuperAdmin  ? (searchParams.get('tenant_id') || tenantId)  : tenantId;
+  let programsQuery = supabaseAdmin
+    .from('programs')
+    .select('id, name, status, max_trainees, enrollment_limit, start_date, end_date, created_at')
+    .eq('tenant_id', targetTenantId)
+    .is('deleted_at', null);
   if (statusFilter) programsQuery = programsQuery.eq('status', statusFilter);
-  // Include programs active at any point in the selected period.
-  if (endDate) programsQuery = programsQuery.lte('start_date', endDate);
-  if (startDate) programsQuery = programsQuery.gte('end_date', startDate);
 
   const { data: programs, error: programsError } = await programsQuery.order('start_date', { ascending: false });
   if (programsError) throw programsError;
@@ -41,18 +47,14 @@ const { searchParams } = new URL(request.url);
   const programRows = programs || [];
   const programIds = programRows.map((program) => program.id);
   
-  // Query enrollments (not trainees) to get enrollment data per program
+  // Query all active/completed enrollments for these programs so counts & rosters match ProgramsPage
   let enrollmentRows: Array<{ program_id: string; trainee_id: string; status: string; enrollment_date: string }> = [];
   if (programIds.length > 0) {
-    let enrollmentsQuery = supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('enrollments')
       .select('program_id, trainee_id, status, enrollment_date')
-      .eq('tenant_id', targetTenantId)
-      .in('program_id', programIds);
-    if (startDate) enrollmentsQuery = enrollmentsQuery.gte('enrollment_date', startDate);
-    if (endDate) enrollmentsQuery = enrollmentsQuery.lte('enrollment_date', endDate);
-
-    const { data, error } = await enrollmentsQuery;
+      .in('program_id', programIds)
+      .in('status', ['enrolled', 'active', 'completed']);
     if (error) throw error;
     enrollmentRows = data || [];
   }
@@ -63,8 +65,6 @@ const { searchParams } = new URL(request.url);
     const { data: trainees, error: traineesError } = await supabaseAdmin
       .from('trainees')
       .select('id, first_name, last_name, email')
-      .eq('tenant_id', targetTenantId)
-      .is('deleted_at', null)
       .in('id', traineeIds);
     if (traineesError) throw traineesError;
 
@@ -88,7 +88,10 @@ const { searchParams } = new URL(request.url);
     return acc;
   }, {} as Record<string, number>);
 
-  const totalCapacity = programRows.reduce((sum, program) => sum + (program.max_trainees || 0), 0);
+  const totalCapacity = programRows.reduce(
+    (sum, program: any) => sum + (program.enrollment_limit || program.max_trainees || 0),
+    0
+  );
   const totalEnrolled = enrollmentRows.length;
 
   const completedPrograms = programRows.filter((program) => program.status === 'completed').length;
@@ -109,7 +112,7 @@ const { searchParams } = new URL(request.url);
     .sort((a, b) => b.enrolled - a.enrolled)
     .slice(0, 10);
 
-  const programStats = programRows.map((program) => {
+  const programStats = programRows.map((program: any) => {
     const enrolledCount = enrolledByProgram[program.id] || 0;
     const completedCount = completedByProgram[program.id] || 0;
 
@@ -123,7 +126,7 @@ const { searchParams } = new URL(request.url);
       enrolledCount,
       completedCount,
       completionRate: programCompletionRate,
-      capacity: program.max_trainees || 0,
+      capacity: program.enrollment_limit || program.max_trainees || 0,
       start_date: program.start_date,
       end_date: program.end_date,
       students: enrollmentRows

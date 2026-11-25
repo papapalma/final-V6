@@ -157,8 +157,8 @@ export default function ProgramDetailsModal({
           // Fetch enrollments by program - only enrolled status
           api.get(`/enrollments?program_id=${program.id}`).then(res => {
             const allEnrollments = res.data.data || res.data || [];
-            // Filter to only 'enrolled' status
-            return allEnrollments.filter((e: any) => e.status === 'enrolled');
+            // Include both 'enrolled' and 'active' trainees
+            return allEnrollments.filter((e: any) => e.status === 'enrolled' || e.status === 'active');
           })
         ),
         // Fetch registrations for this program
@@ -228,7 +228,7 @@ export default function ProgramDetailsModal({
 
           <div className="space-y-6">
             {/* Program Image */}
-            {program.photoUrl && !imageLoadFailed && (
+            {program.photoUrl && !program.photoUrl.includes('blank-thumbnail') && !imageLoadFailed && (
               <div className="flex justify-center">
                 <img
                   src={program.photoUrl}
@@ -241,7 +241,7 @@ export default function ProgramDetailsModal({
 
             {/* Header Info */}
             <div className="flex items-start gap-4">
-              {(!program.photoUrl || imageLoadFailed) && (
+              {(!program.photoUrl || program.photoUrl.includes('blank-thumbnail') || imageLoadFailed) && (
                 <div className="flex size-16 items-center justify-center rounded-lg bg-primary/10 shrink-0">
                   <GraduationCap className="size-8 text-primary" />
                 </div>
@@ -252,10 +252,10 @@ export default function ProgramDetailsModal({
                   <Badge className={getStatusColor(program.status)}>{program.status}</Badge>
                   <Badge variant="outline" className="border-primary text-primary">{program.duration}</Badge>
                   {(program as any).level && (
-                    <Badge variant="outline" className="border-secondary text-secondary">{(program as any).level}</Badge>
+                    <Badge variant="outline" className="border-primary/40 text-primary">{(program as any).level}</Badge>
                   )}
                   {program.type_of_funding && (
-                    <Badge variant="outline" className="border-secondary text-secondary">{program.type_of_funding}</Badge>
+                    <Badge variant="outline" className="border-primary/40 text-primary">{program.type_of_funding}</Badge>
                   )}
                 </div></div>
             </div>
@@ -364,8 +364,8 @@ export default function ProgramDetailsModal({
               </div>
 
               <div className="flex items-center gap-3 p-3 rounded-lg border">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-secondary/10">
-                  <Award className="size-5 text-secondary" />
+                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Award className="size-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Level</p>
@@ -375,8 +375,8 @@ export default function ProgramDetailsModal({
 
               {program.type_of_funding && (
                 <div className="flex items-center gap-3 p-3 rounded-lg border">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-secondary/10">
-                    <Award className="size-5 text-secondary" />
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                    <Award className="size-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Type of Funding</p>
@@ -386,8 +386,8 @@ export default function ProgramDetailsModal({
               )}
 
               <div className="flex items-center gap-3 p-3 rounded-lg border">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-accent/10">
-                  <Calendar className="size-5 text-accent-foreground" />
+                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Calendar className="size-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Start Date</p>
@@ -396,8 +396,8 @@ export default function ProgramDetailsModal({
               </div>
 
               <div className="flex items-center gap-3 p-3 rounded-lg border">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-secondary/10">
-                  <Calendar className="size-5 text-secondary" />
+                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Calendar className="size-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">End Date</p>
@@ -426,7 +426,7 @@ export default function ProgramDetailsModal({
               </div>
             )}
 
-            {/* Sessions & Attendance hover-reveal stat cards */}
+            {/* Enrolled, Registrations, Sessions & Attendance stat cards */}
             {canManage && (
               <div className="grid grid-cols-2 gap-3">
                 {/* Enrollments card */}
@@ -440,13 +440,12 @@ export default function ProgramDetailsModal({
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">trainees enrolled</p>
 
-                  {/* Hover pill */}
                   <button
                     onClick={() => setEnrollmentsModalOpen(true)}
-                    className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer"
                     aria-label="View enrollments"
                   >
-                    <span className="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-900/30 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 px-2.5 py-1 rounded-full transition-colors">
+                    <span className="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100/80 dark:bg-blue-900/40 px-2.5 py-1 rounded-full">
                       <Users className="size-3" />
                       View Trainees
                     </span>
@@ -460,19 +459,75 @@ export default function ProgramDetailsModal({
                     <span className="text-sm font-medium">Registrations</span>
                   </div>
                   <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                    {dataLoading ? <Skeleton className="h-8 w-10 rounded" /> : (stats as any)?.total_registrations || 0}
+                    {dataLoading ? <Skeleton className="h-8 w-10 rounded" /> : (stats as any)?.total_registrations || registrations.length || 0}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">pending & approved</p>
 
-                  {/* Hover pill */}
                   <button
                     onClick={() => setRegistrationsModalOpen(true)}
-                    className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer"
                     aria-label="View registrations"
                   >
-                    <span className="flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-100/50 dark:bg-orange-900/30 hover:bg-orange-200/50 dark:hover:bg-orange-900/50 px-2.5 py-1 rounded-full transition-colors">
+                    <span className="flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-100/80 dark:bg-orange-900/40 px-2.5 py-1 rounded-full">
                       <BarChart3 className="size-3" />
                       View Registrations
+                    </span>
+                  </button>
+                </div>
+
+                {/* Sessions card */}
+                <div className="group relative rounded-xl border bg-muted/30 p-4 transition-colors hover:bg-violet-50/50 hover:border-violet-300 dark:hover:bg-violet-900/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CalendarDays className="size-4 text-violet-600 dark:text-violet-400" />
+                    <span className="text-sm font-medium">Sessions</span>
+                  </div>
+                  <div className="text-2xl font-bold text-violet-600 dark:text-violet-400">
+                    {dataLoading ? <Skeleton className="h-8 w-10 rounded" /> : sessions.length}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">scheduled dates</p>
+
+                  <button
+                    onClick={() => setSessionsModalOpen(true)}
+                    className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer"
+                    aria-label="View sessions"
+                  >
+                    <span className="flex items-center gap-1 text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100/80 dark:bg-violet-900/40 px-2.5 py-1 rounded-full">
+                      <CalendarDays className="size-3" />
+                      View Sessions
+                    </span>
+                  </button>
+                </div>
+
+                {/* Attendance card */}
+                <div className="group relative rounded-xl border bg-muted/30 p-4 transition-colors hover:bg-emerald-50/50 hover:border-emerald-300 dark:hover:bg-emerald-900/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Check className="size-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-sm font-medium">Attendance</span>
+                  </div>
+                  <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {dataLoading ? (
+                      <Skeleton className="h-8 w-14 rounded" />
+                    ) : stats && stats.total > 0 ? (
+                      `${Math.round(((stats.present + stats.late) / stats.total) * 100)}%`
+                    ) : (
+                      '0%'
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {stats ? `${stats.present + stats.late} of ${stats.total} records` : 'manage attendance'}
+                  </p>
+
+                  <button
+                    onClick={() => {
+                      onOpenChange(false);
+                      navigate(`/programs/${program.id}/attendance`);
+                    }}
+                    className="absolute inset-0 flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer"
+                    aria-label="Manage program attendance"
+                  >
+                    <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-900/40 px-2.5 py-1 rounded-full">
+                      <ExternalLink className="size-3" />
+                      Open Attendance
                     </span>
                   </button>
                 </div>
@@ -480,16 +535,29 @@ export default function ProgramDetailsModal({
             )}
 
             {/* Bottom action row */}
-            {canManage && onEdit && (
-              <div className="border-t pt-4">
+            {canManage && (
+              <div className="border-t pt-4 flex flex-col sm:flex-row gap-3">
                 <Button
-                  variant="default"
-                  className="w-full gap-2"
-                  onClick={() => { onEdit(program); onOpenChange(false); }}
+                  variant="outline"
+                  className="flex-1 gap-2 py-2.5 px-4"
+                  onClick={() => {
+                    onOpenChange(false);
+                    navigate(`/programs/${program.id}/attendance`);
+                  }}
                 >
-                  <GraduationCap className="size-4" />
-                  Edit Program
+                  <CalendarDays className="size-4" />
+                  Manage Attendance
                 </Button>
+                {onEdit && (
+                  <Button
+                    variant="default"
+                    className="flex-1 gap-2 py-2.5 px-4"
+                    onClick={() => { onEdit(program); onOpenChange(false); }}
+                  >
+                    <GraduationCap className="size-4" />
+                    Edit Program
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -614,7 +682,7 @@ export default function ProgramDetailsModal({
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BarChart3 className="size-5 text-secondary" />
+              <BarChart3 className="size-5 text-primary" />
               Attendance Overview
             </DialogTitle>
             <DialogDescription>

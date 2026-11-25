@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
+import { BrandLogo } from './BrandLogo';
 import {
   Download,
   Bell,
@@ -167,14 +168,17 @@ export default function PWAStatus() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                {desktopPlatform ? <Monitor className="size-5 text-primary" /> : <Smartphone className="size-5 text-primary" />}
-                Installation Status
-              </CardTitle>
-              <CardDescription>
-                Progressive Web App (PWA) for {instructions.label}
-              </CardDescription>
+            <div className="flex items-center gap-3">
+              <BrandLogo size="sm" />
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  {desktopPlatform ? <Monitor className="size-5 text-primary" /> : <Smartphone className="size-5 text-primary" />}
+                  Installation Status
+                </CardTitle>
+                <CardDescription>
+                  Progressive Web App (PWA) for {instructions.label}
+                </CardDescription>
+              </div>
             </div>
             {isInstalled ? (
               <Badge variant="default" className="bg-green-500">

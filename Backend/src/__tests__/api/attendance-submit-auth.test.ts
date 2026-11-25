@@ -156,6 +156,8 @@ function mockSuccessfulTraineeResolution(supabaseAdmin: any) {
   const createQueryBuilder = (returnValue: any) => ({
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
+    in: jest.fn().mockReturnThis(),
+    or: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     maybeSingle: jest.fn().mockResolvedValue(returnValue),

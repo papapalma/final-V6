@@ -51,6 +51,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const startDate = searchParams.get('startDate') || searchParams.get('start_date') || undefined;
   const endDate = searchParams.get('endDate') || searchParams.get('end_date') || undefined;
+  const endDateExclusive = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
+  if (endDateExclusive && !Number.isNaN(endDateExclusive.getTime())) {
+    endDateExclusive.setUTCDate(endDateExclusive.getUTCDate() + 1);
+  }
   const module = searchParams.get('module') || undefined;
   const userId = searchParams.get('userId') || searchParams.get('user_id') || undefined;
   const limitParam = Number(searchParams.get('limit') || '1000');
@@ -73,17 +77,24 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   )
   `);
 
+  let lendingsQuery = supabaseAdmin
+    .from('lendings')
+    .select('id, lent_date, actual_return_date, status, quantity, tenant_id');
+
   // Tenant isolation: non-super-admins can only see their own tenant's activity
 
 if (user.role !== 'super_admin') {
   logsQuery = logsQuery.eq('tenant_id', user.tenantId);
+  lendingsQuery = lendingsQuery.eq('tenant_id', user.tenantId);
   }
 
 if (startDate) {
-  logsQuery = logsQuery.gte('created_at', startDate);
+  logsQuery = logsQuery.gte('created_at', `${startDate}T00:00:00.000Z`);
   }
 
-if (endDate) {
+if (endDateExclusive && !Number.isNaN(endDateExclusive.getTime())) {
+  logsQuery = logsQuery.lt('created_at', endDateExclusive.toISOString());
+  } else if (endDate) {
   logsQuery = logsQuery.lte('created_at', endDate);
   }
 
@@ -95,15 +106,44 @@ if (userId) {
   logsQuery = logsQuery.eq('user_id', userId);
   }
 
-const { data, error } = await logsQuery.order('created_at', { ascending: false }).limit(limit);
+const [{ data, error }, { data: lendingRows }] = await Promise.all([
+  logsQuery.order('created_at', { ascending: false }).limit(limit),
+  lendingsQuery,
+]);
   if (error) throw error;
 
   const logs = data || [];
+  const lendings = lendingRows || [];
 
   const byAction: Record<string, number> = {};
   const byModule: Record<string, number> = {};
   const trendMap: Record<string, { borrowed: number; returned: number; total: number }> = {};
+  const lendingTrendMap: Record<string, { borrowed: number; returned: number; total: number }> = {};
   const userMap: Record<string, { count: number; userName: string }> = {};
+
+  const endDateIsoDay = endDateExclusive && !Number.isNaN(endDateExclusive.getTime())
+    ? endDateExclusive.toISOString().slice(0, 10)
+    : undefined;
+
+  for (const lending of lendings) {
+    const lentDay = (lending.lent_date || '').split('T')[0];
+    if (lentDay && (!startDate || lentDay >= startDate) && (!endDateIsoDay || lentDay < endDateIsoDay)) {
+      if (!lendingTrendMap[lentDay]) {
+        lendingTrendMap[lentDay] = { borrowed: 0, returned: 0, total: 0 };
+      }
+      lendingTrendMap[lentDay].borrowed += 1;
+      lendingTrendMap[lentDay].total += 1;
+    }
+
+    const returnDay = (lending.actual_return_date || '').split('T')[0];
+    if (returnDay && (!startDate || returnDay >= startDate) && (!endDateIsoDay || returnDay < endDateIsoDay)) {
+      if (!lendingTrendMap[returnDay]) {
+        lendingTrendMap[returnDay] = { borrowed: 0, returned: 0, total: 0 };
+      }
+      lendingTrendMap[returnDay].returned += 1;
+      lendingTrendMap[returnDay].total += 1;
+    }
+  }
 
   for (const log of logs) {
   const action = log.action || 'unknown';
@@ -143,7 +183,8 @@ const userKey = log.user_id || 'unknown';
   userMap[userKey].count += 1;
   }
 
-const trend = Object.entries(trendMap)
+  const activeTrendSource = Object.keys(lendingTrendMap).length > 0 ? lendingTrendMap : trendMap;
+  const trend = Object.entries(activeTrendSource)
   .filter(([date]) => date !== 'unknown')
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([date, values]) => ({ date, ...values }));

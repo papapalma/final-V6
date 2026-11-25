@@ -103,10 +103,24 @@
   .summary-stats-table,
   .activity-trend-table,
   .category-distribution-table,
-  .program-distribution-table {
+  .program-enrollment-table,
+  .employment-status-print-table,
+  .print-signatures {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     margin-bottom: 14px !important;
+  }
+
+  .printable-report-container tfoot th,
+  .printable-report-container tfoot td,
+  table.print-table tfoot th,
+  table.print-table tfoot td {
+    background-color: #f9fafb !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
+    border-top: 1.5px solid #9ca3af !important;
+    padding: 6px 10px !important;
+    font-size: 9pt !important;
   }
 
   .printable-report-container h1 {
@@ -124,5 +138,59 @@
     color: #1f2937 !important;
     border-bottom: 1px solid #e5e7eb !important;
     padding-bottom: 3px !important;
+  }
+}
+
+/* ==========================================================================
+   Reports Page Tactile & Section Transitions (Apple Design & Emil Kowalski Gate)
+   ========================================================================== */
+.report-action-btn {
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.report-action-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.report-section-enter {
+  animation: reportSectionFadeIn 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.report-chevron-transition {
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes reportSectionFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report-action-btn {
+    transition: opacity 150ms ease;
+  }
+  .report-action-btn:active:not(:disabled) {
+    transform: none !important;
+  }
+  .report-section-enter {
+    animation: reportSectionReducedFade 150ms ease both;
+  }
+  .report-chevron-transition {
+    transition: none;
+  }
+}
+
+@keyframes reportSectionReducedFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

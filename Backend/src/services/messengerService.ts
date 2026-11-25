@@ -2,16 +2,51 @@ import { EventEmitter } from 'events';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { logger } from '@/utils/logger';
 
-// Global Event Emitter for SSE broadcast — anchored on globalThis so
-// separate Next.js App Router route chunks share the exact same instance.
+// Global Event Emitter and TTL caches anchored on globalThis so
+// separate Next.js App Router route chunks share the exact same instances.
 class MessengerEventEmitter extends EventEmitter {}
+
+interface CachedUserEntry {
+  value: UserSummary;
+  expiresAt: number;
+}
+
+const USER_DETAILS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const USER_DETAILS_CACHE_MAX = 1000;
+const PROGRAM_GC_SYNC_TTL_MS = 60 * 1000; // 60 seconds
+
 const globalForMessenger = globalThis as typeof globalThis & {
   __bmdcMessengerEvents?: MessengerEventEmitter;
+  __bmdcUserDetailsCache?: Map<string, CachedUserEntry>;
+  __bmdcProgramGcSyncCache?: Map<string, number>;
+  __bmdcProgramGcSyncInFlight?: Map<string, Promise<void>>;
 };
+
 export const messengerEvents =
   globalForMessenger.__bmdcMessengerEvents ??
   (globalForMessenger.__bmdcMessengerEvents = new MessengerEventEmitter());
 messengerEvents.setMaxListeners(200);
+
+const userDetailsCache =
+  globalForMessenger.__bmdcUserDetailsCache ??
+  (globalForMessenger.__bmdcUserDetailsCache = new Map<string, CachedUserEntry>());
+
+const programGcSyncCache =
+  globalForMessenger.__bmdcProgramGcSyncCache ??
+  (globalForMessenger.__bmdcProgramGcSyncCache = new Map<string, number>());
+
+const programGcSyncInFlight =
+  globalForMessenger.__bmdcProgramGcSyncInFlight ??
+  (globalForMessenger.__bmdcProgramGcSyncInFlight = new Map<string, Promise<void>>());
+
+/**
+ * Clear in-memory Messenger TTL caches (used by explicit ?sync=1 refreshes and tests).
+ */
+export function clearMessengerCaches(): void {
+  userDetailsCache.clear();
+  programGcSyncCache.clear();
+  programGcSyncInFlight.clear();
+}
 
 export const DEFAULT_BMDC_TENANT_ID = '194876de-a68c-4d33-8f80-c0978e5d44b3';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,6 +101,19 @@ function chunkArray<T>(items: T[], chunkSize: number = 200): T[][] {
     chunks.push(items.slice(i, i + chunkSize));
   }
   return chunks;
+}
+
+function setCachedUserSummary(id: string, summary: UserSummary): void {
+  if (userDetailsCache.size >= USER_DETAILS_CACHE_MAX && !userDetailsCache.has(id)) {
+    const oldestKey = userDetailsCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      userDetailsCache.delete(oldestKey);
+    }
+  }
+  userDetailsCache.set(id, {
+    value: summary,
+    expiresAt: Date.now() + USER_DETAILS_CACHE_TTL_MS,
+  });
 }
 
 export interface MessageAttachment {
@@ -243,17 +291,40 @@ export async function resolveTraineesForUsers(
 }
 
 /**
- * Resolves display name and avatar for a given list of user IDs.
+ * Resolves display name and avatar for a given list of user IDs with a 5-minute TTL cache.
  */
-export async function resolveUserDetails(userIds: string[]): Promise<Record<string, UserSummary>> {
+export async function resolveUserDetails(
+  userIds: string[],
+  options?: { bypassCache?: boolean }
+): Promise<Record<string, UserSummary>> {
   const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
   if (uniqueIds.length === 0) return {};
 
   const userMap: Record<string, UserSummary> = {};
+  const missingIds: string[] = [];
+  const now = Date.now();
+
+  if (options?.bypassCache) {
+    missingIds.push(...uniqueIds);
+  } else {
+    for (const id of uniqueIds) {
+      const cached = userDetailsCache.get(id);
+      if (cached && cached.expiresAt > now) {
+        userMap[id] = cached.value;
+      } else {
+        if (cached) userDetailsCache.delete(id);
+        missingIds.push(id);
+      }
+    }
+  }
+
+  if (missingIds.length === 0) {
+    return userMap;
+  }
 
   try {
     const users: BasicUserRecord[] = [];
-    for (const idChunk of chunkArray(uniqueIds)) {
+    for (const idChunk of chunkArray(missingIds)) {
       const { data } = await supabaseAdmin
         .from('users')
         .select('id, email, username, role')
@@ -261,22 +332,20 @@ export async function resolveUserDetails(userIds: string[]): Promise<Record<stri
       if (data) users.push(...(data as BasicUserRecord[]));
     }
 
-    if (users.length === 0) return {};
+    if (users.length === 0) return userMap;
 
-    const traineeMap = await resolveTraineesForUsers(users);
-
-    // Fetch instructor names (case-insensitive email matching)
     const hasNonTraineeUsers = users.some((u) => u.role !== 'trainee' && u.email);
-    const instructorMap = new Map<string, InstructorRecord>();
-    if (hasNonTraineeUsers) {
-      const { data: instructors } = await supabaseAdmin
-        .from('instructors')
-        .select('first_name, last_name, email, photo_path');
+    const [traineeMap, instructorsResult] = await Promise.all([
+      resolveTraineesForUsers(users),
+      hasNonTraineeUsers
+        ? supabaseAdmin.from('instructors').select('first_name, last_name, email, photo_path')
+        : Promise.resolve({ data: [] as InstructorRecord[] }),
+    ]);
 
-      for (const inst of (instructors || []) as InstructorRecord[]) {
-        const key = normalizeEmail(inst.email);
-        if (key) instructorMap.set(key, inst);
-      }
+    const instructorMap = new Map<string, InstructorRecord>();
+    for (const inst of ((instructorsResult as any)?.data || []) as InstructorRecord[]) {
+      const key = normalizeEmail(inst.email);
+      if (key) instructorMap.set(key, inst);
     }
 
     for (const u of users) {
@@ -305,13 +374,15 @@ export async function resolveUserDetails(userIds: string[]): Promise<Record<stri
         }
       }
 
-      userMap[u.id] = {
+      const summary: UserSummary = {
         id: u.id,
         name: displayName || 'User',
         email: u.email,
         role: u.role,
         avatar,
       };
+      userMap[u.id] = summary;
+      setCachedUserSummary(u.id, summary);
     }
   } catch (error) {
     logger.error('Failed to resolve user details', { error });
@@ -362,58 +433,82 @@ async function fetchActiveTenantIds(): Promise<string[]> {
   return (data || []).map((t: any) => t.id).filter(Boolean);
 }
 
-async function fetchEnrolledTraineeUserIdsForProgram(
-  programId: string,
-  programTenantId: string
-): Promise<string[]> {
-  const { data: enrollments, error: enrollError } = await supabaseAdmin
-    .from('enrollments')
-    .select('trainee_id')
-    .eq('program_id', programId)
-    .in('status', [...ACTIVE_ENROLLMENT_STATUSES]);
+/**
+ * Batch-resolve enrolled active/approved trainee user IDs for a set of programs in minimal queries.
+ */
+async function fetchEnrolledTraineeUserIdsByProgram(
+  programs: Array<{ id: string; tenant_id: string }>
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  for (const prog of programs) {
+    result.set(prog.id, []);
+  }
+  if (programs.length === 0) return result;
 
-  if (enrollError) throw enrollError;
-  const traineeIds = Array.from(
-    new Set((enrollments || []).map((e: any) => e.trainee_id).filter(Boolean))
+  const programIds = programs.map((p) => p.id);
+  const programTenantMap = new Map(programs.map((p) => [p.id, resolveTenantId(p.tenant_id)]));
+
+  // 1. Batch-fetch all non-dropped enrollments across target programs
+  const enrollments: Array<{ program_id: string; trainee_id: string }> = [];
+  for (const progChunk of chunkArray(programIds)) {
+    const { data, error } = await supabaseAdmin
+      .from('enrollments')
+      .select('program_id, trainee_id')
+      .in('program_id', progChunk)
+      .in('status', [...ACTIVE_ENROLLMENT_STATUSES]);
+    if (error) throw error;
+    if (data) enrollments.push(...(data as Array<{ program_id: string; trainee_id: string }>));
+  }
+
+  const allTraineeIds = Array.from(
+    new Set(enrollments.map((e) => e.trainee_id).filter(Boolean))
   );
-  if (traineeIds.length === 0) return [];
+  if (allTraineeIds.length === 0) return result;
 
-  // Load trainees in this program's tenant and filter to active + approved
+  // 2. Batch-fetch trainees and trainee_accounts in parallel
+  const [traineesList, accountLinks] = await Promise.all([
+    (async () => {
+      const list: TraineeRecord[] = [];
+      for (const idChunk of chunkArray(allTraineeIds)) {
+        const { data, error } = await supabaseAdmin
+          .from('trainees')
+          .select('id, user_id, first_name, last_name, email, registration_status, status, deleted_at, tenant_id')
+          .in('id', idChunk);
+        if (error) throw error;
+        if (data) list.push(...(data as TraineeRecord[]));
+      }
+      return list;
+    })(),
+    (async () => {
+      const list: Array<{ trainee_id: string; user_id: string }> = [];
+      for (const idChunk of chunkArray(allTraineeIds)) {
+        const { data, error } = await supabaseAdmin
+          .from('trainee_accounts')
+          .select('trainee_id, user_id')
+          .in('trainee_id', idChunk);
+        if (error) throw error;
+        if (data) list.push(...(data as Array<{ trainee_id: string; user_id: string }>));
+      }
+      return list;
+    })(),
+  ]);
+
+  const traineeById = new Map<string, TraineeRecord>();
   const activeTrainees: TraineeRecord[] = [];
-  for (const idChunk of chunkArray(traineeIds)) {
-    const { data: trainees, error: traineeError } = await supabaseAdmin
-      .from('trainees')
-      .select('id, user_id, first_name, last_name, email, registration_status, status, deleted_at, tenant_id')
-      .in('id', idChunk)
-      .eq('tenant_id', programTenantId);
-
-    if (traineeError) throw traineeError;
-    for (const t of (trainees || []) as TraineeRecord[]) {
-      if (isActiveApprovedTrainee(t)) {
-        activeTrainees.push(t);
-      }
+  for (const t of traineesList) {
+    if (isActiveApprovedTrainee(t)) {
+      traineeById.set(t.id, t);
+      activeTrainees.push(t);
     }
   }
 
-  if (activeTrainees.length === 0) return [];
-
-  // Stage 1: trainee_accounts link
   const userIdByTraineeId = new Map<string, string>();
-  for (const idChunk of chunkArray(activeTrainees.map((t) => t.id))) {
-    const { data: links, error: linkError } = await supabaseAdmin
-      .from('trainee_accounts')
-      .select('trainee_id, user_id')
-      .in('trainee_id', idChunk);
-
-    if (linkError) throw linkError;
-    for (const link of links || []) {
-      if (link.trainee_id && link.user_id) {
-        userIdByTraineeId.set(link.trainee_id, link.user_id);
-      }
+  for (const link of accountLinks) {
+    if (link.trainee_id && link.user_id) {
+      userIdByTraineeId.set(link.trainee_id, link.user_id);
     }
   }
 
-  // Stage 2: trainees.user_id column fallback
   const stillMissingEmailLookup: TraineeRecord[] = [];
   for (const t of activeTrainees) {
     if (userIdByTraineeId.has(t.id)) continue;
@@ -424,7 +519,7 @@ async function fetchEnrolledTraineeUserIdsForProgram(
     }
   }
 
-  // Stage 3: case-insensitive users.email fallback (existing trainee accounts only)
+  // Stage 3: case-insensitive email fallback for any remaining active trainees
   if (stillMissingEmailLookup.length > 0) {
     const candidateEmails = Array.from(
       new Set(
@@ -443,7 +538,6 @@ async function fetchEnrolledTraineeUserIdsForProgram(
         .select('id, email')
         .eq('role', 'trainee')
         .in('email', emailChunk);
-
       if (userErr) throw userErr;
       for (const u of matchedUsers || []) {
         const key = normalizeEmail(u.email);
@@ -459,7 +553,27 @@ async function fetchEnrolledTraineeUserIdsForProgram(
     }
   }
 
-  return Array.from(new Set(userIdByTraineeId.values()));
+  // Group resolved trainee user IDs per program (enforcing same tenant_id)
+  const setsByProgram = new Map<string, Set<string>>();
+  for (const enr of enrollments) {
+    const trainee = traineeById.get(enr.trainee_id);
+    if (!trainee) continue;
+    const expectedTenant = programTenantMap.get(enr.program_id);
+    if (expectedTenant && trainee.tenant_id && trainee.tenant_id !== expectedTenant) {
+      continue;
+    }
+    const uid = userIdByTraineeId.get(trainee.id);
+    if (!uid) continue;
+    if (!setsByProgram.has(enr.program_id)) {
+      setsByProgram.set(enr.program_id, new Set());
+    }
+    setsByProgram.get(enr.program_id)!.add(uid);
+  }
+
+  for (const [progId, uidSet] of setsByProgram.entries()) {
+    result.set(progId, Array.from(uidSet));
+  }
+  return result;
 }
 
 export class MessengerService {
@@ -467,181 +581,284 @@ export class MessengerService {
    * Automatically ensure Program Group Chats exist, contain all valid tenant staff,
    * super admins, and active non-dropped enrolled trainees, and prune stale/orphaned
    * participants from program_group chats.
+   * Coalesced in-flight and throttled by a 60s TTL per (tenantId, userId, role).
    */
-  static async syncProgramGroupChatsForUser(userId: string, tenantId: string, role: string): Promise<void> {
-    try {
-      const resolvedTenantId = resolveTenantId(tenantId);
-      let targetPrograms: Array<{ id: string; name: string; tenant_id: string }> = [];
+  static async syncProgramGroupChatsForUser(
+    userId: string,
+    tenantId: string,
+    role: string,
+    options?: { force?: boolean }
+  ): Promise<void> {
+    const resolvedTenantId = resolveTenantId(tenantId);
+    const cacheKey = `${resolvedTenantId}:${userId}:${role}`;
 
-      if (role === 'trainee') {
-        const { data: userRow } = await supabaseAdmin
-          .from('users')
-          .select('id, email, username, role')
-          .eq('id', userId)
-          .maybeSingle();
+    if (!options?.force) {
+      const lastSynced = programGcSyncCache.get(cacheKey);
+      if (lastSynced && Date.now() - lastSynced < PROGRAM_GC_SYNC_TTL_MS) {
+        return;
+      }
 
-        const traineeMap = userRow
-          ? await resolveTraineesForUsers([userRow as BasicUserRecord])
-          : new Map<string, TraineeRecord>();
-        const trainee = traineeMap.get(userId);
+      const inFlight = programGcSyncInFlight.get(cacheKey);
+      if (inFlight) {
+        return inFlight;
+      }
+    }
 
-        if (trainee && isActiveApprovedTrainee(trainee)) {
-          const { data: enrollments } = await supabaseAdmin
-            .from('enrollments')
-            .select('program_id')
-            .eq('trainee_id', trainee.id)
-            .in('status', [...ACTIVE_ENROLLMENT_STATUSES]);
+    const syncPromise = (async () => {
+      try {
+        let targetPrograms: Array<{ id: string; name: string; tenant_id: string }> = [];
 
-          const programIds = Array.from(
-            new Set((enrollments || []).map((e: any) => e.program_id).filter(Boolean))
-          );
+        if (role === 'trainee') {
+          const { data: userRow } = await supabaseAdmin
+            .from('users')
+            .select('id, email, username, role')
+            .eq('id', userId)
+            .maybeSingle();
 
-          if (programIds.length > 0) {
+          const traineeMap = userRow
+            ? await resolveTraineesForUsers([userRow as BasicUserRecord])
+            : new Map<string, TraineeRecord>();
+          const trainee = traineeMap.get(userId);
+
+          if (trainee && isActiveApprovedTrainee(trainee)) {
+            const { data: enrollments } = await supabaseAdmin
+              .from('enrollments')
+              .select('program_id')
+              .eq('trainee_id', trainee.id)
+              .in('status', [...ACTIVE_ENROLLMENT_STATUSES]);
+
+            const programIds = Array.from(
+              new Set((enrollments || []).map((e: any) => e.program_id).filter(Boolean))
+            );
+
+            if (programIds.length > 0) {
+              const { data: programs } = await supabaseAdmin
+                .from('programs')
+                .select('id, name, tenant_id')
+                .in('id', programIds);
+              targetPrograms = (programs || []) as Array<{ id: string; name: string; tenant_id: string }>;
+            }
+          }
+        } else if (role === 'super_admin') {
+          const activeTenantIds = await fetchActiveTenantIds();
+          if (activeTenantIds.length > 0) {
             const { data: programs } = await supabaseAdmin
               .from('programs')
               .select('id, name, tenant_id')
-              .in('id', programIds);
+              .in('tenant_id', activeTenantIds);
             targetPrograms = (programs || []) as Array<{ id: string; name: string; tenant_id: string }>;
           }
-        }
-      } else if (role === 'super_admin') {
-        const activeTenantIds = await fetchActiveTenantIds();
-        if (activeTenantIds.length > 0) {
+        } else {
           const { data: programs } = await supabaseAdmin
             .from('programs')
             .select('id, name, tenant_id')
-            .in('tenant_id', activeTenantIds);
+            .eq('tenant_id', resolvedTenantId);
           targetPrograms = (programs || []) as Array<{ id: string; name: string; tenant_id: string }>;
         }
-      } else {
-        const { data: programs } = await supabaseAdmin
-          .from('programs')
-          .select('id, name, tenant_id')
-          .eq('tenant_id', resolvedTenantId);
-        targetPrograms = (programs || []) as Array<{ id: string; name: string; tenant_id: string }>;
-      }
 
-      if (targetPrograms.length === 0) return;
+        if (targetPrograms.length === 0) {
+          programGcSyncCache.set(cacheKey, Date.now());
+          return;
+        }
 
-      // Preload super admins once and cache tenant-scoped staff per program tenant
-      const superAdmins = await fetchSuperAdminUsers();
-      const superAdminIds = superAdmins.map((u) => u.id);
-      const staffIdsByTenant = new Map<string, string[]>();
+        const uniqueTenantIds = Array.from(
+          new Set(targetPrograms.map((p) => resolveTenantId(p.tenant_id)))
+        );
+        const programIds = targetPrograms.map((p) => p.id);
 
-      const getStaffIdsForTenant = async (progTenantId: string): Promise<string[]> => {
-        const cached = staffIdsByTenant.get(progTenantId);
-        if (cached) return cached;
-
-        const memberIds = await fetchTenantMemberUserIds(progTenantId);
-        const memberUsers = await fetchUsersByIds(memberIds);
-        const staffIds = memberUsers
-          .filter((u) => STAFF_ROLES.includes(u.role as (typeof STAFF_ROLES)[number]))
-          .map((u) => u.id);
-
-        staffIdsByTenant.set(progTenantId, staffIds);
-        return staffIds;
-      };
-
-      for (const prog of targetPrograms) {
-        const progTenantId = resolveTenantId(prog.tenant_id);
-
-        // Find or create group chat for this program
-        let { data: conv } = await supabaseAdmin
-          .from('conversations')
-          .select('id, title')
-          .eq('tenant_id', progTenantId)
-          .eq('program_id', prog.id)
-          .eq('type', 'program_group')
-          .maybeSingle();
-
-        if (!conv) {
-          const title = prog.name ? `${prog.name} (Program GC)` : 'Program Group Chat';
-          const { data: newConv, error: insertConvErr } = await supabaseAdmin
-            .from('conversations')
-            .insert({
-              tenant_id: progTenantId,
-              type: 'program_group',
-              program_id: prog.id,
-              title,
+        // Batch-load super admins, tenant staff per unique tenant, existing GCs, and enrolled trainees in parallel
+        const [superAdmins, staffEntries, existingGcsResult, enrolledByProgram] = await Promise.all([
+          fetchSuperAdminUsers(),
+          Promise.all(
+            uniqueTenantIds.map(async (tid) => {
+              const memberIds = await fetchTenantMemberUserIds(tid);
+              const memberUsers = await fetchUsersByIds(memberIds);
+              const staffIds = memberUsers
+                .filter((u) => STAFF_ROLES.includes(u.role as (typeof STAFF_ROLES)[number]))
+                .map((u) => u.id);
+              return [tid, staffIds] as const;
             })
-            .select('id, title')
-            .single();
+          ),
+          supabaseAdmin
+            .from('conversations')
+            .select('id, program_id, tenant_id, title')
+            .eq('type', 'program_group')
+            .in('program_id', programIds),
+          fetchEnrolledTraineeUserIdsByProgram(targetPrograms),
+        ]);
 
-          if (insertConvErr) {
-            // Handle concurrent creation on unique index uq_conversations_program
-            const { data: existingConv } = await supabaseAdmin
-              .from('conversations')
-              .select('id, title')
-              .eq('tenant_id', progTenantId)
-              .eq('program_id', prog.id)
-              .eq('type', 'program_group')
-              .maybeSingle();
-            conv = existingConv;
-          } else {
-            conv = newConv;
+        const superAdminIds = superAdmins.map((u) => u.id);
+        const staffIdsByTenant = new Map<string, string[]>(staffEntries);
+
+        const convByProgramKey = new Map<string, { id: string; title: string }>();
+        for (const c of (existingGcsResult.data || []) as Array<{
+          id: string;
+          program_id: string;
+          tenant_id: string;
+          title: string;
+        }>) {
+          if (c.program_id) {
+            convByProgramKey.set(`${resolveTenantId(c.tenant_id)}:${c.program_id}`, {
+              id: c.id,
+              title: c.title,
+            });
           }
         }
 
-        if (!conv) continue;
+        // Create any missing Program GC rows in parallel
+        const missingPrograms = targetPrograms.filter(
+          (prog) => !convByProgramKey.has(`${resolveTenantId(prog.tenant_id)}:${prog.id}`)
+        );
+        if (missingPrograms.length > 0) {
+          await Promise.all(
+            missingPrograms.map(async (prog) => {
+              const progTenantId = resolveTenantId(prog.tenant_id);
+              const title = prog.name ? `${prog.name} (Program GC)` : 'Program Group Chat';
+              const { data: newConv, error: insertConvErr } = await supabaseAdmin
+                .from('conversations')
+                .insert({
+                  tenant_id: progTenantId,
+                  type: 'program_group',
+                  program_id: prog.id,
+                  title,
+                })
+                .select('id, title')
+                .single();
 
-        const [tenantStaffIds, enrolledTraineeUserIds] = await Promise.all([
-          getStaffIdsForTenant(progTenantId),
-          fetchEnrolledTraineeUserIdsForProgram(prog.id, progTenantId),
-        ]);
+              if (insertConvErr) {
+                const { data: existingConv } = await supabaseAdmin
+                  .from('conversations')
+                  .select('id, title')
+                  .eq('tenant_id', progTenantId)
+                  .eq('program_id', prog.id)
+                  .eq('type', 'program_group')
+                  .maybeSingle();
+                if (existingConv) {
+                  convByProgramKey.set(`${progTenantId}:${prog.id}`, existingConv);
+                }
+              } else if (newConv) {
+                convByProgramKey.set(`${progTenantId}:${prog.id}`, newConv);
+              }
+            })
+          );
+        }
 
-        const validMemberSet = new Set<string>([
-          ...tenantStaffIds,
-          ...superAdminIds,
-          ...enrolledTraineeUserIds,
-        ]);
+        const resolvedConvs: Array<{
+          convId: string;
+          progId: string;
+          progTenantId: string;
+        }> = [];
+        for (const prog of targetPrograms) {
+          const progTenantId = resolveTenantId(prog.tenant_id);
+          const conv = convByProgramKey.get(`${progTenantId}:${prog.id}`);
+          if (conv) {
+            resolvedConvs.push({ convId: conv.id, progId: prog.id, progTenantId });
+          }
+        }
 
-        const { data: existingParts, error: existingPartsErr } = await supabaseAdmin
+        if (resolvedConvs.length === 0) {
+          programGcSyncCache.set(cacheKey, Date.now());
+          return;
+        }
+
+        // Batch-fetch existing participants across all resolved Program GCs in one query
+        const allConvIds = resolvedConvs.map((c) => c.convId);
+        const { data: allExistingParts, error: existingPartsErr } = await supabaseAdmin
           .from('conversation_participants')
-          .select('user_id')
-          .eq('conversation_id', conv.id);
+          .select('conversation_id, user_id')
+          .in('conversation_id', allConvIds);
 
-        if (existingPartsErr) continue;
+        if (existingPartsErr) return;
 
-        const existingSet = new Set<string>((existingParts || []).map((p: any) => p.user_id));
-
-        // 1. Add any missing valid participants without resetting last_read_at
-        const missingIds = Array.from(validMemberSet).filter((id) => !existingSet.has(id));
-        if (missingIds.length > 0) {
-          for (const idChunk of chunkArray(missingIds)) {
-            await supabaseAdmin
-              .from('conversation_participants')
-              .upsert(
-                idChunk.map((uid) => ({ conversation_id: conv!.id, user_id: uid })),
-                { onConflict: 'conversation_id,user_id', ignoreDuplicates: true }
-              );
+        const existingByConv = new Map<string, Set<string>>();
+        for (const p of (allExistingParts || []) as Array<{ conversation_id: string; user_id: string }>) {
+          if (!existingByConv.has(p.conversation_id)) {
+            existingByConv.set(p.conversation_id, new Set());
           }
+          existingByConv.get(p.conversation_id)!.add(p.user_id);
         }
 
-        // 2. Prune stale/orphaned participants from this program_group only
-        const staleIds = Array.from(existingSet).filter((id) => !validMemberSet.has(id));
-        if (staleIds.length > 0) {
-          for (const idChunk of chunkArray(staleIds)) {
-            await supabaseAdmin
-              .from('conversation_participants')
-              .delete()
-              .eq('conversation_id', conv.id)
-              .in('user_id', idChunk);
-          }
-        }
+        // Diff, upsert missing members, and prune stale/orphaned members concurrently
+        await Promise.all(
+          resolvedConvs.map(async ({ convId, progId, progTenantId }) => {
+            const tenantStaffIds = staffIdsByTenant.get(progTenantId) || [];
+            const enrolledTraineeUserIds = enrolledByProgram.get(progId) || [];
+            const validMemberSet = new Set<string>([
+              ...tenantStaffIds,
+              ...superAdminIds,
+              ...enrolledTraineeUserIds,
+            ]);
+
+            const existingSet = existingByConv.get(convId) || new Set<string>();
+            const missingIds = Array.from(validMemberSet).filter((id) => !existingSet.has(id));
+            const staleIds = Array.from(existingSet).filter((id) => !validMemberSet.has(id));
+
+            const ops: Promise<any>[] = [];
+
+            if (missingIds.length > 0) {
+              for (const idChunk of chunkArray(missingIds)) {
+                ops.push(
+                  Promise.resolve(
+                    supabaseAdmin.from('conversation_participants').upsert(
+                      idChunk.map((uid) => ({ conversation_id: convId, user_id: uid })),
+                      { onConflict: 'conversation_id,user_id', ignoreDuplicates: true }
+                    )
+                  )
+                );
+              }
+            }
+
+            if (staleIds.length > 0) {
+              for (const idChunk of chunkArray(staleIds)) {
+                ops.push(
+                  Promise.resolve(
+                    supabaseAdmin
+                      .from('conversation_participants')
+                      .delete()
+                      .eq('conversation_id', convId)
+                      .in('user_id', idChunk)
+                  )
+                );
+              }
+            }
+
+            if (ops.length > 0) {
+              await Promise.all(ops);
+            }
+          })
+        );
+
+        programGcSyncCache.set(cacheKey, Date.now());
+      } catch (error) {
+        logger.error('Error syncing program group chats', { error, userId });
+      } finally {
+        programGcSyncInFlight.delete(cacheKey);
       }
-    } catch (error) {
-      logger.error('Error syncing program group chats', { error, userId });
-    }
+    })();
+
+    programGcSyncInFlight.set(cacheKey, syncPromise);
+    return syncPromise;
   }
 
   /**
    * List all conversations for the authenticated user
    */
-  static async listUserConversations(userId: string, tenantId: string, role: string) {
+  static async listUserConversations(
+    userId: string,
+    tenantId: string,
+    role: string,
+    options?: { forceSync?: boolean }
+  ) {
     const resolvedTenantId = resolveTenantId(tenantId);
 
-    // Run sync first so current programs and participants are up to date
-    await this.syncProgramGroupChatsForUser(userId, resolvedTenantId, role);
+    if (options?.forceSync) {
+      userDetailsCache.clear();
+    }
+
+    // Run throttled/coalesced Program GC sync first
+    await this.syncProgramGroupChatsForUser(userId, resolvedTenantId, role, {
+      force: options?.forceSync,
+    });
 
     // Fetch conversations where user is a participant
     const { data: participations, error: partError } = await supabaseAdmin
@@ -656,55 +873,63 @@ export class MessengerService {
     const conversationIds = participations.map((p) => p.conversation_id);
     const readMap = new Map(participations.map((p) => [p.conversation_id, p.last_read_at]));
 
-    const { data: conversations, error: convError } = await supabaseAdmin
-      .from('conversations')
-      .select(`
-        id,
-        type,
-        program_id,
-        title,
-        last_message_at,
-        created_at
-      `)
-      .in('id', conversationIds)
-      .order('last_message_at', { ascending: false });
+    // Fetch conversation metadata and all participants in parallel
+    const [convResult, allPartResult] = await Promise.all([
+      supabaseAdmin
+        .from('conversations')
+        .select(`
+          id,
+          type,
+          program_id,
+          title,
+          last_message_at,
+          created_at
+        `)
+        .in('id', conversationIds)
+        .order('last_message_at', { ascending: false }),
+      supabaseAdmin
+        .from('conversation_participants')
+        .select('conversation_id, user_id')
+        .in('conversation_id', conversationIds),
+    ]);
 
-    if (convError || !conversations) {
+    const conversations = convResult.data;
+    if (convResult.error || !conversations) {
       return [];
     }
 
-    // Collect all participants across these conversations to resolve names
-    const { data: allParticipants } = await supabaseAdmin
-      .from('conversation_participants')
-      .select('conversation_id, user_id')
-      .in('conversation_id', conversationIds);
+    const allParticipants = allPartResult.data || [];
+    const allUserIds = Array.from<string>(new Set(allParticipants.map((p: any) => p.user_id)));
+    const userDetailsMap = await resolveUserDetails(allUserIds, {
+      bypassCache: options?.forceSync,
+    });
 
-    const allUserIds = Array.from<string>(new Set((allParticipants || []).map((p: any) => p.user_id)));
-    const userDetailsMap = await resolveUserDetails(allUserIds);
-
-    // Fetch latest message & unread count for each conversation
+    // Fetch latest message & unread count for each conversation concurrently
     const result = await Promise.all(
       conversations.map(async (conv) => {
         const lastReadAt = readMap.get(conv.id) || new Date(0).toISOString();
 
-        const { data: latestMsgs } = await supabaseAdmin
-          .from('messages')
-          .select('id, sender_id, content, attachment_type, is_deleted, created_at')
-          .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: false })
-          .limit(1);
+        const [latestMsgRes, unreadRes] = await Promise.all([
+          supabaseAdmin
+            .from('messages')
+            .select('id, sender_id, content, attachment_type, is_deleted, created_at')
+            .eq('conversation_id', conv.id)
+            .order('created_at', { ascending: false })
+            .limit(1),
+          supabaseAdmin
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('conversation_id', conv.id)
+            .gt('created_at', lastReadAt)
+            .neq('sender_id', userId)
+            .eq('is_deleted', false),
+        ]);
 
+        const latestMsgs = latestMsgRes.data;
         const latestMsg = latestMsgs && latestMsgs.length > 0 ? latestMsgs[0] : null;
+        const unreadCount = unreadRes.count || 0;
 
-        const { count: unreadCount } = await supabaseAdmin
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('conversation_id', conv.id)
-          .gt('created_at', lastReadAt)
-          .neq('sender_id', userId)
-          .eq('is_deleted', false);
-
-        const convParts = (allParticipants || [])
+        const convParts = allParticipants
           .filter((p) => p.conversation_id === conv.id)
           .map((p) => userDetailsMap[p.user_id])
           .filter(Boolean);
@@ -724,7 +949,7 @@ export class MessengerService {
           title: displayTitle || 'Chat',
           programId: conv.program_id,
           lastMessageAt: conv.last_message_at,
-          unreadCount: unreadCount || 0,
+          unreadCount,
           latestMessage: latestMsg
             ? {
                 id: latestMsg.id,
@@ -777,39 +1002,148 @@ export class MessengerService {
   }
 
   /**
-   * Get single conversation details with participants
+   * Combined fast-path fetch for GET /api/messages/[conversationId]:
+   * verifies membership once, fetches conversation + newest messages in parallel,
+   * resolves all user details via cache in one pass, and marks read non-blocking.
    */
-  static async getConversationDetails(conversationId: string, userId: string) {
-    const { data: part } = await supabaseAdmin
-      .from('conversation_participants')
-      .select('user_id')
-      .eq('conversation_id', conversationId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!part) {
-      throw new MessengerError('Access denied: You are not a participant in this conversation', 403);
-    }
-
-    const { data: conv, error } = await supabaseAdmin
-      .from('conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .single();
-
-    if (error || !conv) {
-      throw new MessengerError('Conversation not found', 404);
-    }
-
-    const { data: participants } = await supabaseAdmin
+  static async getConversationWithMessages(
+    conversationId: string,
+    userId: string,
+    limit: number = 60
+  ) {
+    const { data: participants, error: partErr } = await supabaseAdmin
       .from('conversation_participants')
       .select('user_id, joined_at, last_read_at')
       .eq('conversation_id', conversationId);
 
-    const userIds = (participants || []).map((p) => p.user_id);
-    const userDetailsMap = await resolveUserDetails(userIds);
+    if (partErr) throw partErr;
 
-    const mappedParticipants = (participants || [])
+    const participantRows = (participants || []) as Array<{
+      user_id: string;
+      joined_at?: string;
+      last_read_at?: string;
+    }>;
+
+    if (!participantRows.some((p) => p.user_id === userId)) {
+      throw new MessengerError('Access denied: You are not a participant in this conversation', 403);
+    }
+
+    const [convResult, messagesResult] = await Promise.all([
+      supabaseAdmin.from('conversations').select('*').eq('id', conversationId).single(),
+      supabaseAdmin
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .limit(limit),
+    ]);
+
+    if (convResult.error || !convResult.data) {
+      throw new MessengerError('Conversation not found', 404);
+    }
+    if (messagesResult.error) {
+      throw messagesResult.error;
+    }
+
+    const conv = convResult.data;
+    const rawMessages = [...(messagesResult.data || [])].reverse();
+
+    // Non-blocking read receipt update
+    void this.markAsRead(conversationId, userId).catch((err) => {
+      logger.warn('Background markAsRead failed in getConversationWithMessages', {
+        conversationId,
+        userId,
+        err,
+      });
+    });
+
+    const allUserIds = Array.from<string>(
+      new Set([
+        ...participantRows.map((p) => p.user_id),
+        ...rawMessages.map((m: any) => m.sender_id),
+      ])
+    );
+    const userDetailsMap = await resolveUserDetails(allUserIds);
+
+    const mappedParticipants = participantRows
+      .map((p) => {
+        const details = userDetailsMap[p.user_id];
+        if (!details) return null;
+        return {
+          ...details,
+          joinedAt: p.joined_at,
+          lastReadAt: p.last_read_at,
+        };
+      })
+      .filter(Boolean);
+
+    let displayTitle = conv.title;
+    let otherUser: UserSummary | undefined;
+    if (conv.type === 'direct') {
+      otherUser = mappedParticipants.find((p: any) => p.id !== userId) as UserSummary | undefined;
+      if (otherUser) {
+        displayTitle = otherUser.name;
+      }
+    }
+
+    const messages = rawMessages.map((m: any) => ({
+      id: m.id,
+      conversationId: m.conversation_id,
+      senderId: m.sender_id,
+      senderName: userDetailsMap[m.sender_id]?.name || 'User',
+      senderRole: userDetailsMap[m.sender_id]?.role || 'user',
+      senderAvatar: userDetailsMap[m.sender_id]?.avatar,
+      content: m.is_deleted ? 'This message was unsent' : m.content,
+      attachmentUrl: m.is_deleted ? null : m.attachment_url,
+      attachmentType: m.is_deleted ? null : m.attachment_type,
+      attachmentName: m.is_deleted ? null : m.attachment_name,
+      isDeleted: m.is_deleted,
+      createdAt: m.created_at,
+    }));
+
+    return {
+      conversation: {
+        ...conv,
+        title: displayTitle,
+        otherUser,
+        participants: mappedParticipants,
+      },
+      messages,
+    };
+  }
+
+  /**
+   * Get single conversation details with participants
+   */
+  static async getConversationDetails(conversationId: string, userId: string) {
+    const { data: participants, error: partErr } = await supabaseAdmin
+      .from('conversation_participants')
+      .select('user_id, joined_at, last_read_at')
+      .eq('conversation_id', conversationId);
+
+    if (partErr) throw partErr;
+    const participantRows = (participants || []) as Array<{
+      user_id: string;
+      joined_at?: string;
+      last_read_at?: string;
+    }>;
+
+    if (!participantRows.some((p) => p.user_id === userId)) {
+      throw new MessengerError('Access denied: You are not a participant in this conversation', 403);
+    }
+
+    const userIds = participantRows.map((p) => p.user_id);
+    const [convResult, userDetailsMap] = await Promise.all([
+      supabaseAdmin.from('conversations').select('*').eq('id', conversationId).single(),
+      resolveUserDetails(userIds),
+    ]);
+
+    if (convResult.error || !convResult.data) {
+      throw new MessengerError('Conversation not found', 404);
+    }
+    const conv = convResult.data;
+
+    const mappedParticipants = participantRows
       .map((p) => {
         const details = userDetailsMap[p.user_id];
         if (!details) return null;
@@ -867,7 +1201,9 @@ export class MessengerService {
 
     const messages = [...(rawMessages || [])].reverse();
 
-    await this.markAsRead(conversationId, userId);
+    void this.markAsRead(conversationId, userId).catch((err) => {
+      logger.warn('Background markAsRead failed in getMessages', { conversationId, userId, err });
+    });
 
     const senderIds = Array.from<string>(new Set(messages.map((m: any) => m.sender_id)));
     const userDetailsMap = await resolveUserDetails(senderIds);
@@ -889,7 +1225,10 @@ export class MessengerService {
   }
 
   /**
-   * Send a new message
+   * Fast-path sendMessage:
+   * 1. Single participant query verifies sender membership AND fetches SSE recipients.
+   * 2. Message insert runs concurrently with cached resolveUserDetails (0 DB queries when warm).
+   * 3. markAsRead runs non-blocking in the background so HTTP response returns immediately.
    */
   static async sendMessage(
     conversationId: string,
@@ -897,37 +1236,48 @@ export class MessengerService {
     content: string,
     attachment?: MessageAttachment
   ) {
-    const { data: part } = await supabaseAdmin
+    const { data: participants, error: partErr } = await supabaseAdmin
       .from('conversation_participants')
       .select('user_id')
-      .eq('conversation_id', conversationId)
-      .eq('user_id', senderId)
-      .maybeSingle();
+      .eq('conversation_id', conversationId);
 
-    if (!part) {
+    if (partErr) throw partErr;
+
+    const recipientUserIds = (participants || []).map((p: any) => p.user_id).filter(Boolean);
+    if (!recipientUserIds.includes(senderId)) {
       throw new MessengerError('Access denied: Sender is not a participant', 403);
     }
 
-    const { data: message, error } = await supabaseAdmin
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        sender_id: senderId,
-        content: content.trim(),
-        attachment_url: attachment?.url || null,
-        attachment_type: attachment?.type || null,
-        attachment_name: attachment?.name || null,
-      })
-      .select('*')
-      .single();
+    const [insertResult, userDetailsMap] = await Promise.all([
+      supabaseAdmin
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: senderId,
+          content: content.trim(),
+          attachment_url: attachment?.url || null,
+          attachment_type: attachment?.type || null,
+          attachment_name: attachment?.name || null,
+        })
+        .select('*')
+        .single(),
+      resolveUserDetails([senderId]),
+    ]);
 
+    const { data: message, error } = insertResult;
     if (error || !message) {
       throw error || new Error('Failed to create message');
     }
 
-    await this.markAsRead(conversationId, senderId);
+    // Fire-and-forget read update so we don't block the send response
+    void this.markAsRead(conversationId, senderId).catch((err) => {
+      logger.warn('Background markAsRead failed after sendMessage', {
+        conversationId,
+        senderId,
+        err,
+      });
+    });
 
-    const userDetailsMap = await resolveUserDetails([senderId]);
     const sender = userDetailsMap[senderId];
 
     const messagePayload = {
@@ -944,13 +1294,6 @@ export class MessengerService {
       isDeleted: false,
       createdAt: message.created_at,
     };
-
-    const { data: participants } = await supabaseAdmin
-      .from('conversation_participants')
-      .select('user_id')
-      .eq('conversation_id', conversationId);
-
-    const recipientUserIds = (participants || []).map((p) => p.user_id);
 
     messengerEvents.emit('new_message', {
       conversationId,
@@ -990,22 +1333,23 @@ export class MessengerService {
       throw new MessengerError('Messages can only be unsent within 15 minutes of sending', 400);
     }
 
-    await supabaseAdmin
-      .from('messages')
-      .update({
-        is_deleted: true,
-        deleted_at: new Date().toISOString(),
-        content: 'This message was unsent',
-        attachment_url: null,
-      })
-      .eq('id', messageId);
+    const [, participantsResult] = await Promise.all([
+      supabaseAdmin
+        .from('messages')
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          content: 'This message was unsent',
+          attachment_url: null,
+        })
+        .eq('id', messageId),
+      supabaseAdmin
+        .from('conversation_participants')
+        .select('user_id')
+        .eq('conversation_id', conversationId),
+    ]);
 
-    const { data: participants } = await supabaseAdmin
-      .from('conversation_participants')
-      .select('user_id')
-      .eq('conversation_id', conversationId);
-
-    const recipientUserIds = (participants || []).map((p) => p.user_id);
+    const recipientUserIds = (participantsResult.data || []).map((p: any) => p.user_id);
 
     messengerEvents.emit('message_unsend', {
       conversationId,
@@ -1078,13 +1422,19 @@ export class MessengerService {
     const isRecipientSuperAdmin = recipient.role === 'super_admin';
     const resolvedActorTenantId = resolveTenantId(tenantId);
 
-    // Fetch recipient tenant associations for isolation & conversation tenant_id resolution
-    const { data: recipientTenants } = await supabaseAdmin
-      .from('users_tenants')
-      .select('tenant_id, is_primary')
-      .eq('user_id', userBId);
+    // Fetch recipient tenant associations and existing userA conversations in parallel
+    const [recipientTenantsRes, convsARes] = await Promise.all([
+      supabaseAdmin
+        .from('users_tenants')
+        .select('tenant_id, is_primary')
+        .eq('user_id', userBId),
+      supabaseAdmin
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', userAId),
+    ]);
 
-    const recipientTenantList = (recipientTenants || []) as Array<{
+    const recipientTenantList = (recipientTenantsRes.data || []) as Array<{
       tenant_id: string;
       is_primary?: boolean;
     }>;
@@ -1108,11 +1458,7 @@ export class MessengerService {
     }
 
     // Check ALL shared conversations for an existing 'direct' conversation (not just commonPart[0])
-    const { data: convsA } = await supabaseAdmin
-      .from('conversation_participants')
-      .select('conversation_id')
-      .eq('user_id', userAId);
-
+    const convsA = convsARes.data;
     if (convsA && convsA.length > 0) {
       const convIdsA = convsA.map((c) => c.conversation_id);
       const { data: commonParts } = await supabaseAdmin

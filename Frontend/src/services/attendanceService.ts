@@ -217,6 +217,7 @@ export interface AdminDashboardData {
 }
 
 export interface DayAttendanceData {
+  session_id?: string | null;
   records: AttendanceRecord[];
   noRecord: Array<{
     id: string;

@@ -191,8 +191,8 @@ export default function TraineeProgramDetailsModal({
 
             {/* End Date */}
             <div className="flex items-start gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg border bg-muted/30">
-              <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-secondary/10 shrink-0">
-                <Calendar className="size-3 sm:size-3.5 text-secondary" />
+              <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+                <Calendar className="size-3 sm:size-3.5 text-primary" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">End Date</p>
@@ -205,8 +205,8 @@ export default function TraineeProgramDetailsModal({
             {/* Duration */}
             {program.duration_weeks && (
               <div className="flex items-start gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg border bg-muted/30">
-                <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-accent/10 shrink-0">
-                  <Clock className="size-3 sm:size-3.5 text-accent" />
+                <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+                  <Clock className="size-3 sm:size-3.5 text-primary" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">Duration</p>
@@ -233,8 +233,8 @@ export default function TraineeProgramDetailsModal({
             {/* Max Trainees */}
             {program.max_trainees && (
               <div className="flex items-start gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-lg border bg-muted/30">
-                <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-secondary/10 shrink-0">
-                  <Users className="size-3 sm:size-3.5 text-secondary" />
+                <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+                  <Users className="size-3 sm:size-3.5 text-primary" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">Max Trainees</p>

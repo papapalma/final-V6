@@ -16,6 +16,7 @@ interface TableStore {
 
 let db: TableStore;
 let idCounter = 1;
+let queryLog: Array<{ table: string; op: string }> = [];
 
 function nextUuid(): string {
   const hex = (idCounter++).toString(16).padStart(12, '0');
@@ -43,6 +44,7 @@ function createQueryBuilder(table: keyof TableStore) {
   };
 
   const execute = async (): Promise<{ data: any; error: any; count?: number }> => {
+    queryLog.push({ table, op });
     const rows = db[table];
 
     if (op === 'insert') {
@@ -222,6 +224,7 @@ import {
   MessengerError,
   messengerEvents,
   resolveUserDetails,
+  clearMessengerCaches,
 } from '@/services/messengerService';
 
 const TENANT_A = '194876de-a68c-4d33-8f80-c0978e5d44b3';
@@ -374,6 +377,8 @@ function seedBaseStore() {
 describe('MessengerService', () => {
   beforeEach(() => {
     seedBaseStore();
+    clearMessengerCaches();
+    queryLog = [];
   });
 
   it('anchors messengerEvents on globalThis so Next.js route chunks share one bus', () => {
@@ -641,6 +646,112 @@ describe('MessengerService', () => {
       } finally {
         messengerEvents.off('message_unsend', listener);
       }
+    });
+  });
+
+  describe('Speed Pipeline & TTL Caching', () => {
+    it('executes sendMessage in <=2 foreground queries on warm profile cache (0 user/trainee/instructor queries)', async () => {
+      const convId = '77777777-7777-4777-8777-777777777701';
+      db.conversations.push({ id: convId, tenant_id: TENANT_A, type: 'direct' });
+      db.conversation_participants.push(
+        { conversation_id: convId, user_id: LOCAL_ADMIN_A_ID },
+        { conversation_id: convId, user_id: TRAINEE_TA_ONLY_ID }
+      );
+
+      // Warm user profile cache
+      await resolveUserDetails([LOCAL_ADMIN_A_ID]);
+      queryLog = [];
+
+      let emitted: any = null;
+      const onMsg = (data: any) => {
+        emitted = data;
+      };
+      messengerEvents.on('new_message', onMsg);
+
+      try {
+        const saved = await MessengerService.sendMessage(convId, LOCAL_ADMIN_A_ID, 'Instant hello');
+        expect(saved.senderName).toBe('Local Admin');
+        expect(saved.content).toBe('Instant hello');
+        expect(emitted?.recipients).toEqual([LOCAL_ADMIN_A_ID, TRAINEE_TA_ONLY_ID]);
+
+        const participantSelects = queryLog.filter(
+          (q) => q.table === 'conversation_participants' && q.op === 'select'
+        );
+        const messageInserts = queryLog.filter((q) => q.table === 'messages' && q.op === 'insert');
+        const profileReads = queryLog.filter((q) =>
+          ['users', 'trainees', 'trainee_accounts', 'instructors'].includes(q.table)
+        );
+
+        expect(participantSelects).toHaveLength(1);
+        expect(messageInserts).toHaveLength(1);
+        expect(profileReads).toHaveLength(0);
+      } finally {
+        messengerEvents.off('new_message', onMsg);
+      }
+    });
+
+    it('fetches conversation + messages in a single participant membership pass via getConversationWithMessages', async () => {
+      const convId = '88888888-8888-4888-8888-888888888801';
+      db.conversations.push({ id: convId, tenant_id: TENANT_A, type: 'direct' });
+      db.conversation_participants.push(
+        { conversation_id: convId, user_id: LOCAL_ADMIN_A_ID },
+        { conversation_id: convId, user_id: TRAINEE_TA_ONLY_ID }
+      );
+      db.messages.push(
+        {
+          id: 'm1',
+          conversation_id: convId,
+          sender_id: LOCAL_ADMIN_A_ID,
+          content: 'First',
+          is_deleted: false,
+          created_at: '2026-11-23T10:00:00.000Z',
+        },
+        {
+          id: 'm2',
+          conversation_id: convId,
+          sender_id: TRAINEE_TA_ONLY_ID,
+          content: 'Second',
+          is_deleted: false,
+          created_at: '2026-11-23T10:01:00.000Z',
+        }
+      );
+
+      await resolveUserDetails([LOCAL_ADMIN_A_ID, TRAINEE_TA_ONLY_ID]);
+      queryLog = [];
+
+      const { conversation, messages } = await MessengerService.getConversationWithMessages(
+        convId,
+        LOCAL_ADMIN_A_ID
+      );
+
+      expect(conversation.title).toBe('Juan Dela Cruz');
+      expect(messages.map((m) => m.content)).toEqual(['First', 'Second']);
+      expect(
+        queryLog.filter((q) => q.table === 'conversation_participants' && q.op === 'select')
+      ).toHaveLength(1);
+      expect(queryLog.filter((q) => q.table === 'users')).toHaveLength(0);
+    });
+
+    it('caches resolveUserDetails for 5 minutes and skips redundant Program GC sync within 60s unless forceSync=true', async () => {
+      // 1. User profile TTL cache hit
+      await resolveUserDetails([TRAINEE_TA_ONLY_ID]);
+      queryLog = [];
+      const cachedDetails = await resolveUserDetails([TRAINEE_TA_ONLY_ID]);
+      expect(cachedDetails[TRAINEE_TA_ONLY_ID].name).toBe('Juan Dela Cruz');
+      expect(queryLog).toHaveLength(0);
+
+      // 2. Program GC sync TTL hit on second listUserConversations call
+      await MessengerService.listUserConversations(LOCAL_ADMIN_A_ID, TENANT_A, 'local_admin');
+      queryLog = [];
+      await MessengerService.listUserConversations(LOCAL_ADMIN_A_ID, TENANT_A, 'local_admin');
+      expect(queryLog.filter((q) => q.table === 'programs' || q.table === 'enrollments')).toHaveLength(0);
+
+      // 3. forceSync=true bypasses TTL cleanly
+      queryLog = [];
+      await MessengerService.listUserConversations(LOCAL_ADMIN_A_ID, TENANT_A, 'local_admin', {
+        forceSync: true,
+      });
+      expect(queryLog.filter((q) => q.table === 'programs').length).toBeGreaterThan(0);
     });
   });
 });

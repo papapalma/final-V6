@@ -80,7 +80,7 @@ const NAVIGATION_ARRAYS = {
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Platform Admin', href: '/super-admin', icon: ActivityIcon },
     { name: 'Trainees', href: '/trainees', icon: Users, permission: 'canManageTrainees' as const },
-    { name: 'Equipments', href: '/items', icon: Package, permission: 'canManageItems' as const },
+    { name: 'Inventory', href: '/items', icon: Package, permission: 'canManageItems' as const },
     { name: 'Borrowing', href: '/lendings', icon: FileText, permission: 'canManageLendings' as const },
     { name: 'Programs', href: '/programs', icon: GraduationCap, permission: 'canManagePrograms' as const },
     { name: 'Registrations', href: '/registrations', icon: ClipboardList, permission: 'canManageTrainees' as const },
@@ -389,13 +389,46 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
     }
   }, [user, hasPermission]);
 
+  const unlockDocumentInteraction = () => {
+    if (typeof document === 'undefined') return;
+    document.body.style.pointerEvents = '';
+    document.body.style.overflow = '';
+    document.body.removeAttribute('data-scroll-locked');
+    document.documentElement.style.pointerEvents = '';
+    document.documentElement.style.overflow = '';
+  };
+
+  // Ensure body pointer-events / scroll lock is never stranded on unmount or dialog close
+  useEffect(() => {
+    if (!logoutDialogOpen) {
+      const timer = setTimeout(unlockDocumentInteraction, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [logoutDialogOpen]);
+
+  useEffect(() => {
+    return () => {
+      unlockDocumentInteraction();
+      setTimeout(unlockDocumentInteraction, 50);
+    };
+  }, []);
+
   const openLogoutDialog = () => {
-    setLogoutDialogOpen(true);
+    setMobileDrawerOpen(false);
+    // Defer opening AlertDialog by one tick so DropdownMenu / Sheet restores body pointer-events first
+    setTimeout(() => {
+      unlockDocumentInteraction();
+      setLogoutDialogOpen(true);
+    }, 0);
   };
 
   const confirmLogout = async () => {
     setLogoutDialogOpen(false);
+    setMobileDrawerOpen(false);
+    unlockDocumentInteraction();
     await logout();
+    unlockDocumentInteraction();
+    setTimeout(unlockDocumentInteraction, 50);
     navigate('/');
   };
 

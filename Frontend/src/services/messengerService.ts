@@ -29,6 +29,14 @@ export interface Message {
   attachmentName?: string | null;
   isDeleted: boolean;
   createdAt: string;
+  /** Stable React key preserved across optimistic -> server reconciliation */
+  clientKey?: string;
+  /** Client-side delivery state for optimistic sends */
+  status?: 'sending' | 'sent' | 'failed';
+  /** True only for newly sent/received live messages (historical loads never animate) */
+  isNew?: boolean;
+  /** Original attachment payload kept on failed optimistic messages for one-tap Retry */
+  pendingAttachment?: MessageAttachment;
 }
 
 export interface Conversation {
@@ -82,8 +90,11 @@ export const messengerApi = {
   /**
    * Fetch all conversations for current user
    */
-  async getConversations(): Promise<Conversation[]> {
-    const response = await api.get<Conversation[]>('/messages');
+  async getConversations(forceSync?: boolean): Promise<Conversation[]> {
+    const response = await api.get<Conversation[]>(
+      '/messages',
+      forceSync ? { sync: '1' } : undefined
+    );
     return Array.isArray(response?.data) ? response.data : [];
   },
 

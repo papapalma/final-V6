@@ -688,5 +688,56 @@ describe('PrintableReport Component', () => {
       const activityRows = container.querySelector('.activity-trend-table tbody')?.querySelectorAll('tr');
       expect(activityRows?.length).toBe(100);
     });
+
+    it('should resolve enrolledCount and completedCount from ReportsPage programStats without printing N/A', () => {
+      const props: PrintableReportProps = {
+        ...createValidProps(),
+        summaryStats: {
+          totalLendings: 12,
+          itemsReturned: 8,
+          activeLoans: 4,
+          newTrainees: 5,
+          totalTrainees: 42,
+          totalPrograms: 3,
+        },
+        programData: [
+          {
+            id: 'prog-1',
+            program: 'Shielded Metal Arc Welding NC II',
+            enrolledCount: 24,
+            completedCount: 18,
+            completionRate: 75,
+            students: ['Juan Dela Cruz', 'Maria Santos'],
+          },
+        ],
+        employmentData: [
+          {
+            id: 'emp-1',
+            name: 'Juan Dela Cruz',
+            employmentStatus: 'Employed',
+            traineeStatus: 'completed',
+            program: 'Shielded Metal Arc Welding NC II',
+          },
+        ],
+        generatedBy: {
+          name: 'Admin Officer',
+          role: 'local_admin',
+        },
+      };
+
+      const { container } = render(<PrintableReport {...props} />);
+      const programTable = container.querySelector('.program-enrollment-table');
+      expect(programTable?.textContent).toContain('Shielded Metal Arc Welding NC II');
+      expect(programTable?.textContent).toContain('24');
+      expect(programTable?.textContent).toContain('18');
+      expect(programTable?.textContent).toContain('75.0%');
+      expect(programTable?.textContent).not.toContain('N/A');
+
+      // Official signature and attribution blocks
+      expect(screen.getAllByText(/Prepared By:/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Verified By:/)).toBeInTheDocument();
+      expect(screen.getByText(/Approved By:/)).toBeInTheDocument();
+      expect(container.querySelector('.employment-status-print-table')?.textContent).toContain('Juan Dela Cruz');
+    });
   });
 });

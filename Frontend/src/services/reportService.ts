@@ -18,6 +18,7 @@ export interface ReportFilters {
 export interface DashboardStats {
   trainees: {
     total: number;
+    newInPeriod?: number;
     active: number;
     completed: number;
     inactive: number;

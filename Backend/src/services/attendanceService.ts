@@ -104,6 +104,12 @@ export interface AttendanceWindowStatus {
   window_close: string | null;
   seconds_until_open: number | null;
   seconds_until_close: number | null;
+  morning_open?: string | null;
+  morning_close?: string | null;
+  morning_late_threshold?: number | null;
+  afternoon_open?: string | null;
+  afternoon_close?: string | null;
+  afternoon_late_threshold?: number | null;
 }
 
 export type CalendarDayStatus =
@@ -613,17 +619,24 @@ const { data: result, error } = await supabaseAdmin
 
     if (!window) return closed;
 
+    const scheduleMeta = {
+      morning_open: window.morning_open,
+      morning_close: window.morning_close,
+      morning_late_threshold: window.morning_late_threshold,
+      afternoon_open: window.afternoon_open,
+      afternoon_close: window.afternoon_close,
+      afternoon_late_threshold: window.afternoon_late_threshold,
+    };
+
     const current = timeToMinutes(nowHHMM());
     const morningOpen    = timeToMinutes(window.morning_open);
     const morningClose   = timeToMinutes(window.morning_close);
-    const morningLateCutoff = morningOpen + window.morning_late_threshold;
     const afternoonOpen  = timeToMinutes(window.afternoon_open);
     const afternoonClose = timeToMinutes(window.afternoon_close);
-    const afternoonLateCutoff = afternoonOpen + window.afternoon_late_threshold;
 
-    // Morning window is open (including late grace period)
-
-if (current >= morningOpen && current < morningLateCutoff) {
+    // Morning window is open from morning_open until morning_close
+    // (check-ins after morning_open + morning_late_threshold are marked 'late')
+    if (current >= morningOpen && current < morningClose) {
       return {
         isOpen: true,
         session_label: 'morning',
@@ -631,12 +644,13 @@ if (current >= morningOpen && current < morningLateCutoff) {
         window_close: window.morning_close,
         seconds_until_open: 0,
         seconds_until_close: secondsRemaining(window.morning_close),
+        ...scheduleMeta,
       };
     }
 
-    // Afternoon window is open (including late grace period)
-
-if (current >= afternoonOpen && current < afternoonLateCutoff) {
+    // Afternoon window is open from afternoon_open until afternoon_close
+    // (check-ins after afternoon_open + afternoon_late_threshold are marked 'late')
+    if (current >= afternoonOpen && current < afternoonClose) {
       return {
         isOpen: true,
         session_label: 'afternoon',
@@ -644,36 +658,39 @@ if (current >= afternoonOpen && current < afternoonLateCutoff) {
         window_close: window.afternoon_close,
         seconds_until_open: 0,
         seconds_until_close: secondsRemaining(window.afternoon_close),
+        ...scheduleMeta,
       };
     }
 
     // Before morning window
-
-if (current < morningOpen) {
+    if (current < morningOpen) {
       return {
         ...closed,
         session_label: 'morning',
         window_open: window.morning_open,
         window_close: window.morning_close,
         seconds_until_open: secondsUntil(window.morning_open),
+        ...scheduleMeta,
       };
     }
 
-    // Between windows (morning late period expired, afternoon not yet open)
-
-if (current >= morningLateCutoff && current < afternoonOpen) {
+    // Between windows (morning window closed, afternoon not yet open)
+    if (current >= morningClose && current < afternoonOpen) {
       return {
         ...closed,
         session_label: 'afternoon',
         window_open: window.afternoon_open,
         window_close: window.afternoon_close,
         seconds_until_open: secondsUntil(window.afternoon_open),
+        ...scheduleMeta,
       };
     }
 
-    // Both windows (including late periods) have passed
-
-return closed;
+    // Both windows have passed for today
+    return {
+      ...closed,
+      ...scheduleMeta,
+    };
   }
 
   /**
@@ -769,16 +786,38 @@ const updatePayload: Record<string, unknown> = {
       updatePayload.check_out_time        = nowIso;
     }
 
-    // Accumulate late duration (don't lose previous session's lateness)
+    // Accumulate late duration across independent sessions without double-counting re-submissions
+    const prevLate = existing?.late_duration_minutes ?? 0;
+    const isResubmitSameSession =
+      (data.session_label === 'morning' && Boolean(existing?.morning_status && existing.morning_status !== 'pending')) ||
+      (data.session_label === 'afternoon' && Boolean(existing?.afternoon_status && existing.afternoon_status !== 'pending'));
+    const otherSessionWasLate =
+      (data.session_label === 'morning' && existing?.afternoon_status === 'late') ||
+      (data.session_label === 'afternoon' && existing?.morning_status === 'late');
 
-const prevLate = existing?.late_duration_minutes ?? 0;
-    updatePayload.late_duration_minutes = prevLate + lateDurationMinutes;
+    if (isResubmitSameSession && !otherSessionWasLate) {
+      updatePayload.late_duration_minutes = lateDurationMinutes;
+    } else if (!isResubmitSameSession) {
+      updatePayload.late_duration_minutes = prevLate + lateDurationMinutes;
+    } else {
+      updatePayload.late_duration_minutes = Math.max(prevLate, lateDurationMinutes);
+    }
+
+    // Independent half-day session handling: if afternoon is submitted after morning closed
+    // with no morning punch, mark morning_status as 'absent' while recording afternoon cleanly
+    const morningMissed =
+      data.session_label === 'afternoon' &&
+      (!existing?.morning_status || existing.morning_status === 'pending') &&
+      current >= timeToMinutes(effectiveWindow.morning_close);
+
+    if (morningMissed) {
+      updatePayload.morning_status = 'absent';
+    }
 
     // Derive top-level status from both sessions
-
-const newMorningStatus   = data.session_label === 'morning'
+    const newMorningStatus = data.session_label === 'morning'
       ? computedSessionStatus
-      : (existing?.morning_status ?? 'pending');
+      : (existing?.morning_status ?? (morningMissed ? 'absent' : 'pending'));
     const newAfternoonStatus = data.session_label === 'afternoon'
       ? computedSessionStatus
       : (existing?.afternoon_status ?? 'pending');
@@ -829,7 +868,7 @@ const { data: result, error } = await supabaseAdmin
       .from('enrollments')
       .select('program_id')
       .eq('trainee_id', traineeId)
-      .eq('status', 'enrolled')
+      .in('status', ['enrolled', 'active'])
       .order('created_at', { ascending: false })
       .limit(1);
     if (tenantId) enrollQuery = enrollQuery.eq('tenant_id', tenantId);
@@ -961,6 +1000,7 @@ if (sessionDates.has(dayStr)) {
     date: string,
     tenantId?: string
   ): Promise<{
+    session_id: string | null;
     records: any[];
     noRecord: any[];
   }> {
@@ -1009,7 +1049,7 @@ let attQuery = supabaseAdmin
       .map((e: any) => e.trainee)
       .filter((t: any) => t && !recordedTraineeIds.has(t.id));
 
-    return { records: records || [], noRecord };
+    return { session_id: sessionIds[0] ?? null, records: records || [], noRecord };
   }
 
   /**

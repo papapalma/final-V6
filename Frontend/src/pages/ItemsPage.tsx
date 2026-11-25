@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import QRCodeModal from '../components/QRCodeModal';
 import ItemDetailsModal from '../components/ItemDetailsModal';
@@ -51,8 +51,22 @@ export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<string[]>(['all']);
-  const [filterStockStatus, setFilterStockStatus] = useState<'all' | 'out' | 'low' | 'good'>('all');
+  const [searchParams] = useSearchParams();
+  const initialStockParam = searchParams.get('stock');
+  const [filterStockStatus, setFilterStockStatus] = useState<'all' | 'out' | 'low' | 'good'>(
+    initialStockParam === 'out' || initialStockParam === 'low' || initialStockParam === 'good'
+      ? initialStockParam
+      : 'all'
+  );
+  const [failedImageIds, setFailedImageIds] = useState<Record<string, boolean>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const hasDisplayPhoto = (item: Item) =>
+    Boolean(item.photoUrl && !item.photoUrl.includes('blank-thumbnail') && !failedImageIds[item.id]);
+
+  const markImageFailed = (id: string) => {
+    setFailedImageIds((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+  };
 
   // Global Apple keyboard shortcut (/ or Cmd/Ctrl+K to focus search)
   useEffect(() => {
@@ -183,7 +197,7 @@ export default function ItemsPage() {
   // Show loading state
   if (loading) {
     return (
-      <DashboardLayout title="Item Management">
+      <DashboardLayout title="Inventory Management">
         <div className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-2">
@@ -212,13 +226,13 @@ export default function ItemsPage() {
   }
 
   return (
-    <DashboardLayout title="Item Management">
+    <DashboardLayout title="Inventory Management">
       <div className="space-y-6">
         {/* Header Actions */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="flex items-center gap-2">
-              Items
+              Inventory
               {user?.tenantName && (
                 <Badge variant="outline" className="text-xs font-normal">
                   <Building2 className="mr-1 size-3" />
@@ -263,7 +277,7 @@ export default function ItemsPage() {
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 <Input
                   ref={searchInputRef}
-                  placeholder="Search equipment by name, category, location, or description..."
+                  placeholder="Search inventory by name, category, location, or description..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ paddingLeft: '2.35rem', paddingRight: '2.5rem', height: '2.5rem' }}
@@ -424,15 +438,13 @@ export default function ItemsPage() {
           <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {paginatedItems.map((item) => (
               <Card key={item.id} className="group transition-all hover:shadow-lg overflow-hidden cursor-pointer" onClick={() => handleViewDetails(item)}>
-                {item.photoUrl && (
+                {hasDisplayPhoto(item) && (
                   <div className="w-full h-48 bg-gray-100 dark:bg-gray-800 overflow-hidden">
                     <img
                       src={item.photoUrl}
                       alt={item.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
+                      onError={() => markImageFailed(item.id)}
                     />
                   </div>
                 )}
@@ -515,15 +527,13 @@ export default function ItemsPage() {
                     <TableRow key={item.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          {item.photoUrl ? (
+                          {hasDisplayPhoto(item) ? (
                             <div className="size-10 rounded-lg overflow-hidden shrink-0 bg-gray-100 dark:bg-gray-800">
                               <img
                                 src={item.photoUrl}
                                 alt={item.name}
                                 className="size-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
+                                onError={() => markImageFailed(item.id)}
                               />
                             </div>
                           ) : (
@@ -586,9 +596,20 @@ export default function ItemsPage() {
             <Card key={item.id} className="cursor-pointer" onClick={() => handleViewDetails(item)}>
               <CardContent className="p-4">
                 <div className="flex gap-3">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Package className="size-6 text-primary" />
-                  </div>
+                  {hasDisplayPhoto(item) ? (
+                    <div className="size-12 shrink-0 overflow-hidden rounded-lg bg-muted border border-border/50">
+                      <img
+                        src={item.photoUrl}
+                        alt={item.name}
+                        className="size-full object-cover"
+                        onError={() => markImageFailed(item.id)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Package className="size-6 text-primary" />
+                    </div>
+                  )}
                   
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex items-start justify-between gap-2">
@@ -598,12 +619,9 @@ export default function ItemsPage() {
                       </Badge>
                     </div>
                     
-                    <div className="mb-3 space-y-1 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">Available:</span>
-                        <span className={item.available === 0 ? 'text-destructive' : 'text-secondary'}>
-                          {item.available} / {item.quantity}
-                        </span>
+                    <div className="mb-3 space-y-1.5 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StockStatusBadge available={item.available} total={item.quantity} />
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{item.location}</p>
                     </div>
@@ -648,11 +666,11 @@ export default function ItemsPage() {
             <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground shadow-inner mb-4">
               <Search className="size-6 opacity-75" />
             </div>
-            <h3 className="text-base font-semibold tracking-tight text-foreground">No equipment found</h3>
+            <h3 className="text-base font-semibold tracking-tight text-foreground">No inventory items found</h3>
             <p className="mt-1.5 text-xs text-muted-foreground max-w-sm mx-auto">
               {searchQuery
                 ? `No items match "${searchQuery}". Try checking your spelling or clearing search filters.`
-                : 'No equipment items currently match the active filters.'}
+                : 'No inventory items currently match the active filters.'}
             </p>
             <div className="mt-6 flex justify-center gap-2">
               <Button

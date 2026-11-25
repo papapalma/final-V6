@@ -487,13 +487,14 @@ export default function AttendanceDetailsPage() {
                 {record.device_info ? (
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm pb-3">
                     {([
-                      ['Browser / OS',  record.device_info.browser as string],
-                      ['Network',       record.device_info.networkType as string],
-                      ['IP Address',    record.device_info.ip as string],
-                      ['Timezone',      record.device_info.timezone as string],
-                      ['Battery',       record.device_info.batteryLevel != null
-                                          ? `${record.device_info.batteryLevel}%` : '—'],
-                      ['App Version',   record.device_info.appVersion as string],
+                      ['Device / Browser', ((record.device_info as any).device_model || record.device_info.browser) as string],
+                      ['OS / Platform',    ((record.device_info as any).os_version || (record.device_info as any).os) as string],
+                      ['Network',          record.device_info.networkType as string],
+                      ['IP Address',       record.device_info.ip as string],
+                      ['Timezone',         record.device_info.timezone as string],
+                      ['Battery',          record.device_info.batteryLevel != null
+                                              ? `${record.device_info.batteryLevel}%` : ''],
+                      ['App Version',      ((record.device_info as any).app_version || record.device_info.appVersion) as string],
                     ] as [string, string][])
                       .filter(([, v]) => v && v !== 'undefined')
                       .map(([label, value]) => (

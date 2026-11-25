@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMessenger } from '../../contexts/MessengerContext';
-import { messengerApi, Conversation, Message, MessageAttachment } from '../../services/messengerService';
+import { messengerApi, Conversation, MessageAttachment } from '../../services/messengerService';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
-import { soundEffects } from '../../utils/audioChime';
 import { getFileUrl } from '../../services/api';
-import { Users, ArrowLeft, MessageSquare, Loader2 } from 'lucide-react';
+import { Users, ArrowLeft, ArrowDown, MessageSquare } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -24,6 +24,9 @@ interface ChatThreadProps {
   showBackButton?: boolean;
 }
 
+const EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];
+const STICKY_BOTTOM_THRESHOLD_PX = 120;
+
 export const ChatThread: React.FC<ChatThreadProps> = ({
   conversationId,
   onBack,
@@ -34,23 +37,51 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
     activeMessages,
     setActiveMessages,
     markConversationReadLocally,
-    refreshConversations,
     startDMWithUser,
     syncNonce,
+    getCachedThread,
+    setCachedThread,
+    sendMessage,
+    retryMessage,
   } = useMessenger();
 
-  const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const prefersReducedMotion = useReducedMotion();
+
+  const [conversation, setConversation] = useState<Conversation | null>(
+    () => getCachedThread?.(conversationId)?.conversation ?? null
+  );
+  const [isLoading, setIsLoading] = useState<boolean>(
+    () => !getCachedThread?.(conversationId)
+  );
   const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [unseenBelowCount, setUnseenBelowCount] = useState(0);
+
+  const feedRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const loadedConversationIdRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef<boolean>(true);
+  const prevMsgCountRef = useRef<number>(0);
 
-  // Load conversation details and messages (show spinner only on conversation switch)
+  // Hydrate immediately from client cache (0ms), then revalidate silently from server
   useEffect(() => {
     let isMounted = true;
     const isConversationSwitch = loadedConversationIdRef.current !== conversationId;
+
     if (isConversationSwitch) {
-      setIsLoading(true);
+      isNearBottomRef.current = true;
+      setShowJumpToLatest(false);
+      setUnseenBelowCount(0);
+      prevMsgCountRef.current = 0;
+
+      const cached = getCachedThread?.(conversationId);
+      if (cached) {
+        setConversation(cached.conversation);
+        setActiveMessages(cached.messages);
+        setIsLoading(false);
+      } else {
+        setIsLoading(true);
+      }
     }
 
     async function loadData() {
@@ -59,15 +90,18 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
         if (!isMounted) return;
         loadedConversationIdRef.current = conversationId;
         setConversation(data.conversation);
-        setActiveMessages(data.messages);
+        const merged = setCachedThread
+          ? setCachedThread(conversationId, data.conversation, data.messages)
+          : data.messages;
+        setActiveMessages(merged);
         markConversationReadLocally(conversationId);
       } catch (err: any) {
         console.error('Failed to load conversation messages', err);
-        if (isMounted && isConversationSwitch) {
+        if (isMounted && isConversationSwitch && !getCachedThread?.(conversationId)) {
           toast.error(err?.message || 'Failed to load conversation');
         }
       } finally {
-        if (isMounted && isConversationSwitch) {
+        if (isMounted) {
           setIsLoading(false);
         }
       }
@@ -78,64 +112,86 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [conversationId, syncNonce, setActiveMessages, markConversationReadLocally]);
+  }, [
+    conversationId,
+    syncNonce,
+    setActiveMessages,
+    markConversationReadLocally,
+    getCachedThread,
+    setCachedThread,
+  ]);
 
-  // Scroll to bottom on new messages
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    const effectiveBehavior: ScrollBehavior = prefersReducedMotion ? 'auto' : behavior;
+    messagesEndRef.current?.scrollIntoView?.({ behavior: effectiveBehavior });
+    isNearBottomRef.current = true;
+    setShowJumpToLatest(false);
+    setUnseenBelowCount(0);
+  };
+
+  // Track user scroll position so incoming messages never hijack reading history
+  const handleFeedScroll = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distanceFromBottom <= STICKY_BOTTOM_THRESHOLD_PX;
+    isNearBottomRef.current = nearBottom;
+    if (nearBottom) {
+      setShowJumpToLatest(false);
+      setUnseenBelowCount(0);
+    } else {
+      setShowJumpToLatest(true);
+    }
+  };
+
+  // Smart sticky-bottom auto-scroll on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
-  }, [activeMessages]);
+    const prevCount = prevMsgCountRef.current;
+    const currentCount = activeMessages.length;
+    prevMsgCountRef.current = currentCount;
+
+    if (currentCount === 0) return;
+
+    // Initial load for this thread: jump directly to latest without slow scroll
+    if (prevCount === 0) {
+      messagesEndRef.current?.scrollIntoView?.({ behavior: 'auto' });
+      return;
+    }
+
+    if (currentCount > prevCount) {
+      const latest = activeMessages[currentCount - 1];
+      const isOwnMessage = latest?.senderId === user?.id;
+
+      if (isOwnMessage || isNearBottomRef.current) {
+        scrollToBottom('smooth');
+      } else {
+        setShowJumpToLatest(true);
+        setUnseenBelowCount((c) => c + (currentCount - prevCount));
+      }
+    }
+  }, [activeMessages, user?.id]);
 
   const canDirectMessageRole = (targetRole?: string): boolean => {
     if (!user) return false;
-    // Trainees can only DM staff & administrators
     if (user.role === 'trainee' && targetRole === 'trainee') {
       return false;
     }
     return true;
   };
 
-  const handleSendMessage = async (content: string, attachment?: MessageAttachment) => {
+  const handleSendMessage = (content: string, attachment?: MessageAttachment) => {
     if (!user) return;
+    if (sendMessage) {
+      void sendMessage(conversationId, content, attachment);
+      return;
+    }
+    // Fallback for isolated test harnesses mocking useMessenger without sendMessage
+    void messengerApi.sendMessage(conversationId, content, attachment);
+  };
 
-    const tempId = `optimistic-${Date.now()}`;
-    const optimisticMessage: Message = {
-      id: tempId,
-      conversationId,
-      senderId: user.id,
-      senderName: user.name || 'You',
-      senderRole: user.role,
-      content,
-      attachmentUrl: attachment?.url,
-      attachmentType: attachment?.type,
-      attachmentName: attachment?.name,
-      isDeleted: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    setActiveMessages((prev) => [...prev, optimisticMessage]);
-    soundEffects.playMessageSent();
-
-    try {
-      const saved = await messengerApi.sendMessage(conversationId, content, attachment);
-      if (!saved || !saved.id) {
-        throw new Error('Failed to save message');
-      }
-
-      // Reconcile optimistic message cleanly even if SSE already delivered `saved.id`
-      setActiveMessages((prev) => {
-        const alreadyDelivered = prev.some((m) => m.id === saved.id);
-        if (alreadyDelivered) {
-          return prev.filter((m) => m.id !== tempId);
-        }
-        const hasTemp = prev.some((m) => m.id === tempId);
-        return hasTemp
-          ? prev.map((m) => (m.id === tempId ? saved : m))
-          : [...prev, saved];
-      });
-      refreshConversations();
-    } catch (err) {
-      setActiveMessages((prev) => prev.filter((m) => m.id !== tempId));
-      throw err;
+  const handleRetryMessage = (clientKey: string) => {
+    if (retryMessage) {
+      void retryMessage(conversationId, clientKey);
     }
   };
 
@@ -228,53 +284,107 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
         )}
       </div>
 
-      {/* Message Feed (harmonic padding) */}
-      <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 pt-6 pb-4 sm:px-6">
-        {isLoading ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-primary opacity-70" />
-          </div>
-        ) : activeMessages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center p-6 text-center text-muted-foreground">
-            <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <MessageSquare className="size-6" />
+      {/* Message Feed Container (relative wrapper for floating Jump-to-latest pill) */}
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={feedRef}
+          onScroll={handleFeedScroll}
+          className="flex h-full flex-col gap-1 overflow-y-auto px-4 pt-6 pb-4 sm:px-6 overscroll-contain"
+        >
+          {isLoading && activeMessages.length === 0 ? (
+            /* Lightweight chat-bubble shimmer skeleton on cold cache miss */
+            <div className="flex flex-col gap-3 py-2" aria-label="Loading messages">
+              <div className="flex justify-start">
+                <div className="messenger-shimmer h-11 w-48 rounded-2xl rounded-bl-xs bg-muted" />
+              </div>
+              <div className="flex justify-end">
+                <div className="messenger-shimmer h-10 w-56 rounded-2xl rounded-br-xs bg-primary/15" />
+              </div>
+              <div className="flex justify-start">
+                <div className="messenger-shimmer h-14 w-64 rounded-2xl rounded-bl-xs bg-muted" />
+              </div>
+              <div className="flex justify-end">
+                <div className="messenger-shimmer h-10 w-40 rounded-2xl rounded-br-xs bg-primary/15" />
+              </div>
             </div>
-            <p className="text-sm font-semibold text-foreground">
-              No messages yet
-            </p>
-            <p className="mt-1 max-w-xs text-xs leading-relaxed">
-              {isProgramGC
-                ? 'Welcome to the Program Group Chat! Send a message to communicate with instructors and classmates.'
-                : 'Send a private message to start this 1-on-1 direct conversation.'}
-            </p>
-          </div>
-        ) : (
-          activeMessages.map((msg, index) => {
-            const isCurr = msg.senderId === user?.id;
-            const prevMsg = activeMessages[index - 1];
-            const showAvatar = isProgramGC && (!prevMsg || prevMsg.senderId !== msg.senderId);
-            const allowStartDM = !isCurr && canDirectMessageRole(msg.senderRole);
+          ) : activeMessages.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.18, ease: EASE_OUT }}
+              className="flex h-full flex-col items-center justify-center p-6 text-center text-muted-foreground"
+            >
+              <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <MessageSquare className="size-6" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">
+                No messages yet
+              </p>
+              <p className="mt-1 max-w-xs text-xs leading-relaxed">
+                {isProgramGC
+                  ? 'Welcome to the Program Group Chat! Send a message to communicate with instructors and classmates.'
+                  : 'Send a private message to start this 1-on-1 direct conversation.'}
+              </p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key={conversationId}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.18, ease: EASE_OUT }}
+              className="flex flex-col gap-1"
+            >
+              {activeMessages.map((msg, index) => {
+                const isCurr = msg.senderId === user?.id;
+                const prevMsg = activeMessages[index - 1];
+                const showAvatar = isProgramGC && (!prevMsg || prevMsg.senderId !== msg.senderId);
+                const allowStartDM = !isCurr && canDirectMessageRole(msg.senderRole);
 
-            return (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                isCurrentUser={isCurr}
-                onUnsend={handleUnsend}
-                onStartDM={allowStartDM ? handleDirectMessageMember : undefined}
-                showAvatar={showAvatar}
-              />
-            );
-          })
-        )}
-        <div ref={messagesEndRef} />
+                return (
+                  <MessageBubble
+                    key={msg.clientKey || msg.id}
+                    message={msg}
+                    isCurrentUser={isCurr}
+                    onUnsend={handleUnsend}
+                    onStartDM={allowStartDM ? handleDirectMessageMember : undefined}
+                    onRetry={handleRetryMessage}
+                    showAvatar={showAvatar}
+                  />
+                );
+              })}
+            </motion.div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Floating Jump-to-Latest / New Messages Pill */}
+        <AnimatePresence>
+          {showJumpToLatest && (
+            <motion.button
+              type="button"
+              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              transition={{ duration: prefersReducedMotion ? 0.14 : 0.16, ease: EASE_OUT }}
+              onClick={() => scrollToBottom('smooth')}
+              className="messenger-press-row absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card/95 px-3.5 py-1.5 text-xs font-semibold text-foreground shadow-md backdrop-blur-md hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span>
+                {unseenBelowCount > 0
+                  ? `${unseenBelowCount} new ${unseenBelowCount === 1 ? 'message' : 'messages'}`
+                  : 'Jump to latest'}
+              </span>
+              <ArrowDown className="size-3.5 text-primary" />
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Message Input Toolbar */}
       <MessageInput
         conversationId={conversationId}
         onSendMessage={handleSendMessage}
-        disabled={isLoading}
+        disabled={isLoading && activeMessages.length === 0}
       />
 
       {/* Members Modal (Role-scoped DM triggers) */}

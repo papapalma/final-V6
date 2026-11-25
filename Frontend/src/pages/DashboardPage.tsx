@@ -14,7 +14,28 @@ import {
 } from '../components/ui/pagination';
 import { Badge } from '../components/ui/badge';
 import { Progress } from '../components/ui/progress';
-import { Users, Package, FileText, TrendingUp, TrendingDown, UserPlus, PackagePlus, QrCode, BarChart, GraduationCap } from 'lucide-react';
+import { Skeleton } from '../components/ui/skeleton';
+import {
+  Users,
+  UserCheck,
+  Award,
+  FileText,
+  TrendingUp,
+  TrendingDown,
+  UserPlus,
+  PackagePlus,
+  QrCode,
+  BarChart,
+  GraduationCap,
+  CalendarClock,
+  BookCheck,
+  PackageCheck,
+  Boxes,
+  ClipboardCheck,
+  ArrowLeftRight,
+  ClipboardList,
+  ArrowUpRight,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { dashboardLogger } from '../utils/activityLogger';
 import reportService from '../services/reportService';
@@ -33,7 +54,7 @@ export default function DashboardPage() {
   const [analyticsData, setAnalyticsData] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [activityPage, setActivityPage] = useState(1);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const rowsPerPage = 10;
 
   const totalActivityPages = Math.ceil(recentActivity.length / rowsPerPage);
@@ -83,101 +104,123 @@ export default function DashboardPage() {
 
       const data = statsResult.value;
 
-      // Map backend stats to cards
+      // Map backend stats to clickable quick-navigation KPI cards
       const statsCards = [
         ...(!isInventoryStaff ? [{
           label: 'Active Trainees',
           value: data.trainees?.active || 0,
           trend: `${data.trainees?.total || 0} total`,
           trendUp: true,
-          icon: Users,
-          bg: 'bg-blue-500/10 dark:bg-blue-950/40',
-          color: 'text-blue-600 dark:text-blue-400'
+          href: '/trainees?status=active',
+          icon: UserCheck,
+          gradient: 'bg-gradient-to-br from-blue-500/12 via-blue-500/4 to-transparent dark:from-blue-500/20 dark:via-blue-500/5 dark:to-transparent',
+          border: 'border-blue-200/80 dark:border-blue-800/60',
+          iconBg: 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-sm shadow-blue-500/25',
         }] : []),
         ...(isLocalAdmin ? [{
           label: 'Total Trainees',
           value: data.trainees?.total || 0,
           trend: `${data.trainees?.completed || 0} completed`,
           trendUp: true,
+          href: '/trainees',
           icon: Users,
-          bg: 'bg-cyan-500/10 dark:bg-cyan-950/40',
-          color: 'text-cyan-600 dark:text-cyan-400'
+          gradient: 'bg-gradient-to-br from-cyan-500/12 via-cyan-500/4 to-transparent dark:from-cyan-500/20 dark:via-cyan-500/5 dark:to-transparent',
+          border: 'border-cyan-200/80 dark:border-cyan-800/60',
+          iconBg: 'bg-gradient-to-br from-cyan-500 to-cyan-600 text-white shadow-sm shadow-cyan-500/25',
         }, {
           label: 'Total Programs',
           value: data.programs?.total || 0,
           trend: `${data.programs?.ongoing || 0} active`,
           trendUp: true,
+          href: '/programs',
           icon: GraduationCap,
-          bg: 'bg-emerald-500/10 dark:bg-emerald-950/40',
-          color: 'text-emerald-600 dark:text-emerald-400'
+          gradient: 'bg-gradient-to-br from-emerald-500/12 via-emerald-500/4 to-transparent dark:from-emerald-500/20 dark:via-emerald-500/5 dark:to-transparent',
+          border: 'border-emerald-200/80 dark:border-emerald-800/60',
+          iconBg: 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-sm shadow-emerald-500/25',
         }] : []),
         ...(!isTrainingStaff ? [{
           label: 'Available Items',
           value: data.inventory?.available || 0,
           trend: `${data.inventory?.total || 0} total`,
           trendUp: data.inventory?.available > data.inventory?.borrowed,
-          icon: Package,
-          bg: 'bg-sky-500/10 dark:bg-sky-950/40',
-          color: 'text-sky-600 dark:text-sky-400'
+          href: '/items?stock=good',
+          icon: PackageCheck,
+          gradient: 'bg-gradient-to-br from-sky-500/12 via-sky-500/4 to-transparent dark:from-sky-500/20 dark:via-sky-500/5 dark:to-transparent',
+          border: 'border-sky-200/80 dark:border-sky-800/60',
+          iconBg: 'bg-gradient-to-br from-sky-500 to-sky-600 text-white shadow-sm shadow-sky-500/25',
         },
         {
           label: 'Active Borrowings',
           value: data.lending?.active || 0,
           trend: `${data.lending?.overdue || 0} overdue`,
           trendUp: false,
-          icon: FileText,
-          bg: 'bg-indigo-500/10 dark:bg-indigo-950/40',
-          color: 'text-indigo-600 dark:text-indigo-400'
+          href: '/lendings',
+          icon: ClipboardCheck,
+          gradient: 'bg-gradient-to-br from-indigo-500/12 via-indigo-500/4 to-transparent dark:from-indigo-500/20 dark:via-indigo-500/5 dark:to-transparent',
+          border: 'border-indigo-200/80 dark:border-indigo-800/60',
+          iconBg: 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-sm shadow-indigo-500/25',
         }] : []),
         ...(isTrainingStaff ? [{
           label: 'Total Trainees',
           value: data.trainees?.total || 0,
           trend: `${data.trainees?.completed || 0} completed`,
           trendUp: true,
+          href: '/trainees',
           icon: Users,
-          bg: 'bg-cyan-500/10 dark:bg-cyan-950/40',
-          color: 'text-cyan-600 dark:text-cyan-400'
+          gradient: 'bg-gradient-to-br from-cyan-500/12 via-cyan-500/4 to-transparent dark:from-cyan-500/20 dark:via-cyan-500/5 dark:to-transparent',
+          border: 'border-cyan-200/80 dark:border-cyan-800/60',
+          iconBg: 'bg-gradient-to-br from-cyan-500 to-cyan-600 text-white shadow-sm shadow-cyan-500/25',
         }, {
           label: 'Completed Trainees',
           value: data.trainees?.completed || 0,
           trend: `${data.trainees?.inactive || 0} inactive`,
           trendUp: true,
-          icon: Users,
-          bg: 'bg-amber-500/10 dark:bg-amber-950/40',
-          color: 'text-amber-600 dark:text-amber-400'
+          href: '/trainees?status=completed',
+          icon: Award,
+          gradient: 'bg-gradient-to-br from-amber-500/12 via-amber-500/4 to-transparent dark:from-amber-500/20 dark:via-amber-500/5 dark:to-transparent',
+          border: 'border-amber-200/80 dark:border-amber-800/60',
+          iconBg: 'bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-sm shadow-amber-500/25',
         }, {
           label: 'Active Programs',
           value: data.programs?.ongoing || 0,
           trend: `${data.programs?.total || 0} total`,
           trendUp: true,
+          href: '/programs?status=active',
           icon: GraduationCap,
-          bg: 'bg-emerald-500/10 dark:bg-emerald-950/40',
-          color: 'text-emerald-600 dark:text-emerald-400'
+          gradient: 'bg-gradient-to-br from-emerald-500/12 via-emerald-500/4 to-transparent dark:from-emerald-500/20 dark:via-emerald-500/5 dark:to-transparent',
+          border: 'border-emerald-200/80 dark:border-emerald-800/60',
+          iconBg: 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-sm shadow-emerald-500/25',
         }, {
           label: 'Upcoming Programs',
           value: data.programs?.upcoming || 0,
           trend: `${data.programs?.completed || 0} completed`,
           trendUp: true,
-          icon: GraduationCap,
-          bg: 'bg-violet-500/10 dark:bg-violet-950/40',
-          color: 'text-violet-600 dark:text-violet-400'
+          href: '/programs?status=active',
+          icon: CalendarClock,
+          gradient: 'bg-gradient-to-br from-violet-500/12 via-violet-500/4 to-transparent dark:from-violet-500/20 dark:via-violet-500/5 dark:to-transparent',
+          border: 'border-violet-200/80 dark:border-violet-800/60',
+          iconBg: 'bg-gradient-to-br from-violet-500 to-violet-600 text-white shadow-sm shadow-violet-500/25',
         }, {
           label: 'Completed Programs',
           value: data.programs?.completed || 0,
           trend: `${data.programs?.total || 0} total programs`,
           trendUp: true,
-          icon: GraduationCap,
-          bg: 'bg-rose-500/10 dark:bg-rose-950/40',
-          color: 'text-rose-600 dark:text-rose-400'
+          href: '/programs?status=inactive',
+          icon: BookCheck,
+          gradient: 'bg-gradient-to-br from-rose-500/12 via-rose-500/4 to-transparent dark:from-rose-500/20 dark:via-rose-500/5 dark:to-transparent',
+          border: 'border-rose-200/80 dark:border-rose-800/60',
+          iconBg: 'bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-sm shadow-rose-500/25',
         }] : []),
         ...(isInventoryStaff ? [{
           label: 'Total Inventory Items',
           value: data.inventory?.total || 0,
           trend: `${data.inventory?.lowStock || 0} low stock`,
           trendUp: false,
-          icon: Package,
-          bg: 'bg-emerald-500/10 dark:bg-emerald-950/40',
-          color: 'text-emerald-600 dark:text-emerald-400'
+          href: '/items',
+          icon: Boxes,
+          gradient: 'bg-gradient-to-br from-teal-500/12 via-teal-500/4 to-transparent dark:from-teal-500/20 dark:via-teal-500/5 dark:to-transparent',
+          border: 'border-teal-200/80 dark:border-teal-800/60',
+          iconBg: 'bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-sm shadow-teal-500/25',
         }] : [])
       ];
 
@@ -233,6 +276,64 @@ export default function DashboardPage() {
     }
   };
 
+  const expectedKpiCount = isTrainingStaff ? 6 : isInventoryStaff ? 3 : 5;
+  const kpiGridCols = isTrainingStaff
+    ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-6'
+    : isInventoryStaff
+    ? 'grid-cols-1 sm:grid-cols-3 lg:grid-cols-3'
+    : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5';
+
+  const quickActions = [
+    ...(hasPermission('canManageTrainees') ? [{
+      label: 'Add Trainee',
+      href: '/trainees/new',
+      icon: UserPlus,
+      gradient: 'bg-gradient-to-br from-blue-500/14 via-blue-500/5 to-transparent dark:from-blue-500/22 dark:via-blue-500/6 dark:to-transparent',
+      border: 'border-blue-200/80 dark:border-blue-800/60',
+      iconBg: 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-sm shadow-blue-500/25',
+    }] : []),
+    ...(hasPermission('canManageItems') ? [{
+      label: 'Add Item',
+      href: '/items/new',
+      icon: PackagePlus,
+      gradient: 'bg-gradient-to-br from-sky-500/14 via-sky-500/5 to-transparent dark:from-sky-500/22 dark:via-sky-500/6 dark:to-transparent',
+      border: 'border-sky-200/80 dark:border-sky-800/60',
+      iconBg: 'bg-gradient-to-br from-sky-500 to-sky-600 text-white shadow-sm shadow-sky-500/25',
+    }] : []),
+    ...(hasPermission('canManagePrograms') ? [{
+      label: 'Add Program',
+      href: '/programs/new',
+      icon: GraduationCap,
+      gradient: 'bg-gradient-to-br from-emerald-500/14 via-emerald-500/5 to-transparent dark:from-emerald-500/22 dark:via-emerald-500/6 dark:to-transparent',
+      border: 'border-emerald-200/80 dark:border-emerald-800/60',
+      iconBg: 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-sm shadow-emerald-500/25',
+    }] : []),
+    ...(hasPermission('canManageLendings') ? [{
+      label: 'Borrowing',
+      href: '/lendings',
+      icon: ArrowLeftRight,
+      gradient: 'bg-gradient-to-br from-indigo-500/14 via-indigo-500/5 to-transparent dark:from-indigo-500/22 dark:via-indigo-500/6 dark:to-transparent',
+      border: 'border-indigo-200/80 dark:border-indigo-800/60',
+      iconBg: 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-sm shadow-indigo-500/25',
+    }] : []),
+    ...(hasPermission('canManageTrainees') ? [{
+      label: 'Registrations',
+      href: '/registrations',
+      icon: ClipboardList,
+      gradient: 'bg-gradient-to-br from-violet-500/14 via-violet-500/5 to-transparent dark:from-violet-500/22 dark:via-violet-500/6 dark:to-transparent',
+      border: 'border-violet-200/80 dark:border-violet-800/60',
+      iconBg: 'bg-gradient-to-br from-violet-500 to-violet-600 text-white shadow-sm shadow-violet-500/25',
+    }] : []),
+    ...(hasPermission('canScanQR') ? [{
+      label: 'Scan QR',
+      href: '/scan',
+      icon: QrCode,
+      gradient: 'bg-gradient-to-br from-amber-500/14 via-amber-500/5 to-transparent dark:from-amber-500/22 dark:via-amber-500/6 dark:to-transparent',
+      border: 'border-amber-200/80 dark:border-amber-800/60',
+      iconBg: 'bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-sm shadow-amber-500/25',
+    }] : []),
+  ];
+
   return (
     <DashboardLayout title="Dashboard">
       <div className="space-y-6">
@@ -242,108 +343,101 @@ export default function DashboardPage() {
           <p className="text-muted-foreground">Here's what's happening with your training center today.</p>
         </div>
 
-        {/* KPI Cards - Desktop 3-column, Mobile single column */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {stats.map((stat) => (
-            <Card key={stat.label}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardDescription>{stat.label}</CardDescription>
-                <div className={`flex size-10 items-center justify-center rounded-lg ${stat.bg}`}>
-                  <stat.icon className={`size-5 ${stat.color}`} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-baseline gap-2">
-                  <h1>{stat.value}</h1>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {stat.trendUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                    <span>{stat.trend}</span>
+        {/* KPI Quick-Navigation Cards - Compact single-row desktop grid */}
+        <div className={`grid gap-3 ${kpiGridCols}`}>
+          {loading && stats.length === 0
+            ? Array.from({ length: expectedKpiCount }).map((_, idx) => (
+                <Card
+                  key={`kpi-skeleton-${idx}`}
+                  data-testid="kpi-skeleton-card"
+                  className="h-full justify-between gap-3 p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <Skeleton className="h-3.5 w-24" />
+                    <Skeleton className="size-9 shrink-0 rounded-lg" />
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Quick Actions - Desktop */}
-        <div className="hidden sm:block">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Frequently used operations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className={`grid gap-3 ${isTrainingStaff || isInventoryStaff ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
-                {!isInventoryStaff && <Link to="/trainees/new">
-                  <Button variant="outline" className="h-auto w-full flex-col gap-2 py-4">
-                    <UserPlus className="size-6" />
-                    Add Trainee
-                  </Button>
-                </Link>}
-                {!isTrainingStaff && <Link to="/items/new">
-                  <Button variant="outline" className="h-auto w-full flex-col gap-2 py-4">
-                    <PackagePlus className="size-6" />
-                    Add Item
-                  </Button>
-                </Link>}
-                {isTrainingStaff && <Link to="/programs/new">
-                  <Button variant="outline" className="h-auto w-full flex-col gap-2 py-4">
-                    <GraduationCap className="size-6" />
-                    Add Program
-                  </Button>
-                </Link>}
-                <Link to="/scan">
-                  <Button variant="outline" className="h-auto w-full flex-col gap-2 py-4">
-                    <QrCode className="size-6" />
-                    Scan QR
-                  </Button>
+                  <div>
+                    <Skeleton className="h-9 w-16" />
+                    <Skeleton className="mt-2 h-3.5 w-20" />
+                  </div>
+                </Card>
+              ))
+            : stats.map((stat) => (
+                <Link
+                  key={stat.label}
+                  to={stat.href}
+                  className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Card
+                    interactive
+                    className={`h-full justify-between gap-3 p-4 ${stat.gradient} ${stat.border}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wide text-muted-foreground leading-snug line-clamp-1">
+                        {stat.label}
+                      </span>
+                      <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${stat.iconBg}`}>
+                        <stat.icon className="size-4" />
+                      </div>
+                    </div>
+                    <div>
+                      <p
+                        data-testid={`kpi-value-${stat.label}`}
+                        className="app-display text-4xl xl:text-[2.5rem] font-extrabold leading-none tracking-tight tabular-nums text-foreground"
+                      >
+                        {Number(stat.value ?? 0).toLocaleString()}
+                      </p>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1 text-xs">
+                          {stat.trendUp ? (
+                            <TrendingUp className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          ) : (
+                            <TrendingDown className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                          )}
+                          <span className="truncate font-semibold tabular-nums text-foreground/80">
+                            {stat.trend}
+                          </span>
+                        </div>
+                        <ArrowUpRight className="size-4 shrink-0 text-muted-foreground/70 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-foreground" />
+                      </div>
+                    </div>
+                  </Card>
                 </Link>
-              </div>
-            </CardContent>
-          </Card>
+              ))}
         </div>
 
-        {/* Quick Actions - Mobile (2-Column Grid) */}
-        <div className="sm:hidden">
-          <div className="mb-3">
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Frequently used operations</CardDescription>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {!isInventoryStaff && <Link to="/trainees/new" className="block h-full">
-              <Card className="h-full transition-colors active:bg-muted">
-                <CardContent className="flex min-h-24 flex-col items-center justify-center gap-2 p-3 text-center">
-                  <UserPlus className="size-5" />
-                  <span className="text-xs font-medium">Add Trainee</span>
-                </CardContent>
-              </Card>
-            </Link>}
-            {!isTrainingStaff && <Link to="/items/new" className="block h-full">
-              <Card className="h-full transition-colors active:bg-muted">
-                <CardContent className="flex min-h-24 flex-col items-center justify-center gap-2 p-3 text-center">
-                  <PackagePlus className="size-5" />
-                  <span className="text-xs font-medium">Add Item</span>
-                </CardContent>
-              </Card>
-            </Link>}
-            {isTrainingStaff && <Link to="/programs/new" className="block h-full">
-              <Card className="h-full transition-colors active:bg-muted">
-                <CardContent className="flex min-h-24 flex-col items-center justify-center gap-2 p-3 text-center">
-                  <GraduationCap className="size-5" />
-                  <span className="text-xs font-medium">Add Program</span>
-                </CardContent>
-              </Card>
-            </Link>}
-            <Link to="/scan" className="block h-full">
-              <Card className="h-full transition-colors active:bg-muted">
-                <CardContent className="flex min-h-24 flex-col items-center justify-center gap-2 p-3 text-center">
-                  <QrCode className="size-5" />
-                  <span className="text-xs font-medium">Scan QR</span>
-                </CardContent>
-              </Card>
-            </Link>
-          </div>
-        </div>
+        {/* Quick Actions - Compact Single-Row Gradient Tiles */}
+        {quickActions.length > 0 && (
+          <section aria-labelledby="quick-actions-heading">
+            <div className="mb-3">
+              <h3 id="quick-actions-heading" className="text-base font-semibold leading-snug text-foreground">
+                Quick Actions
+              </h3>
+              <p className="text-xs text-muted-foreground">Frequently used shortcuts</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              {quickActions.map((action) => (
+                <Link
+                  key={action.href}
+                  to={action.href}
+                  className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Card
+                    interactive
+                    className={`h-full flex-row items-center gap-3 py-2.5 px-4 ${action.gradient} ${action.border}`}
+                  >
+                    <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${action.iconBg}`}>
+                      <action.icon className="size-4" />
+                    </div>
+                    <span className="min-w-0 truncate text-xs sm:text-sm font-semibold text-foreground">
+                      {action.label}
+                    </span>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Recent Activity - Desktop Table */}
         {!isTrainingStaff && <Card className="hidden md:block">
@@ -511,8 +605,10 @@ export default function DashboardPage() {
                           <div className={`h-2 w-2 rounded-full ${item.color}`} />
                           <p className="text-sm">{item.label}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm">{item.value}</p>
+                        <div className="flex items-center gap-3">
+                          <span className="app-display text-base sm:text-lg font-bold tabular-nums text-foreground">
+                            {Number(item.value ?? 0).toLocaleString()}
+                          </span>
                           <Progress value={item.percentage} className="h-2 w-24" />
                         </div>
                       </div>

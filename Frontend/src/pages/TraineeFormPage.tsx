@@ -797,6 +797,27 @@ export default function TraineeFormPage() {
       } else {
         // Create new trainee
         savedTrainee = await traineeService.createTrainee(traineeData);
+
+        // Persist Step 6 program enrollments to the normalized enrollments table
+        if (savedTrainee?.id) {
+          const validTrainings = trainings.filter((t) => t.program && t.program.trim() !== '');
+          await Promise.all(
+            validTrainings.map((t) =>
+              api
+                .post('/enrollments', {
+                  trainee_id: savedTrainee.id,
+                  program_id: t.program,
+                  status: t.status === 'completed' ? 'completed' : 'active',
+                  enrollment_date: t.dateEnrolled || new Date().toISOString().slice(0, 10),
+                  ...(t.status === 'completed' && t.dateCompleted ? { completion_date: t.dateCompleted } : {}),
+                })
+                .catch((enrollErr) => {
+                  logger.warn('Failed to create enrollment during trainee registration', { enrollErr, programId: t.program });
+                })
+            )
+          );
+        }
+
         toast.success('✅ Trainee registered successfully!');
       }
       

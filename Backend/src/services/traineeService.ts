@@ -281,6 +281,26 @@ const { data, error } = await supabaseAdmin
       }
     }
 
+    // Create initial program enrollment in normalized enrollments table if program_id was provided
+    if (traineeData.program_id) {
+      const enrollDate = traineeData.enrollment_date
+        ? traineeData.enrollment_date.slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+      const { error: enrollError } = await supabaseAdmin
+        .from('enrollments')
+        .insert({
+          trainee_id: trainee.id,
+          program_id: traineeData.program_id,
+          enrollment_date: enrollDate,
+          status: 'enrolled',
+          source: 'direct',
+          ...(tenantId ? { tenant_id: tenantId } : {}),
+        });
+      if (enrollError) {
+        console.warn('[createTrainee] Failed to create initial enrollment:', enrollError);
+      }
+    }
+
     const traineeWithThumbnail = await this.withThumbnail(trainee);
     return { trainee: traineeWithThumbnail, temp_password: defaultPassword, default_password: defaultPassword };
   }

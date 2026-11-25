@@ -28,16 +28,22 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   // Fetch all required data in parallel, scoped to the current tenant
 
-const [
-    traineesResult,
+  const [
+    allTraineesResult,
+    periodTraineesResult,
     itemsResult,
     lendingsResult,
     programsResult,
   ] = await Promise.all([
+    supabaseAdmin
+      .from('trainees')
+      .select('status, created_at, employment_status')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null),
     (() => {
       let query = supabaseAdmin
         .from('trainees')
-        .select('status, created_at, employment_status')
+        .select('id, status, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null);
       if (startDate) query = query.gte('created_at', `${startDate}T00:00:00.000Z`);
@@ -54,19 +60,22 @@ const [
       if (endDateExclusive) query = query.lt('lent_date', endDateExclusive.toISOString().slice(0, 10));
       return query;
     })(),
-    supabaseAdmin.from('programs').select('status').eq('tenant_id', tenantId),
+    supabaseAdmin.from('programs').select('status').eq('tenant_id', tenantId).is('deleted_at', null),
   ]);
 
-  if (traineesResult.error) throw traineesResult.error;
+  if (allTraineesResult.error) throw allTraineesResult.error;
+  if (periodTraineesResult.error) throw periodTraineesResult.error;
   if (itemsResult.error) throw itemsResult.error;
   if (lendingsResult.error) throw lendingsResult.error;
   if (programsResult.error) throw programsResult.error;
 
-  // Trainee statistics
+  // Trainee statistics (total = all non-deleted tenant trainees; newInPeriod = created within date range)
 
-const trainees = traineesResult.data || [];
+  const trainees = allTraineesResult.data || [];
+  const periodTrainees = periodTraineesResult.data || [];
   const traineeStats = {
     total: trainees.length,
+    newInPeriod: periodTrainees.length,
     active: trainees.filter(t => t.status === 'active').length,
     completed: trainees.filter(t => t.status === 'completed').length,
     inactive: trainees.filter(t => t.status === 'inactive').length,

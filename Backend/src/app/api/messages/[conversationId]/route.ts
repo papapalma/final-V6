@@ -26,14 +26,14 @@ export async function GET(
     const { conversationId } = await params;
     const { userId } = auth.user;
 
-    const [details, messages] = await Promise.all([
-      MessengerService.getConversationDetails(conversationId, userId),
-      MessengerService.getMessages(conversationId, userId),
-    ]);
+    const { conversation, messages } = await MessengerService.getConversationWithMessages(
+      conversationId,
+      userId
+    );
 
     return corsResponse(
       successResponse({
-        conversation: details,
+        conversation,
         messages,
       }),
       request

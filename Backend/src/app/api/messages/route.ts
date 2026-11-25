@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
     }
 
     const { userId, tenantId, role } = auth.user;
-    const conversations = await MessengerService.listUserConversations(userId, tenantId, role);
+    const { searchParams } = new URL(request.url);
+    const forceSync = searchParams.get('sync') === '1';
+    const conversations = await MessengerService.listUserConversations(userId, tenantId, role, {
+      forceSync,
+    });
 
     return corsResponse(successResponse(conversations), request);
   } catch (error: any) {

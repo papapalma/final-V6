@@ -11,7 +11,8 @@ import {
   formatPrintTimestamp,
   calculatePercentage,
   formatReportType,
-  formatPrintValue
+  formatPrintValue,
+  getLocalIsoDate
 } from '../printFormatters';
 
 describe('formatPrintDate', () => {
@@ -130,5 +131,12 @@ describe('formatPrintValue', () => {
 
   it('should handle arrays by converting to string', () => {
     expect(formatPrintValue([1, 2, 3])).toBe('1,2,3');
+  });
+});
+
+describe('getLocalIsoDate', () => {
+  it('should format a local Date as YYYY-MM-DD without UTC off-by-one shift', () => {
+    const localDate = new Date(2026, 10, 23, 2, 15, 0); // Nov 23, 2026 local time
+    expect(getLocalIsoDate(localDate)).toBe('2026-11-23');
   });
 });

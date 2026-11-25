@@ -6,12 +6,15 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
+import { Skeleton } from '../components/ui/skeleton';
 import { Download, FileText, ChevronDown, Printer, Loader2, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import reportService from '../services/reportService';
+import api from '../services/api';
 import logger from '../utils/logger';
 import PrintableReport from '../components/PrintableReport';
 import { exportReportsToExcel } from '../utils/excelExport';
+import { getLocalIsoDate } from '../utils/printFormatters';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LineChart,
@@ -32,12 +35,15 @@ export default function ReportsPage() {
   const isInventoryStaff = user?.role === 'staff_inventory_manager';
   const isTrainingStaff = user?.role === 'staff_training_coordinator';
   const isLocalAdmin = user?.role === 'local_admin';
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const todayIso = getLocalIsoDate();
+  const currentMonth = todayIso.slice(0, 7);
   const [dateFrom, setDateFrom] = useState(`${currentMonth}-01`);
-  const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState(todayIso);
+  const [appliedDateFrom, setAppliedDateFrom] = useState(`${currentMonth}-01`);
+  const [appliedDateTo, setAppliedDateTo] = useState(todayIso);
   const [reportType, setReportType] = useState('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [activityData, setActivityData] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [programData, setProgramData] = useState<any[]>([]);
@@ -60,14 +66,35 @@ export default function ReportsPage() {
 
   const COLORS = ['#1976D2', '#43A047', '#FBC02D', '#00ACC1'];
 
-  // Fetch report data from backend
+  // Sync valid complete YYYY-MM-DD dates automatically while preventing mid-typing API spam
   useEffect(() => {
-    if (!isAuthReady) {
+    const isValidIso = (val: string) => /^\d{4}-\d{2}-\d{2}$/.test(val);
+    if (isValidIso(dateFrom) && isValidIso(dateTo) && dateFrom <= dateTo) {
+      setAppliedDateFrom(dateFrom);
+      setAppliedDateTo(dateTo);
+    }
+  }, [dateFrom, dateTo]);
+
+  // Fetch report data from backend when committed filters change
+  useEffect(() => {
+    if (isAuthReady === false) {
       return;
     }
 
-    fetchReportData();
-  }, [dateFrom, dateTo, reportType, isAuthReady, isInventoryStaff, isTrainingStaff, employmentProgramFilter, traineeStatusFilter]);
+    fetchReportData(appliedDateFrom, appliedDateTo);
+  }, [appliedDateFrom, appliedDateTo, isAuthReady, isInventoryStaff, isTrainingStaff, employmentProgramFilter, traineeStatusFilter]);
+
+  const handleApplyFilters = () => {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      toast.error('Start date cannot be after end date');
+      return;
+    }
+    api.clearCache();
+    setAppliedDateFrom(dateFrom);
+    setAppliedDateTo(dateTo);
+    setFiltersOpen(false);
+    fetchReportData(dateFrom, dateTo);
+  };
 
   useEffect(() => {
     if (isInventoryStaff && reportType === 'all') {
@@ -83,13 +110,13 @@ export default function ReportsPage() {
     return status === 403 || status === 404;
   };
 
-  const fetchReportData = async () => {
+  const fetchReportData = async (start = appliedDateFrom, end = appliedDateTo) => {
     const requestId = ++reportRequestIdRef.current;
     try {
       setLoading(true);
       const filters = {
-        startDate: dateFrom,
-        endDate: dateTo
+        startDate: start,
+        endDate: end
       };
       const traineeReportFilters = {
         ...filters,
@@ -101,7 +128,7 @@ export default function ReportsPage() {
         ...(traineeStatusFilter !== 'all' ? { trainee_status: traineeStatusFilter } : {}),
       };
 
-      const shouldFetchActivity = !isTrainingStaff && hasPermission('canViewActivityLogs');
+      const shouldFetchActivity = !isTrainingStaff && (isInventoryStaff || hasPermission('canViewActivityLogs'));
 
       // Fire all role-permitted report endpoints in parallel instead of sequentially
       const [
@@ -124,7 +151,7 @@ export default function ReportsPage() {
           ? reportService.getInventoryReport(filters)
           : Promise.resolve(null),
         !isInventoryStaff
-          ? reportService.getProgramReport(filters)
+          ? reportService.getProgramReport()
           : Promise.resolve(null),
       ]);
 
@@ -145,16 +172,16 @@ export default function ReportsPage() {
         setItemsReturned(0);
         setActiveLoans(0);
       } else {
-        if (summaryResult.status === 'fulfilled') {
+        if (summaryResult.status === 'fulfilled' && summaryResult.value) {
           const dashboardStats = summaryResult.value as any;
-          setTotalLendings(dashboardStats.lending.total);
-          setItemsReturned(dashboardStats.lending.returned);
-          setActiveLoans(dashboardStats.lending.active);
-          setNewTrainees(dashboardStats.trainees.total);
-          setTotalTrainees(dashboardStats.trainees.total);
-          setTotalPrograms(dashboardStats.programs.total);
+          setTotalLendings(dashboardStats.lending?.total ?? 0);
+          setItemsReturned(dashboardStats.lending?.returned ?? 0);
+          setActiveLoans(dashboardStats.lending?.active ?? 0);
+          setNewTrainees(dashboardStats.trainees?.newInPeriod ?? dashboardStats.trainees?.total ?? 0);
+          setTotalTrainees(dashboardStats.trainees?.total ?? 0);
+          setTotalPrograms(dashboardStats.programs?.total ?? 0);
         } else {
-          if (!isForbidden(summaryResult.reason)) {
+          if (summaryResult.status === 'rejected' && !isForbidden(summaryResult.reason)) {
             logger.error('Failed to fetch dashboard stats', { error: summaryResult.reason });
           }
           setTotalTrainees(0);
@@ -219,11 +246,21 @@ export default function ReportsPage() {
       } else if (programResult.status === 'fulfilled') {
         const programResponse: any = programResult.value;
         if (programResponse?.programStats) {
-          setProgramData(programResponse.programStats.map((item: any) => ({
-            id: item.id,
-            program: item.name,
-            students: item.students || []
-          })));
+          setProgramData(programResponse.programStats.map((item: any) => {
+            const students = Array.isArray(item.students) ? item.students : [];
+            const enrolledCount = typeof item.enrolledCount === 'number' ? item.enrolledCount : students.length;
+            return {
+              id: item.id,
+              program: item.name,
+              trainees: enrolledCount,
+              enrolledCount,
+              completedCount: typeof item.completedCount === 'number' ? item.completedCount : 0,
+              completionRate: typeof item.completionRate === 'number' ? item.completionRate : 0,
+              capacity: typeof item.capacity === 'number' ? item.capacity : 0,
+              status: item.status || 'active',
+              students,
+            };
+          }));
         } else {
           setProgramData([]);
         }
@@ -317,13 +354,25 @@ export default function ReportsPage() {
     employmentStatusRecords.some((record) => record.programId === program.id)
   );
   const traineeStatusOptions = [...new Set(employmentStatusRecords.map((record) => record.traineeStatus))];
+  const filteredProgramData = programData.filter(
+    (program) => selectedProgram === 'all' || program.program === selectedProgram
+  );
+
+  // Role and Report Type visibility flags
+  const showLendingKpis = !isTrainingStaff && (reportType === 'all' || reportType === 'lendings' || reportType === 'items');
+  const showTraineeKpis = !isInventoryStaff && (reportType === 'all' || reportType === 'trainees');
+  const showActivityTrendSection = !isTrainingStaff && (isInventoryStaff || hasPermission('canViewActivityLogs')) && (reportType === 'all' || reportType === 'lendings');
+  const showCategorySection = !isTrainingStaff && (reportType === 'all' || reportType === 'items');
+  const showProgramSection = !isInventoryStaff && (reportType === 'all' || reportType === 'trainees');
+  const showEmploymentSection = isLocalAdmin && (reportType === 'all' || reportType === 'trainees');
+  const pageTitle = isInventoryStaff ? 'Inventory Reports' : isTrainingStaff ? 'Trainee & Program Reports' : 'Reports & Analytics';
 
   return (
-    <DashboardLayout title={isInventoryStaff ? 'Inventory Reports' : isTrainingStaff ? 'Trainee & Program Reports' : 'Reports & Analytics'}>
+    <DashboardLayout title={pageTitle}>
       {/* Conditionally render PrintableReport when isPrinting is true */}
       {isPrinting && (
         <PrintableReport
-          reportTitle="Reports & Analytics"
+          reportTitle={pageTitle}
           dateFrom={dateFrom}
           dateTo={dateTo}
           reportType={reportType}
@@ -333,25 +382,36 @@ export default function ReportsPage() {
             itemsReturned,
             activeLoans,
             newTrainees,
+            ...(!isInventoryStaff && !isTrainingStaff ? { totalTrainees, totalPrograms } : {}),
           }}
           activityData={activityData}
           categoryData={categoryData}
-          programData={programData}
+          programData={filteredProgramData}
+          employmentData={filteredEmploymentRecords}
+          generatedBy={{
+            name: (user as any)?.name || (user as any)?.username || user?.email,
+            role: user?.role,
+          }}
+          roleFlags={{
+            isInventoryStaff,
+            isTrainingStaff,
+            isLocalAdmin,
+          }}
         />
       )}
       
-      <div className={`space-y-4 sm:space-y-6 ${isPrinting ? 'hidden print:hidden no-print' : ''}`}>
+      <div className={`space-y-6 ${isPrinting ? 'hidden print:hidden no-print' : ''}`}>
         {/* Header */}
-        <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <h2 className="text-lg sm:text-2xl font-bold">Reports</h2>
-            <p className="text-xs sm:text-sm text-muted-foreground">
+            <h2 className="text-lg sm:text-2xl font-bold tracking-tight">Reports</h2>
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
               {isInventoryStaff ? 'View inventory and borrowing analytics' : isTrainingStaff ? 'View trainee and program analytics' : 'View and export analytics data'}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => handleExport('csv')} className="flex-1 sm:flex-none h-9 text-xs sm:text-sm">
-              <FileText className="mr-1 sm:mr-2 size-3 sm:size-4" />
+            <Button variant="outline" size="sm" onClick={() => handleExport('csv')} className="report-action-btn flex-1 sm:flex-none h-9 py-2 px-3.5 text-xs sm:text-sm">
+              <FileText className="mr-1.5 sm:mr-2 size-3.5 sm:size-4" />
               <span className="hidden sm:inline">Export CSV</span>
               <span className="inline sm:hidden">CSV</span>
             </Button>
@@ -361,7 +421,7 @@ export default function ReportsPage() {
               onClick={() => {
                 try {
                   exportReportsToExcel({
-                    reportTitle: isInventoryStaff ? 'Inventory Reports' : isTrainingStaff ? 'Trainee & Program Reports' : 'Reports & Analytics',
+                    reportTitle: pageTitle,
                     dateFrom,
                     dateTo,
                     summaryStats: {
@@ -372,21 +432,21 @@ export default function ReportsPage() {
                     },
                     activityData,
                     categoryData,
-                    programData,
+                    programData: filteredProgramData,
                   });
                   toast.success('Exported report to Excel');
                 } catch (err: any) {
                   toast.error(err.message || 'Failed to export report to Excel');
                 }
               }}
-              className="flex-1 sm:flex-none h-9 text-xs sm:text-sm"
+              className="report-action-btn flex-1 sm:flex-none h-9 py-2 px-3.5 text-xs sm:text-sm"
             >
-              <FileSpreadsheet className="mr-1 sm:mr-2 size-3 sm:size-4 text-emerald-600" />
+              <FileSpreadsheet className="mr-1.5 sm:mr-2 size-3.5 sm:size-4 text-emerald-600" />
               <span className="hidden sm:inline">Export Excel</span>
               <span className="inline sm:hidden">Excel</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleExport('pdf')} className="flex-1 sm:flex-none h-9 text-xs sm:text-sm">
-              <Download className="mr-1 sm:mr-2 size-3 sm:size-4" />
+            <Button variant="outline" size="sm" onClick={() => handleExport('pdf')} className="report-action-btn flex-1 sm:flex-none h-9 py-2 px-3.5 text-xs sm:text-sm">
+              <Download className="mr-1.5 sm:mr-2 size-3.5 sm:size-4" />
               <span className="hidden sm:inline">Export PDF</span>
               <span className="inline sm:hidden">PDF</span>
             </Button>
@@ -395,17 +455,17 @@ export default function ReportsPage() {
               size="sm"
               onClick={handlePrint}
               disabled={isPrinting}
-              className="flex-1 sm:flex-none h-9 text-xs sm:text-sm"
+              className="report-action-btn flex-1 sm:flex-none h-9 py-2 px-3.5 text-xs sm:text-sm"
             >
               {isPrinting ? (
                 <>
-                  <Loader2 className="mr-1 sm:mr-2 size-3 sm:size-4 animate-spin" />
+                  <Loader2 className="mr-1.5 sm:mr-2 size-3.5 sm:size-4 animate-spin" />
                   <span className="hidden sm:inline">Preparing...</span>
                   <span className="inline sm:hidden">...</span>
                 </>
               ) : (
                 <>
-                  <Printer className="mr-1 sm:mr-2 size-3 sm:size-4" />
+                  <Printer className="mr-1.5 sm:mr-2 size-3.5 sm:size-4" />
                   <span className="hidden sm:inline">Print</span>
                   <span className="inline sm:hidden">Prt</span>
                 </>
@@ -416,35 +476,35 @@ export default function ReportsPage() {
 
         {/* Filters - Desktop */}
         <Card className="hidden md:block">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base">Filters</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="dateFrom" className="text-xs sm:text-sm">Date From</Label>
                 <Input
                   id="dateFrom"
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
-                  className="h-9 text-sm"
+                  className="h-9 py-2 px-3.5 text-sm"
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="dateTo" className="text-xs sm:text-sm">Date To</Label>
                 <Input
                   id="dateTo"
                   type="date"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
-                  className="h-9 text-sm"
+                  className="h-9 py-2 px-3.5 text-sm"
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="reportType" className="text-xs sm:text-sm">Report Type</Label>
                 <Select value={reportType} onValueChange={setReportType}>
-                  <SelectTrigger className="h-9 text-sm">
+                  <SelectTrigger className="h-9 py-2 px-3.5 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -456,7 +516,7 @@ export default function ReportsPage() {
                 </Select>
               </div>
               <div className="flex items-end">
-                <Button className="w-full h-9 text-sm">Apply Filters</Button>
+                <Button onClick={handleApplyFilters} className="report-action-btn w-full h-9 py-2 px-3.5 text-sm">Apply Filters</Button>
               </div>
             </div>
           </CardContent>
@@ -466,39 +526,39 @@ export default function ReportsPage() {
         <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} className="md:hidden">
           <Card>
             <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer p-3 sm:p-6">
+              <CardHeader className="cursor-pointer p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm sm:text-base">Filters</CardTitle>
-                  <ChevronDown className={`size-4 sm:size-5 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`size-4 sm:size-5 report-chevron-transition ${filtersOpen ? 'rotate-180' : ''}`} />
                 </div>
               </CardHeader>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-6 pt-0">
-                <div className="space-y-2">
+              <CardContent className="space-y-4 p-4 sm:p-6 pt-0">
+                <div className="space-y-1.5">
                   <Label htmlFor="dateFrom-mobile" className="text-xs sm:text-sm">Date From</Label>
                   <Input
                     id="dateFrom-mobile"
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-9 text-sm"
+                    className="h-9 py-2 px-3.5 text-sm"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="dateTo-mobile" className="text-xs sm:text-sm">Date To</Label>
                   <Input
                     id="dateTo-mobile"
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="h-9 text-sm"
+                    className="h-9 py-2 px-3.5 text-sm"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="reportType-mobile" className="text-xs sm:text-sm">Report Type</Label>
                   <Select value={reportType} onValueChange={setReportType}>
-                    <SelectTrigger className="h-9 text-sm">
+                    <SelectTrigger className="h-9 py-2 px-3.5 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -509,105 +569,108 @@ export default function ReportsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full h-9 text-sm">Apply Filters</Button>
+                <Button onClick={handleApplyFilters} className="report-action-btn w-full h-9 py-2 px-3.5 text-sm">Apply Filters</Button>
               </CardContent>
             </CollapsibleContent>
           </Card>
         </Collapsible>
 
         {/* Summary Stats - Individual Cards */}
-        <div className={`grid gap-4 sm:grid-cols-2 ${isTrainingStaff ? 'lg:grid-cols-2' : isInventoryStaff ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
+        <div className={`grid gap-4 sm:grid-cols-2 ${isTrainingStaff ? 'lg:grid-cols-2' : isInventoryStaff ? 'lg:grid-cols-3' : 'lg:grid-cols-3'}`}>
           {isTrainingStaff ? (
             <>
-              <Card>
+              <Card className="report-section-enter">
                 <CardHeader className="pb-2">
                   <CardDescription className="text-xs sm:text-sm">Total Enrollments</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <h3 className="text-2xl sm:text-3xl font-bold">{newTrainees}</h3>
+                  {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{newTrainees}</h3>}
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="report-section-enter">
                 <CardHeader className="pb-2">
                   <CardDescription className="text-xs sm:text-sm">Programs with Enrollments</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <h3 className="text-2xl sm:text-3xl font-bold">{programData.length}</h3>
+                  {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{programData.length}</h3>}
                 </CardContent>
               </Card>
             </>
           ) : (
             <>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription className="text-xs sm:text-sm">Total Borrowed</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <h3 className="text-2xl sm:text-3xl font-bold">{totalLendings}</h3>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription className="text-xs sm:text-sm">Items Returned</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <h3 className="text-2xl sm:text-3xl font-bold">{itemsReturned}</h3>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription className="text-xs sm:text-sm">Active Borrowings</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <h3 className="text-2xl sm:text-3xl font-bold">{activeLoans}</h3>
-                </CardContent>
-              </Card>
-              {!isInventoryStaff && (
+              {showLendingKpis && (
                 <>
-                  <Card>
+                  <Card className="report-section-enter">
+                    <CardHeader className="pb-2">
+                      <CardDescription className="text-xs sm:text-sm">Total Borrowed</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{totalLendings}</h3>}
+                    </CardContent>
+                  </Card>
+                  <Card className="report-section-enter">
+                    <CardHeader className="pb-2">
+                      <CardDescription className="text-xs sm:text-sm">Items Returned</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{itemsReturned}</h3>}
+                    </CardContent>
+                  </Card>
+                  <Card className="report-section-enter">
+                    <CardHeader className="pb-2">
+                      <CardDescription className="text-xs sm:text-sm">Active Borrowings</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{activeLoans}</h3>}
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+              {showTraineeKpis && (
+                <>
+                  <Card className="report-section-enter">
                     <CardHeader className="pb-2">
                       <CardDescription className="text-xs sm:text-sm">Total Trainees</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <h3 className="text-2xl sm:text-3xl font-bold">{totalTrainees}</h3>
+                      {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{totalTrainees}</h3>}
                     </CardContent>
                   </Card>
-                  <Card>
+                  <Card className="report-section-enter">
                     <CardHeader className="pb-2">
                       <CardDescription className="text-xs sm:text-sm">Total Programs</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <h3 className="text-2xl sm:text-3xl font-bold">{totalPrograms}</h3>
+                      {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{totalPrograms}</h3>}
+                    </CardContent>
+                  </Card>
+                  <Card className="report-section-enter">
+                    <CardHeader className="pb-2">
+                      <CardDescription className="text-xs sm:text-sm">New Trainees</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{newTrainees}</h3>}
                     </CardContent>
                   </Card>
                 </>
               )}
             </>
           )}
-
-          {!isInventoryStaff && !isTrainingStaff && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-xs sm:text-sm">New Trainees</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <h3 className="text-2xl sm:text-3xl font-bold">{newTrainees}</h3>
-              </CardContent>
-            </Card>
-          )}
         </div>
 
         {/* Charts */}
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
+        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
           {/* Activity Trend */}
-          {!isInventoryStaff && !isTrainingStaff && hasPermission('canViewActivityLogs') && <Card>
-            <CardHeader className="pb-2 sm:pb-4">
+          {showActivityTrendSection && <Card className="report-section-enter">
+            <CardHeader className="pb-3">
               <CardTitle className="text-sm sm:text-base">Borrowing Activity Trend</CardTitle>
               <CardDescription className="text-xs sm:text-sm">Borrowing and returning over time</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-64 sm:h-80 md:h-[300px]">
-                {activityData.length > 0 ? (
+                {loading ? (
+                  <Skeleton className="h-full w-full rounded-lg" />
+                ) : activityData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={activityData}>
                       <CartesianGrid strokeDasharray="3 3" />
@@ -615,8 +678,8 @@ export default function ReportsPage() {
                       <YAxis tick={{ fontSize: 12 }} />
                       <Tooltip />
                       <Legend />
-                      <Line type="monotone" dataKey="borrowed" stroke="#1976D2" strokeWidth={2} name="Borrowed" />
-                      <Line type="monotone" dataKey="returned" stroke="#43A047" strokeWidth={2} name="Returned" />
+                      <Line type="monotone" dataKey="borrowed" stroke="#1976D2" strokeWidth={2} name="Borrowed" isAnimationActive={false} />
+                      <Line type="monotone" dataKey="returned" stroke="#43A047" strokeWidth={2} name="Returned" isAnimationActive={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
@@ -629,14 +692,16 @@ export default function ReportsPage() {
           </Card>}
 
           {/* Category Distribution */}
-          {!isTrainingStaff && <Card>
-            <CardHeader className="pb-2 sm:pb-4">
+          {showCategorySection && <Card className="report-section-enter">
+            <CardHeader className="pb-3">
               <CardTitle className="text-sm sm:text-base">Items by Category</CardTitle>
               <CardDescription className="text-xs sm:text-sm">Distribution of item categories</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-64 sm:h-80 md:h-[300px]">
-                {categoryData.length > 0 ? (
+                {loading ? (
+                  <Skeleton className="h-full w-full rounded-lg" />
+                ) : categoryData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -648,6 +713,7 @@ export default function ReportsPage() {
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="value"
+                        isAnimationActive={false}
                       >
                         {categoryData.map((_, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -666,14 +732,14 @@ export default function ReportsPage() {
           </Card>}
 
           {/* Program Enrollment */}
-          {!isInventoryStaff && <Card className="lg:col-span-2">
+          {showProgramSection && <Card className="lg:col-span-2 report-section-enter">
             <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>Trainees by Program</CardTitle>
                 <CardDescription>Enrolled students in each training program</CardDescription>
               </div>
               <Select value={selectedProgram} onValueChange={setSelectedProgram}>
-                <SelectTrigger className="w-full sm:w-64">
+                <SelectTrigger className="w-full sm:w-64 py-2 px-3.5">
                   <SelectValue placeholder="Filter by program" />
                 </SelectTrigger>
                 <SelectContent>
@@ -688,16 +754,26 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className="max-h-[300px] space-y-6 overflow-y-auto">
-                {programData.filter((program) => selectedProgram === 'all' || program.program === selectedProgram).length > 0 ? (
-                  programData
-                    .filter((program) => selectedProgram === 'all' || program.program === selectedProgram)
-                    .map((program) => (
+                {loading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ) : filteredProgramData.length > 0 ? (
+                  filteredProgramData.map((program) => (
                     <div key={program.program} className="space-y-2">
-                      <h4 className="text-sm font-semibold">{program.program}</h4>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-semibold">{program.program}</h4>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {program.trainees ?? program.students?.length ?? 0}
+                          {program.capacity ? `/${program.capacity}` : ''} enrolled
+                          {typeof program.completedCount === 'number' ? ` • ${program.completedCount} completed (${program.completionRate ?? 0}%)` : ''}
+                        </span>
+                      </div>
                       {Array.isArray(program.students) && program.students.length > 0 ? (
                         <ul className="grid gap-2 sm:grid-cols-2">
                           {program.students.map((student: string) => (
-                            <li key={`${program.program}-${student}`} className="rounded-md border px-3 py-2 text-sm">
+                            <li key={`${program.program}-${student}`} className="rounded-md border px-3.5 py-2 text-sm">
                               {student}
                             </li>
                           ))}
@@ -706,7 +782,7 @@ export default function ReportsPage() {
                         <p className="text-sm text-muted-foreground">No students enrolled</p>
                       )}
                     </div>
-                    ))
+                  ))
                 ) : (
                   <div className="flex min-h-[180px] items-center justify-center text-muted-foreground">
                     <p>No program data available</p>
@@ -716,7 +792,7 @@ export default function ReportsPage() {
             </CardContent>
           </Card>}
 
-          {isLocalAdmin && <Card className="lg:col-span-2">
+          {showEmploymentSection && <Card className="lg:col-span-2 report-section-enter">
             <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>Employment Status</CardTitle>
@@ -724,7 +800,7 @@ export default function ReportsPage() {
               </div>
               <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-2">
                 <Select value={employmentProgramFilter} onValueChange={setEmploymentProgramFilter}>
-                  <SelectTrigger className="w-full sm:w-44">
+                  <SelectTrigger className="w-full sm:w-44 py-2 px-3.5">
                     <SelectValue placeholder="Program" />
                   </SelectTrigger>
                   <SelectContent>
@@ -735,7 +811,7 @@ export default function ReportsPage() {
                   </SelectContent>
                 </Select>
                 <Select value={traineeStatusFilter} onValueChange={setTraineeStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-40">
+                  <SelectTrigger className="w-full sm:w-40 py-2 px-3.5">
                     <SelectValue placeholder="Trainee status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -749,21 +825,26 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className="max-h-[300px] overflow-auto">
-                {filteredEmploymentRecords.length > 0 ? (
+                {loading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                ) : filteredEmploymentRecords.length > 0 ? (
                   <table className="w-full min-w-[620px] text-left text-sm">
                     <thead className="sticky top-0 bg-card text-muted-foreground">
                       <tr className="border-b">
-                        <th className="px-3 py-2 font-medium">Trainee</th>
-                        <th className="px-3 py-2 font-medium">Employment Status</th>
-                        <th className="px-3 py-2 font-medium">Program</th>
+                        <th className="px-3.5 py-2 font-medium">Trainee</th>
+                        <th className="px-3.5 py-2 font-medium">Employment Status</th>
+                        <th className="px-3.5 py-2 font-medium">Program</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredEmploymentRecords.map((record) => (
                         <tr key={record.id} className="border-b last:border-0 hover:bg-muted/50">
-                          <td className="max-w-[220px] truncate px-3 py-2 font-medium">{record.name}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{record.employmentStatus}</td>
-                          <td className="max-w-[360px] truncate px-3 py-2 text-muted-foreground">{record.program}</td>
+                          <td className="max-w-[220px] truncate px-3.5 py-2 font-medium">{record.name}</td>
+                          <td className="px-3.5 py-2 text-muted-foreground">{record.employmentStatus}</td>
+                          <td className="max-w-[360px] truncate px-3.5 py-2 text-muted-foreground">{record.program}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -51,8 +51,15 @@ export default function ItemDetailsModal({
 }: ItemDetailsModalProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
 
   if (!item) return null;
+
+  const hasValidPhoto = Boolean(
+    item.photoUrl &&
+    !item.photoUrl.includes('blank-thumbnail') &&
+    !imageLoadFailed
+  );
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -90,16 +97,21 @@ export default function ItemDetailsModal({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
-          {/* Photo */}
-          {item.photoUrl && (
-            <div className="flex justify-center">
+          {/* Photo or Fallback Icon */}
+          <div className="flex justify-center">
+            {hasValidPhoto ? (
               <img
                 src={item.photoUrl}
                 alt={item.name}
                 className="h-32 w-auto rounded-md object-cover shadow"
+                onError={() => setImageLoadFailed(true)}
               />
-            </div>
-          )}
+            ) : (
+              <div className="flex size-24 items-center justify-center rounded-2xl bg-primary/10 border border-primary/15">
+                <Package className="size-12 text-primary" />
+              </div>
+            )}
+          </div>
 
           {/* Header Info */}
           <div className="space-y-2">
@@ -128,7 +140,7 @@ export default function ItemDetailsModal({
 
             {/* Available */}
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/30">
-              <CheckCircle2 className="size-4 text-secondary shrink-0" />
+              <CheckCircle2 className="size-4 text-primary shrink-0" />
               <div className="flex-1 flex justify-between items-center gap-2">
                 <span className="text-xs text-muted-foreground">Available</span>
                 <StockStatusBadge available={item.available} total={item.quantity} />
@@ -137,7 +149,7 @@ export default function ItemDetailsModal({
 
             {/* Location */}
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/30">
-              <MapPin className="size-4 text-accent-foreground shrink-0" />
+              <MapPin className="size-4 text-primary shrink-0" />
               <div className="flex-1 flex justify-between items-center gap-2">
                 <span className="text-xs text-muted-foreground">Location</span>
                 <span className="font-semibold text-sm">{item.location}</span>
@@ -147,7 +159,7 @@ export default function ItemDetailsModal({
             {/* Purchase Date */}
             {item.purchaseDate && (
               <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/30">
-                <Calendar className="size-4 text-secondary shrink-0" />
+                <Calendar className="size-4 text-primary shrink-0" />
                 <div className="flex-1 flex justify-between items-center gap-2">
                   <span className="text-xs text-muted-foreground">Purchase Date</span>
                   <span className="font-semibold text-sm">{formatDate(item.purchaseDate)}</span>
@@ -158,7 +170,7 @@ export default function ItemDetailsModal({
             {/* Condition */}
             {item.condition && (
               <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/30">
-                <CheckCircle2 className="size-4 text-accent-foreground shrink-0" />
+                <CheckCircle2 className="size-4 text-primary shrink-0" />
                 <div className="flex-1 flex justify-between items-center gap-2">
                   <span className="text-xs text-muted-foreground">Condition</span>
                   <span className="font-semibold text-sm capitalize">{item.condition}</span>

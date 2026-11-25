@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog';
 import TraineeDetailsModal, { TraineeDetailsTab } from '../components/TraineeDetailsModal';
@@ -38,8 +38,14 @@ import { getThumbnailUrl } from '../services/api';
 type ViewMode = 'table' | 'card';
 
 export default function TraineesPage() {
+  const [searchParams] = useSearchParams();
+  const initialStatusParam = searchParams.get('status');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState(
+    initialStatusParam && ['all', 'active', 'completed', 'inactive'].includes(initialStatusParam)
+      ? initialStatusParam
+      : 'all'
+  );
   const [filterProgram, setFilterProgram] = useState('all');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -112,7 +118,7 @@ export default function TraineesPage() {
         })
         .catch(() => ({} as Record<string, string>));
 
-      await Promise.all([programsPromise, fetchTrainees({ search: '', status: 'all' })]);
+      await Promise.all([programsPromise, fetchTrainees({ search: '', status: filterStatus })]);
     };
     init();
   }, []);

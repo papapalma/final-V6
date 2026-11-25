@@ -156,11 +156,17 @@ const isPasswordValid = await comparePassword(
   // Password is valid — reset failed attempts
   await authRecoveryService.resetFailedLoginAttempts(user.id);
 
-  // ── Step 2.5: Check trainee registration status ─────────────────────────
-  if (user.role === 'trainee') {
+  // ── Step 2.5: Determine tenant associations & check trainee registration status ──
+  const tenants = await getUserTenants(user.id);
+
+  // Only block login for pending/rejected registrations if the trainee does not yet have
+  // an approved tenant association in users_tenants (i.e. initial account registration).
+  // Existing approved trainees who apply to a second program keep login access while
+  // their new program application is pending or rejected.
+  if (user.role === 'trainee' && tenants.length === 0) {
     const { data: trainee } = await supabaseAdmin
       .from('trainees')
-      .select('id, registration_status, registration_rejection_reason, status')
+      .select('id, user_id, registration_status, registration_rejection_reason, status')
       .or(`user_id.eq.${user.id},email.eq.${user.email.toLowerCase()}`)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -181,10 +187,6 @@ const isPasswordValid = await comparePassword(
       }
     }
   }
-
-  // ── Step 3: Determine tenant associations (Req 6.2) ─────────────────────
-
-const tenants = await getUserTenants(user.id);
 
   // ── Step 4: Handle no-tenant case ───────────────────────────────────────
 

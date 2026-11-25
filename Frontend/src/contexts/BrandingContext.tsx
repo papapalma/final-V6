@@ -6,8 +6,9 @@ export const CMS_STORAGE_KEY = 'bmdc-cms-settings';
 const DEFAULT_COMPANY_NAME = 'Bongabong Manpower Development Center';
 const DEFAULT_SHORT_NAME = 'BMDC';
 const DEFAULT_TAGLINE = 'Training Center';
-const DEFAULT_FAVICON = '/favicon.svg';
-const DEFAULT_TOUCH_ICON = '/icons/icon-192x192.png';
+const DEFAULT_LOGO_URL = '/icons/bmdc-logo-192x192.png';
+const DEFAULT_FAVICON = '/icons/bmdc-logo-192x192.png';
+const DEFAULT_TOUCH_ICON = '/icons/bmdc-logo-180x180.png';
 
 export interface BrandingState {
   rawLogo: string;
@@ -26,8 +27,8 @@ interface BrandingContextValue extends BrandingState {
 let cachedLogoDataUrl: string | null = null;
 let cachedLogoDataSource: string | null = null;
 let latestBrandingState: BrandingState = {
-  rawLogo: '',
-  logoUrl: null,
+  rawLogo: DEFAULT_LOGO_URL,
+  logoUrl: DEFAULT_LOGO_URL,
   companyName: DEFAULT_COMPANY_NAME,
   tagline: DEFAULT_TAGLINE,
   isLoaded: false,
@@ -50,12 +51,12 @@ export function extractBrandingContent(payload: any): any {
 export function normalizeBranding(rawContent: any, isLoaded = true): BrandingState {
   const content = extractBrandingContent(rawContent) || {};
   const rawLogo = typeof content?.appearance?.logo === 'string' ? content.appearance.logo.trim() : '';
-  const logoUrl = rawLogo ? getFileUrl(rawLogo) : null;
+  const logoUrl = rawLogo ? getFileUrl(rawLogo) : DEFAULT_LOGO_URL;
   const companyName = unwrapText(content?.footer?.companyName, DEFAULT_COMPANY_NAME);
   const tagline = unwrapText(content?.footer?.tagline, DEFAULT_TAGLINE);
 
   return {
-    rawLogo,
+    rawLogo: rawLogo || DEFAULT_LOGO_URL,
     logoUrl,
     companyName,
     tagline,
@@ -73,8 +74,8 @@ function readLocalBranding(): BrandingState {
     // Ignore storage/parse errors in restricted or test environments
   }
   return {
-    rawLogo: '',
-    logoUrl: null,
+    rawLogo: DEFAULT_LOGO_URL,
+    logoUrl: DEFAULT_LOGO_URL,
     companyName: DEFAULT_COMPANY_NAME,
     tagline: DEFAULT_TAGLINE,
     isLoaded: false,
@@ -104,7 +105,7 @@ function updateDocumentIcons(logoUrl: string | null): void {
   if (logoUrl) {
     iconLink.removeAttribute('type');
   } else {
-    iconLink.type = 'image/svg+xml';
+    iconLink.type = 'image/png';
   }
   iconLink.href = iconHref;
 

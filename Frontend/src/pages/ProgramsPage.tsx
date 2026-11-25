@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrograms } from '../contexts/ProgramsContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -76,8 +76,14 @@ export default function ProgramsPage() {
   const [loading, setLoading] = useState(contextPrograms.length === 0);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
+  const [searchParams] = useSearchParams();
+  const initialStatusParam = searchParams.get('status');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>(
+    initialStatusParam === 'active' || initialStatusParam === 'inactive'
+      ? initialStatusParam
+      : 'all'
+  );
   const [filterFunding, setFilterFunding] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -436,7 +442,7 @@ export default function ProgramsPage() {
                       >
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            {program.photoUrl ? (
+                            {program.photoUrl && !program.photoUrl.includes('blank-thumbnail') ? (
                               <div className="size-10 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 shrink-0">
                                 <img
                                   src={program.photoUrl}

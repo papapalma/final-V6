@@ -1,180 +1,186 @@
 /**
- * Session Order Validation Tests
- * Task 18: Prevent out-of-order session submissions
+ * Attendance Window, Late Cutoff & Independent Half-Day Session Tests
  *
- * Requirement: Trainees must submit sessions in chronological order on the same day.
- * - Morning session must be submitted before afternoon session
- * - Same-day submissions must respect the morning → afternoon order
- * - Gaps are allowed (coordinator can backfill different sessions)
- *
- * This test file validates the session order validation logic in the submission endpoint.
+ * Verifies:
+ * 1. Window stays open for the full [open, close) range (not prematurely closing at open + late_threshold).
+ * 2. Check-ins within [open, open + late_threshold] are marked 'present';
+ *    check-ins within (open + late_threshold, close) are marked 'late' with exact late_duration_minutes.
+ * 3. Schedule metadata fields (morning_open, morning_close, etc.) are included in getCurrentWindowStatus.
+ * 4. Afternoon sessions can be submitted independently when Morning was missed (marking morning_status = 'absent').
  */
 
+import * as timezone from '@/lib/timezone';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { attendanceService } from '@/services/attendanceService';
 
-describe('Session Order Validation (Task 18)', () => {
-  /**
-   * Test 1: Check if morning submission for today succeeds
-   * Expected: Service should accept morning session
-   */
-  it('Test 1: getTraineeAttendanceHistory should return morning session if submitted', async () => {
-    // This is a unit test of the underlying service that supports order validation
-    // We verify the service can track session labels and dates
+jest.mock('@/lib/timezone', () => ({
+  getNowHHMMInPHT: jest.fn(),
+  getPHTDateComponents: jest.fn(() => ({ year: 2026, month: 10, date: 24 })), // 2026-11-24
+  calculateDateRangeInPHT: jest.fn(),
+}));
 
-    // Mock the scenario where trainee has submitted morning
-    try {
-      // Call the service method that will eventually enforce session order
-      // (getCurrentWindowStatus is used to verify which session label is open)
-      
-      // For now, this is a placeholder test that documents the expected behavior
-      // The actual validation will be in the route handler
-      expect(attendanceService).toBeDefined();
-      expect(attendanceService.getCurrentWindowStatus).toBeDefined();
-    } catch (error) {
-      // Service not yet set up for this specific test
-      expect(error).toBeUndefined();
-    }
+jest.mock('@/lib/supabase-admin', () => ({
+  supabaseAdmin: {
+    from: jest.fn(),
+  },
+}));
+
+const BASE_WINDOW = {
+  schedule_id: '11111111-1111-1111-1111-111111111111',
+  morning_open: '07:30',
+  morning_close: '08:30',
+  morning_late_threshold: 15,
+  afternoon_open: '13:00',
+  afternoon_close: '14:00',
+  afternoon_late_threshold: 15,
+};
+
+describe('AttendanceService Window & Late Cutoff Logic', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
   });
 
-  /**
-   * Test 2: Verify session label enum values are correct
-   * Expected: Both 'morning' and 'afternoon' should be valid
-   */
-  it('Test 2: Session labels should be morning or afternoon', async () => {
-    const validLabels = ['morning', 'afternoon'];
-    expect(validLabels).toContain('morning');
-    expect(validLabels).toContain('afternoon');
-    expect(validLabels.length).toBe(2);
+  it('keeps morning window OPEN past the 15-min late threshold up until morning_close', async () => {
+    jest.spyOn(attendanceService, 'getActiveSchedule').mockResolvedValue(BASE_WINDOW);
+
+    // 07:35 -> open (on-time part of window)
+    (timezone.getNowHHMMInPHT as jest.Mock).mockReturnValue('07:35');
+    const onTimeStatus = await attendanceService.getCurrentWindowStatus('prog-1', 'tenant-1');
+    expect(onTimeStatus.isOpen).toBe(true);
+    expect(onTimeStatus.session_label).toBe('morning');
+    expect(onTimeStatus.morning_open).toBe('07:30');
+    expect(onTimeStatus.morning_close).toBe('08:30');
+
+    // 07:50 -> STILL OPEN (15-min threshold passed at 07:45, but window closes at 08:30)
+    (timezone.getNowHHMMInPHT as jest.Mock).mockReturnValue('07:50');
+    const lateWindowStatus = await attendanceService.getCurrentWindowStatus('prog-1', 'tenant-1');
+    expect(lateWindowStatus.isOpen).toBe(true);
+    expect(lateWindowStatus.session_label).toBe('morning');
+    expect(lateWindowStatus.seconds_until_close).toBe(40 * 60);
+
+    // 08:30 -> CLOSED, counting down to afternoon_open (13:00)
+    (timezone.getNowHHMMInPHT as jest.Mock).mockReturnValue('08:30');
+    const betweenStatus = await attendanceService.getCurrentWindowStatus('prog-1', 'tenant-1');
+    expect(betweenStatus.isOpen).toBe(false);
+    expect(betweenStatus.session_label).toBe('afternoon');
+    expect(betweenStatus.window_open).toBe('13:00');
   });
 
-  /**
-   * Test 3: Date comparison helper - tomorrow's morning > today's afternoon
-   * Expected: Sessions on different dates are independent
-   */
-  it('Test 3: Sessions on different dates should be independent', async () => {
-    const today = new Date('2024-01-15').toISOString().split('T')[0];
-    const tomorrow = new Date('2024-01-16').toISOString().split('T')[0];
+  it('marks check-in as late with exact late_duration_minutes when submitted after open + threshold', async () => {
+    jest.spyOn(attendanceService, 'getActiveSchedule').mockResolvedValue(BASE_WINDOW);
+    // 07:52 is 7 minutes past 07:45 (07:30 + 15m)
+    (timezone.getNowHHMMInPHT as jest.Mock).mockReturnValue('07:52');
 
-    // Today: afternoon submission (no morning)
-    // Tomorrow: morning submission (first session of next day)
-    // This should be allowed (dates are independent)
+    let capturedUpsertPayload: Record<string, unknown> | null = null;
 
-    expect(today < tomorrow).toBe(true);
-    // Order validation should be per-date
+    (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'program_sessions') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: { program_id: 'prog-1', session_date: '2026-11-24' }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'attendance') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+          }),
+          upsert: (payload: Record<string, unknown>) => {
+            capturedUpsertPayload = payload;
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: { id: 'att-1', ...payload, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+                  error: null,
+                }),
+              }),
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const result = await attendanceService.submitTraineeAttendance({
+      trainee_id: 'trainee-1',
+      session_id: 'sess-1',
+      session_label: 'morning',
+      selfie_path: '/uploads/t1/images/attendance/selfie.jpg',
+      tenant_id: 'tenant-1',
+    });
+
+    expect(result.status).toBe('late');
+    expect(capturedUpsertPayload).toMatchObject({
+      morning_status: 'late',
+      status: 'late',
+      late_duration_minutes: 7,
+    });
   });
 
-  /**
-   * Test 4: Session order comparison
-   * Expected: morning (index 0) comes before afternoon (index 1)
-   */
-  it('Test 4: Morning session should come before afternoon session', async () => {
-    const sessionOrder = {
-      morning: 0,
-      afternoon: 1,
-    };
+  it('allows independent afternoon submission when morning was missed and marks morning_status absent', async () => {
+    jest.spyOn(attendanceService, 'getActiveSchedule').mockResolvedValue(BASE_WINDOW);
+    // 13:05 -> on-time afternoon, morning (08:30) already closed
+    (timezone.getNowHHMMInPHT as jest.Mock).mockReturnValue('13:05');
 
-    expect(sessionOrder.morning < sessionOrder.afternoon).toBe(true);
-  });
+    let capturedUpsertPayload: Record<string, unknown> | null = null;
 
-  /**
-   * Test 5: Today's date formatting
-   * Expected: Session lookup should use date-based keys
-   */
-  it('Test 5: Session date should be YYYY-MM-DD format', async () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const date = String(now.getDate()).padStart(2, '0');
-    const todayFormatted = `${year}-${month}-${date}`;
+    (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'program_sessions') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: { program_id: 'prog-1', session_date: '2026-11-24' }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'attendance') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+          }),
+          upsert: (payload: Record<string, unknown>) => {
+            capturedUpsertPayload = payload;
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: { id: 'att-2', ...payload, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+                  error: null,
+                }),
+              }),
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
 
-    // Verify format is correct
-    const parts = todayFormatted.split('-');
-    expect(parts.length).toBe(3);
-    expect(parts[0].length).toBe(4); // year
-    expect(parts[1].length).toBe(2); // month
-    expect(parts[2].length).toBe(2); // date
-  });
-});
+    const result = await attendanceService.submitTraineeAttendance({
+      trainee_id: 'trainee-1',
+      session_id: 'sess-1',
+      session_label: 'afternoon',
+      selfie_path: '/uploads/t1/images/attendance/selfie_pm.jpg',
+      tenant_id: 'tenant-1',
+    });
 
-/**
- * Integration Tests - Session Order Validation in Submission Endpoint
- * 
- * Note: Full integration tests require complete endpoint mocking.
- * These tests document the expected behavior:
- * 
- * Scenario 1: Morning submission first
- *   POST /api/attendance/submit { session_label: 'morning', ... }
- *   Expected: 201 Created
- * 
- * Scenario 2: Afternoon without morning
- *   POST /api/attendance/submit { session_label: 'afternoon', ... }
- *   Expected: 400 Bad Request (if no morning exists for today)
- * 
- * Scenario 3: Afternoon after morning
- *   1. POST { session_label: 'morning', ... } → 201
- *   2. POST { session_label: 'afternoon', ... } → 201
- *   Expected: Both succeed
- * 
- * Scenario 4: Resubmit same session
- *   1. POST { session_label: 'morning', ... } → 201
- *   2. POST { session_label: 'morning', ... } → 200 (update)
- *   Expected: Second submission updates the first
- */
-describe('Session Order - Integration Scenarios (Task 18)', () => {
-  it('Scenario 1: Morning submission should succeed', () => {
-    // Documentation: Morning submissions should always be accepted
-    // because they are the first session of the day
-    const scenario = {
-      step: 'POST with session_label: morning',
-      expected_status: 201,
-      reason: 'Morning is always the first session of the day',
-    };
-    expect(scenario.expected_status).toBe(201);
-  });
-
-  it('Scenario 2: Afternoon without morning should fail', () => {
-    // Documentation: Afternoon submission without prior morning
-    // should be rejected to maintain chronological order
-    const scenario = {
-      step: 'POST with session_label: afternoon (no morning submitted)',
-      expected_status: 400,
-      expected_error: 'Must submit morning session first',
-      reason: 'Enforces chronological order on same day',
-    };
-    expect(scenario.expected_status).toBe(400);
-    expect(scenario.expected_error).toContain('morning');
-  });
-
-  it('Scenario 3: Afternoon after morning should succeed', () => {
-    // Documentation: Afternoon submission after morning should succeed
-    const scenario = {
-      step: 'POST with session_label: afternoon (after morning)',
-      expected_status: 201,
-      reason: 'Chronological order respected',
-    };
-    expect(scenario.expected_status).toBe(201);
-  });
-
-  it('Scenario 4: Resubmit same session should update', () => {
-    // Documentation: Resubmitting the same session label should update
-    // the existing record (idempotent behavior)
-    const scenario = {
-      step: 'POST with session_label: morning (second time)',
-      expected_status: 200,
-      reason: 'Update to existing record',
-    };
-    expect([200, 201]).toContain(scenario.expected_status);
-  });
-
-  it('Scenario 5: Different dates are independent', () => {
-    // Documentation: Session order validation is per-date
-    // Day 1 afternoon, Day 2 morning should both succeed
-    const scenario = {
-      step: '1. POST Day 1 afternoon (no morning)',
-      step2: '2. POST Day 2 morning',
-      expected_both: 'succeed (dates independent)',
-      reason: 'Order validation scoped to session_date',
-    };
-    expect(scenario.expected_both).toContain('succeed');
+    expect(result.status).toBe('present');
+    expect(capturedUpsertPayload).toMatchObject({
+      morning_status: 'absent',
+      afternoon_status: 'present',
+      status: 'present',
+      late_duration_minutes: 0,
+    });
   });
 });

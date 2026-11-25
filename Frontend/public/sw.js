@@ -1,6 +1,6 @@
 // Service Worker for Bongabong Manpower Development Center (BMDC) PWA
-const CACHE_NAME = 'bmdc-pwa-static-v2';
-const DATA_CACHE_NAME = 'bmdc-pwa-data-v2';
+const CACHE_NAME = 'bmdc-pwa-static-v5';
+const DATA_CACHE_NAME = 'bmdc-pwa-data-v5';
 
 const STATIC_ASSETS = [
   '/',
@@ -9,14 +9,17 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/favicon.svg',
   '/favicon.ico',
-  '/icons/icon-72x72.png',
-  '/icons/icon-96x96.png',
-  '/icons/icon-128x128.png',
-  '/icons/icon-144x144.png',
-  '/icons/icon-152x152.png',
-  '/icons/icon-192x192.png',
-  '/icons/icon-384x384.png',
-  '/icons/icon-512x512.png'
+  '/icons/bmdc-logo-72x72.png',
+  '/icons/bmdc-logo-96x96.png',
+  '/icons/bmdc-logo-128x128.png',
+  '/icons/bmdc-logo-144x144.png',
+  '/icons/bmdc-logo-152x152.png',
+  '/icons/bmdc-logo-180x180.png',
+  '/icons/bmdc-logo-192x192.png',
+  '/icons/bmdc-logo-maskable-192x192.png',
+  '/icons/bmdc-logo-384x384.png',
+  '/icons/bmdc-logo-512x512.png',
+  '/icons/bmdc-logo-maskable-512x512.png'
 ];
 
 // Install Event
@@ -112,12 +115,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for JS/CSS bundles so lazy-loaded chunks never serve stale mismatched code
-  const isCodeBundle =
+  // Network-first for JS/CSS bundles, PWA manifest, and app icons so updates take effect immediately
+  const isNetworkFirstAsset =
     url.pathname.startsWith('/assets/') ||
+    url.pathname.startsWith('/icons/') ||
+    url.pathname === '/manifest.json' ||
+    url.pathname === '/favicon.ico' ||
+    url.pathname === '/favicon.svg' ||
     /\.(?:m?js|css)$/i.test(url.pathname);
 
-  if (isCodeBundle) {
+  if (isNetworkFirstAsset) {
     event.respondWith(
       fetch(request)
         .then((networkResponse) => {
@@ -169,8 +176,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'You have a new update from BMDC',
-    icon: data.icon || '/icons/icon-192x192.png',
-    badge: data.badge || '/icons/icon-72x72.png',
+    icon: data.icon || '/icons/bmdc-logo-192x192.png',
+    badge: data.badge || '/icons/bmdc-logo-72x72.png',
     vibrate: [100, 50, 100],
     data: {
       url: data.url || '/'

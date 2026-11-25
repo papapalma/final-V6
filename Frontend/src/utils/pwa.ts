@@ -210,8 +210,8 @@ export function showNotification(title: string, options?: NotificationOptions) {
       // Use service worker for notification
       navigator.serviceWorker.ready.then((registration) => {
         const notificationOptions = {
-          icon: '/icons/icon-192x192.png',
-          badge: '/icons/icon-72x72.png',
+          icon: '/icons/bmdc-logo-192x192.png',
+          badge: '/icons/bmdc-logo-72x72.png',
           vibrate: [200, 100, 200],
           ...options,
         } as NotificationOptions & { vibrate?: number[] };
@@ -221,8 +221,8 @@ export function showNotification(title: string, options?: NotificationOptions) {
     } else {
       // Fallback to regular notification
       const notificationOptions = {
-        icon: '/icons/icon-192x192.png',
-        badge: '/icons/icon-72x72.png',
+        icon: '/icons/bmdc-logo-192x192.png',
+        badge: '/icons/bmdc-logo-72x72.png',
         ...options,
       } as NotificationOptions;
 

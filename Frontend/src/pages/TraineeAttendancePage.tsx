@@ -1,28 +1,23 @@
 /**
  * TraineeAttendancePage  —  /trainee/attendance
  *
- * PROGRESSIVE DATA LOADING:
- *   1. Render shell UI with skeletons immediately (< 100ms)
+ * Progressive data loading:
+ *   1. Render shell UI with skeletons immediately
  *   2. Fetch calendar + window status in parallel
- *   3. Show calendar skeleton while data loads
- *   4. Replace skeletons as data arrives
- *
- * Performance targets:
- *   - Initial paint: < 300ms (skeleton structure)
- *   - LCP: < 1.8s (first content arrival)
- *   - Fully interactive: < 2.5s (all data loaded)
+ *   3. Wire both top Punch Session Cards AND AttendanceCalendar inside AttendanceSubmitFlow
+ *      so clicking Morning/Afternoon (+) opens CameraModal directly
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { Skeleton } from '../components/ui/skeleton';
+import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import {
-  CheckCircle2, Clock, XCircle, TrendingUp, AlertCircle, ChevronLeft, ChevronRight,
+  CheckCircle2, Clock, ChevronLeft, ChevronRight, Sun, Moon, Plus,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import attendanceService from '../services/attendanceService';
 import type {
   CalendarDayData,
@@ -31,7 +26,6 @@ import type {
 } from '../services/attendanceService';
 import AttendanceCalendar from '../components/attendance/AttendanceCalendar';
 import AttendanceSubmitFlow from '../components/attendance/AttendanceSubmitFlow';
-import { AttendanceStatusDot } from '../components/attendance/AttendanceStatusBadge';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,7 +43,12 @@ function currentYearMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function computeStats(data: CalendarDayData[]) {
+function formatShortTime(iso?: string): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function computeStats(data: CalendarDayData[], todayStr: string) {
   const trackable: CalendarDayStatus[] = ['present', 'late', 'absent', 'excused', 'pending'];
   const tracked = data.filter((d) => trackable.includes(d.status));
   const present = data.filter((d) => d.status === 'present').length;
@@ -57,53 +56,36 @@ function computeStats(data: CalendarDayData[]) {
   const absent  = data.filter((d) => d.status === 'absent').length;
   const total   = tracked.length;
   const rate    = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
-  return { present, late, absent, rate, total };
-}
 
-function getStatusColor(status: CalendarDayStatus): string {
-  switch (status) {
-    case 'present':
-      return 'text-green-700 dark:text-green-400';
-    case 'late':
-      return 'text-yellow-700 dark:text-yellow-400';
-    case 'absent':
-      return 'text-red-700 dark:text-red-400';
-    case 'excused':
-      return 'text-blue-700 dark:text-blue-400';
-    case 'pending':
-      return 'text-gray-700 dark:text-gray-400';
-    default:
-      return 'text-muted-foreground';
+  // Compute real consecutive attended session days up to today (skipping weekends/holidays/no_session)
+  const pastSessionDays = data
+    .filter((d) => d.date <= todayStr && ['present', 'late', 'absent', 'excused', 'pending'].includes(d.status))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  let streak = 0;
+  for (const day of pastSessionDays) {
+    if (day.status === 'present' || day.status === 'late') {
+      streak++;
+    } else if (day.date === todayStr && day.status === 'pending') {
+      // Today's session is still open/pending — don't break prior streak yet
+      continue;
+    } else {
+      break;
+    }
   }
+
+  return { present, late, absent, rate, total, streak };
 }
 
-function getStatusBgColor(status: CalendarDayStatus): string {
-  switch (status) {
-    case 'present':
-      return 'bg-green-50 dark:bg-green-950/30';
-    case 'late':
-      return 'bg-yellow-50 dark:bg-yellow-950/30';
-    case 'absent':
-      return 'bg-red-50 dark:bg-red-950/30';
-    case 'excused':
-      return 'bg-blue-50 dark:bg-blue-950/30';
-    case 'pending':
-      return 'bg-gray-50 dark:bg-gray-950/30';
-    default:
-      return 'bg-muted/30';
-  }
-}
-
-// Skeleton loaders for progressive rendering
 function PunchCardSkeleton() {
   return (
-    <Card className="overflow-hidden border-l-4 border-l-teal-500">
-      <CardContent className="p-3">
-        <div className="flex items-start gap-2">
-          <Skeleton className="h-12 w-12 rounded-full" />
+    <Card className="overflow-hidden border-l-4 border-l-primary">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-12 rounded-full" />
           <div className="flex-1 space-y-2">
-            <Skeleton className="h-3 w-20" />
-            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-3 w-32" />
           </div>
         </div>
       </CardContent>
@@ -113,10 +95,10 @@ function PunchCardSkeleton() {
 
 function StatCardSkeleton() {
   return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-3 space-y-2">
+    <Card className="border shadow-xs">
+      <CardContent className="p-4 space-y-2">
         <Skeleton className="h-3 w-16" />
-        <Skeleton className="h-6 w-12" />
+        <Skeleton className="h-7 w-14" />
       </CardContent>
     </Card>
   );
@@ -129,27 +111,23 @@ function StatCardSkeleton() {
 export default function TraineeAttendancePage() {
   const navigate = useNavigate();
 
-  // Data states
   const [calendarData, setCalendarData] = useState<CalendarDayData[]>([]);
   const [windowStatus, setWindowStatus] = useState<AttendanceWindowStatus | null>(null);
   const [displayMonth, setDisplayMonth] = useState<Date>(new Date());
   const [countdown, setCountdown] = useState<number>(0);
 
-  // Loading states - separate for progressive rendering
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [windowLoading, setWindowLoading] = useState(true);
 
-  // Track whether window was open on last poll to detect flip
   const prevIsOpen = useRef<boolean | null>(null);
   const yearMonth = useRef<string>(currentYearMonth());
   const notifiedRef = useRef<boolean>(false);
 
-  // ── Fetch helpers ─────────────────────────────────────────────────────────
   const fetchCalendar = useCallback(async (ym: string) => {
     try {
       const res = await attendanceService.getCalendarMonth(ym);
       setCalendarData(res.data ?? []);
-    } catch (error) {
+    } catch {
       // Silent fail on background refresh
     } finally {
       setCalendarLoading(false);
@@ -161,9 +139,7 @@ export default function TraineeAttendancePage() {
       const res = await attendanceService.getWindowStatus();
       const ws = res.data ?? null;
 
-      // If open/closed state flipped → refetch calendar
       if (prevIsOpen.current !== null && prevIsOpen.current !== ws?.isOpen) {
-        // Call fetchCalendar directly with currentYearMonth instead of depending on it
         const ym = currentYearMonth();
         const calRes = await attendanceService.getCalendarMonth(ym);
         setCalendarData(calRes.data ?? []);
@@ -171,7 +147,6 @@ export default function TraineeAttendancePage() {
       prevIsOpen.current = ws?.isOpen ?? false;
       setWindowStatus(ws);
 
-      // Seed countdown
       const secs = ws?.isOpen
         ? (ws.seconds_until_close ?? 0)
         : (ws?.seconds_until_open ?? 0);
@@ -183,37 +158,25 @@ export default function TraineeAttendancePage() {
     }
   }, []);
 
-  // ── Initial load: Fetch both in parallel but render skeleton first ────────
   useEffect(() => {
     const ym = currentYearMonth();
     yearMonth.current = ym;
-    
-    // Immediately set loading states (UI renders skeleton)
     setCalendarLoading(true);
     setWindowLoading(true);
-
-    // Fetch both in parallel
-    // Note: Promise.allSettled() never rejects, so .catch() would never fire
-    // The loading states are cleared in the individual fetch functions
-    Promise.allSettled([
-      fetchCalendar(ym),
-      fetchWindow(),
-    ]);
+    Promise.allSettled([fetchCalendar(ym), fetchWindow()]);
   }, [fetchCalendar, fetchWindow]);
 
-  // ── 60-second poll for window status (reduced from 30s) ──────────────────
   useEffect(() => {
     const interval = setInterval(fetchWindow, 60_000);
     return () => clearInterval(interval);
   }, [fetchWindow]);
 
-  // ── 1-second countdown ticker ─────────────────────────────────────────────
   useEffect(() => {
     const tick = setInterval(() => {
       setCountdown((prev) => {
-        const next = prev <= 1 ? 0 : prev - 1;
+        if (prev <= 0) return 0;
+        const next = prev - 1;
 
-        // Fire a browser notification once when ~15 min before window opens
         if (
           next > 0 &&
           next <= 900 &&
@@ -226,12 +189,11 @@ export default function TraineeAttendancePage() {
           const mins = Math.ceil(next / 60);
           new Notification('Attendance opens soon', {
             body: `Your attendance window opens in ${mins} minute${mins !== 1 ? 's' : ''}.`,
-            icon: '/icons/icon-192x192.png',
+            icon: '/icons/bmdc-logo-192x192.png',
             tag: 'attendance-reminder',
           });
         }
 
-        // Reset notified flag when a new window cycle starts
         if (next === 0) {
           notifiedRef.current = false;
           fetchWindow();
@@ -243,53 +205,62 @@ export default function TraineeAttendancePage() {
     return () => clearInterval(tick);
   }, [fetchWindow, windowStatus?.isOpen]);
 
-  // ── Month navigation ──────────────────────────────────────────────────────
   const handleMonthChange = useCallback((newMonth: Date) => {
     setDisplayMonth(newMonth);
-    setCalendarData([]); // Clear old data immediately to avoid stale flash
+    setCalendarData([]);
     const ym = `${newMonth.getFullYear()}-${String(newMonth.getMonth() + 1).padStart(2, '0')}`;
     yearMonth.current = ym;
     setCalendarLoading(true);
     fetchCalendar(ym);
   }, [fetchCalendar]);
 
-  // ── After submission complete ─────────────────────────────────────────────
   const handleSubmitComplete = useCallback(() => {
     setCalendarLoading(true);
     fetchCalendar(yearMonth.current);
     fetchWindow();
   }, [fetchCalendar, fetchWindow]);
 
-  // ── Navigate to date details ──────────────────────────────────────────────
   const handleDateClick = useCallback((date: string) => {
     navigate(`/trainee/attendance/${date}`);
   }, [navigate]);
 
-  // ── Derived stats (memoized) ──────────────────────────────────────────────
-  const stats = useMemo(() => computeStats(calendarData), [calendarData]);
-
-  // ── Today's status ────────────────────────────────────────────────────────
-  const todayStr = (() => {
+  const todayStr = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const date = String(now.getDate()).padStart(2, '0');
     return `${year}-${month}-${date}`;
-  })();
+  }, []);
+
+  const stats = useMemo(() => computeStats(calendarData, todayStr), [calendarData, todayStr]);
+
   const todayData = useMemo(
     () => calendarData.find((d) => d.date === todayStr),
     [calendarData, todayStr]
   );
 
+  const morningStatus = todayData?.record?.morning_status;
+  const afternoonStatus = todayData?.record?.afternoon_status;
+  const morningDone = morningStatus === 'present' || morningStatus === 'late';
+  const afternoonDone = afternoonStatus === 'present' || afternoonStatus === 'late';
+
+  const isMorningOpenNow = Boolean(windowStatus?.isOpen && windowStatus.session_label === 'morning');
+  const isAfternoonOpenNow = Boolean(windowStatus?.isOpen && windowStatus.session_label === 'afternoon');
+
   const countdownLabel = (() => {
-    if (!windowStatus) return 'No attendance window today';
-    if (windowStatus.isOpen) {
-      return countdown > 0 ? `Closes in ${formatCountdown(countdown)}` : 'Window closing…';
+    if (!windowStatus || (!windowStatus.isOpen && !windowStatus.window_open)) {
+      return 'No active attendance window right now';
     }
-    return countdown > 0 ? `Opens in ${formatCountdown(countdown)}` : 'Window opening…';
+    if (windowStatus.isOpen) {
+      return countdown > 0
+        ? `${windowStatus.session_label === 'morning' ? 'Morning' : 'Afternoon'} window closes in ${formatCountdown(countdown)}`
+        : 'Window closing…';
+    }
+    return countdown > 0
+      ? `${windowStatus.session_label === 'morning' ? 'Morning' : 'Afternoon'} window opens in ${formatCountdown(countdown)}`
+      : 'Window closed for today';
   })();
 
-  // ── Format greeting and name ──────────────────────────────────────────────
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? 'Good morning' : currentHour < 18 ? 'Good afternoon' : 'Good evening';
 
@@ -298,274 +269,312 @@ export default function TraineeAttendancePage() {
       const profile = localStorage.getItem('traineeProfile');
       if (profile) {
         const parsed = JSON.parse(profile);
-        return parsed.firstName || 'Trainee';
+        return parsed.firstName || parsed.first_name || 'Trainee';
       }
     } catch {
-      //silent
+      // silent
     }
     return 'Trainee';
   }, []);
 
-  const today = new Date();
-  const dateString = today.toLocaleDateString('en-US', {
+  const dateString = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
     year: 'numeric',
   });
 
-  // ---------------------------------------------------------------------------
-  // Render - Progressive rendering: Show skeleton first, fill in data as it arrives
-  // ---------------------------------------------------------------------------
-
   return (
     <DashboardLayout title="Attendance">
-      <div className="space-y-4 sm:space-y-6">
-        {/* ── Header Section with Greeting ── */}
-        <div className="space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-bold">
-            {greeting}, <span className="text-amber-500">{traineeNameFromStorage}</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Punch in for each session, then browse your month on the right.
-          </p>
-          <p className="text-xs text-muted-foreground mt-1 sm:mt-2">{dateString}</p>
-        </div>
+      <AttendanceSubmitFlow
+        windowStatus={windowStatus}
+        onComplete={handleSubmitComplete}
+      >
+        {(triggerAttendance) => (
+          <div className="space-y-6">
+            {/* ── Header Section (Golden Rule proximity: tight inner grouping) ── */}
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold leading-tight">
+                  {greeting}, <span className="text-primary">{traineeNameFromStorage}</span>
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1.5">
+                  Punch in with a live selfie during your active session window.
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">{dateString}</p>
+              </div>
 
-        {/* ── Punch Session Cards (Progressive rendering) ── */}
-        <div className="sticky lg:top-16 z-20 space-y-2 sm:space-y-3 bg-background lg:pb-4">
-          <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2">
-            {windowLoading ? (
-              <>
-                <PunchCardSkeleton />
-                <PunchCardSkeleton />
-              </>
-            ) : (
-              <>
-                {/* MORNING Session Card */}
-                <Card className="overflow-hidden border-l-4 border-l-teal-500 dark:border-l-teal-400">
-                  <CardContent className="p-2 sm:p-3">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-shrink-0">
-                        {windowStatus?.session_label === 'morning' && windowStatus?.isOpen ? (
-                          <Button
-                            size="lg"
-                            variant="ghost"
-                            className="h-10 sm:h-12 w-10 sm:w-12 rounded-full p-0 border-2 border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/30"
-                            onClick={() => {
-                              const flow = document.querySelector('[data-attendance-flow]');
-                              if (!flow) {
-                                console.warn('Attendance flow trigger not found in DOM');
-                                toast.error('Unable to open attendance form');
-                                return;
-                              }
-                              (flow as HTMLElement).click();
-                            }}
-                          >
-                            <span className="text-lg sm:text-xl font-bold text-teal-600">+</span>
-                          </Button>
-                        ) : (
-                          <div className="h-10 sm:h-12 w-10 sm:w-12 rounded-full border-2 border-teal-300 dark:border-teal-700 flex items-center justify-center opacity-40">
-                            <span className="text-base sm:text-lg text-teal-600">☀</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Morning</p>
-                        <p className="text-xs font-medium mt-0.5 truncate">
-                          {windowStatus?.session_label === 'morning' && windowStatus?.isOpen
-                            ? 'Punch in'
-                            : todayData?.status === 'present' || todayData?.status === 'late'
-                              ? 'Done'
-                              : 'Not punched'}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* AFTERNOON Session Card */}
-                <Card className="overflow-hidden border-l-4 border-l-teal-500 dark:border-l-teal-400">
-                  <CardContent className="p-2 sm:p-3">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-shrink-0">
-                        {windowStatus?.session_label === 'afternoon' && windowStatus?.isOpen ? (
-                          <Button
-                            size="lg"
-                            variant="ghost"
-                            className="h-10 sm:h-12 w-10 sm:w-12 rounded-full p-0 border-2 border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-950/30"
-                            onClick={() => {
-                              const flow = document.querySelector('[data-attendance-flow]');
-                              if (!flow) {
-                                console.warn('Attendance flow trigger not found in DOM');
-                                toast.error('Unable to open attendance form');
-                                return;
-                              }
-                              (flow as HTMLElement).click();
-                            }}
-                          >
-                            <span className="text-lg sm:text-xl font-bold text-teal-600">+</span>
-                          </Button>
-                        ) : (
-                          <div className="h-10 sm:h-12 w-10 sm:w-12 rounded-full border-2 border-teal-300 dark:border-teal-700 flex items-center justify-center opacity-40">
-                            <span className="text-base sm:text-lg text-teal-600">🌙</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Afternoon</p>
-                        <p className="text-xs font-medium mt-0.5 truncate">
-                          {windowStatus?.session_label === 'afternoon' && windowStatus?.isOpen
-                            ? 'Punch in'
-                            : 'Not punched'}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* ── Quick Stats Cards (Progressive rendering) ── */}
-        <div className="grid gap-2 sm:gap-3 grid-cols-2 lg:grid-cols-4">
-          {calendarLoading ? (
-            <>
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-            </>
-          ) : (
-            <>
-              <Card className="border-0 shadow-sm">
-                <CardContent className="p-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase">Sessions</p>
-                  <p className="text-2xl font-bold text-orange-600 mt-1">{stats.present + stats.late}</p>
-                </CardContent>
-              </Card>
-              <Card className="border-0 shadow-sm">
-                <CardContent className="p-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase">Streak</p>
-                  <p className="text-2xl font-bold text-green-600 mt-1">{Math.floor(stats.total / 4)}d</p>
-                </CardContent>
-              </Card>
-              <Card className="border-0 shadow-sm">
-                <CardContent className="p-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase">Attendance</p>
-                  <p className="text-2xl font-bold text-blue-600 mt-1">{stats.rate}%</p>
-                  <Progress value={stats.rate} className="h-1 mt-1.5" />
-                </CardContent>
-              </Card>
-              {todayData && (
-                <Card className="border-0 shadow-sm">
-                  <CardContent className="p-3">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase">Today</p>
-                    <div className="mt-1 space-y-0.5">
-                      {todayData.record?.morning_time_in && (
-                        <p className="text-xs text-muted-foreground">
-                          In: {new Date(todayData.record.morning_time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      )}
-                      {(todayData.record as any)?.morning_time_out && (
-                        <p className="text-xs text-muted-foreground">
-                          Out: {new Date((todayData.record as any).morning_time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+              {!windowLoading && (
+                <div className="inline-flex items-center gap-2 rounded-full border bg-card px-3.5 py-2 text-xs font-medium shadow-xs self-start sm:self-auto">
+                  <Clock className={`size-3.5 ${windowStatus?.isOpen ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+                  <span className="tabular-nums">{countdownLabel}</span>
+                </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
 
-        {/* ── Full Width Calendar (Progressive rendering) ── */}
-        <div className="overflow-hidden">
-          <Card className="shadow-lg">
-            <CardHeader className="pb-3 sm:pb-4 border-b">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="text-base sm:text-lg font-semibold truncate">
+            {/* ── Punch Session Cards ── */}
+            <div className="sticky lg:top-16 z-20 bg-background/95 backdrop-blur-xs py-1">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                {windowLoading ? (
+                  <>
+                    <PunchCardSkeleton />
+                    <PunchCardSkeleton />
+                  </>
+                ) : (
+                  <>
+                    {/* MORNING Session Card */}
+                    <Card className={`overflow-hidden border-l-4 ${morningDone ? 'border-l-emerald-500' : isMorningOpenNow ? 'border-l-primary ring-1 ring-primary/20' : 'border-l-slate-300 dark:border-l-slate-700'}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="shrink-0">
+                            {morningDone ? (
+                              <div className="size-12 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                                <CheckCircle2 className="size-6" />
+                              </div>
+                            ) : isMorningOpenNow ? (
+                              <button
+                                type="button"
+                                aria-label="Punch in for Morning session"
+                                onClick={triggerAttendance}
+                                className="att-punch-trigger size-12 rounded-full border-2 border-primary bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center shadow-sm cursor-pointer"
+                              >
+                                <Plus className="size-6" />
+                              </button>
+                            ) : (
+                              <div className="size-12 rounded-full border border-border bg-muted/50 flex items-center justify-center text-amber-500">
+                                <Sun className="size-5" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Morning Session
+                              </p>
+                              {morningStatus === 'late' && (
+                                <Badge className="py-0.5 px-2 text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0">
+                                  Late
+                                </Badge>
+                              )}
+                              {morningStatus === 'present' && (
+                                <Badge className="py-0.5 px-2 text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-0">
+                                  Present
+                                </Badge>
+                              )}
+                              {morningStatus === 'absent' && (
+                                <Badge className="py-0.5 px-2 text-[10px] bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border-0">
+                                  Missed
+                                </Badge>
+                              )}
+                            </div>
+
+                            <p className="text-sm font-semibold mt-1 truncate">
+                              {morningDone
+                                ? `Recorded at ${formatShortTime(todayData?.record?.morning_time_in || todayData?.record?.check_in_time)}`
+                                : isMorningOpenNow
+                                  ? 'Tap + to Punch In'
+                                  : windowStatus?.morning_open && windowStatus?.morning_close
+                                    ? `Window: ${windowStatus.morning_open.slice(0, 5)} – ${windowStatus.morning_close.slice(0, 5)}`
+                                    : 'Not punched'}
+                            </p>
+                          </div>
+
+                          {isMorningOpenNow && !morningDone && (
+                            <Button
+                              size="sm"
+                              onClick={triggerAttendance}
+                              className="py-2 px-3.5 text-xs shrink-0"
+                            >
+                              Punch In
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* AFTERNOON Session Card */}
+                    <Card className={`overflow-hidden border-l-4 ${afternoonDone ? 'border-l-emerald-500' : isAfternoonOpenNow ? 'border-l-primary ring-1 ring-primary/20' : 'border-l-slate-300 dark:border-l-slate-700'}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="shrink-0">
+                            {afternoonDone ? (
+                              <div className="size-12 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                                <CheckCircle2 className="size-6" />
+                              </div>
+                            ) : isAfternoonOpenNow ? (
+                              <button
+                                type="button"
+                                aria-label="Punch in for Afternoon session"
+                                onClick={triggerAttendance}
+                                className="att-punch-trigger size-12 rounded-full border-2 border-primary bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center shadow-sm cursor-pointer"
+                              >
+                                <Plus className="size-6" />
+                              </button>
+                            ) : (
+                              <div className="size-12 rounded-full border border-border bg-muted/50 flex items-center justify-center text-blue-500">
+                                <Moon className="size-5" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Afternoon Session
+                              </p>
+                              {afternoonStatus === 'late' && (
+                                <Badge className="py-0.5 px-2 text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0">
+                                  Late
+                                </Badge>
+                              )}
+                              {afternoonStatus === 'present' && (
+                                <Badge className="py-0.5 px-2 text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-0">
+                                  Present
+                                </Badge>
+                              )}
+                            </div>
+
+                            <p className="text-sm font-semibold mt-1 truncate">
+                              {afternoonDone
+                                ? `Recorded at ${formatShortTime(todayData?.record?.afternoon_time_out || todayData?.record?.check_out_time)}`
+                                : isAfternoonOpenNow
+                                  ? 'Tap + to Punch In'
+                                  : windowStatus?.afternoon_open && windowStatus?.afternoon_close
+                                    ? `Window: ${windowStatus.afternoon_open.slice(0, 5)} – ${windowStatus.afternoon_close.slice(0, 5)}`
+                                    : 'Not punched'}
+                            </p>
+                          </div>
+
+                          {isAfternoonOpenNow && !afternoonDone && (
+                            <Button
+                              size="sm"
+                              onClick={triggerAttendance}
+                              className="py-2 px-3.5 text-xs shrink-0"
+                            >
+                              Punch In
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* ── Quick Stats Cards ── */}
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+              {calendarLoading ? (
+                <>
+                  <StatCardSkeleton />
+                  <StatCardSkeleton />
+                  <StatCardSkeleton />
+                  <StatCardSkeleton />
+                </>
+              ) : (
+                <>
+                  <Card className="border shadow-xs">
+                    <CardContent className="p-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Attended Days</p>
+                      <p className="text-2xl font-bold text-foreground mt-1 tabular-nums">{stats.present + stats.late}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border shadow-xs">
+                    <CardContent className="p-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Streak</p>
+                      <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums">{stats.streak}d</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border shadow-xs">
+                    <CardContent className="p-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Attendance Rate</p>
+                      <p className="text-2xl font-bold text-primary mt-1 tabular-nums">{stats.rate}%</p>
+                      <Progress value={stats.rate} className="h-1.5 mt-2" />
+                    </CardContent>
+                  </Card>
+                  <Card className="border shadow-xs">
+                    <CardContent className="p-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase">Today</p>
+                      <div className="mt-1.5 space-y-0.5 text-xs">
+                        <p className="text-muted-foreground">
+                          AM:{' '}
+                          <span className="font-medium text-foreground">
+                            {todayData?.record?.morning_time_in
+                              ? formatShortTime(todayData.record.morning_time_in)
+                              : '—'}
+                          </span>
+                        </p>
+                        <p className="text-muted-foreground">
+                          PM:{' '}
+                          <span className="font-medium text-foreground">
+                            {todayData?.record?.afternoon_time_out
+                              ? formatShortTime(todayData.record.afternoon_time_out)
+                              : '—'}
+                          </span>
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </div>
+
+            {/* ── Monthly Calendar ── */}
+            <Card className="shadow-sm overflow-hidden">
+              <CardHeader className="p-4 border-b">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold truncate">
                     {displayMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                   </h2>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleMonthChange(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1))}
-                    className="h-7 w-7 sm:h-8 sm:w-8 p-0"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleMonthChange(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1))}
-                    className="h-7 w-7 sm:h-8 sm:w-8 p-0"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Legend */}
-              <div className="flex items-center gap-2 sm:gap-4 mt-3 sm:mt-4 text-xs overflow-x-auto pb-1">
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <div className="h-2 w-2 rounded-full bg-teal-500" />
-                  <span className="text-xs">Present</span>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <div className="h-2 w-2 rounded-full bg-amber-500" />
-                  <span className="text-xs">Late</span>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <div className="h-2 w-2 rounded-full bg-neutral-500" />
-                  <span className="text-xs">Absent</span>
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="p-2 sm:p-4">
-              {calendarLoading ? (
-                <Skeleton className="h-72 sm:h-96 w-full rounded-lg" />
-              ) : (
-                <div className="overflow-x-auto -mx-2 sm:mx-0">
-                  <div className="min-w-full sm:min-w-0">
-                    <AttendanceSubmitFlow
-                      windowStatus={windowStatus}
-                      onComplete={handleSubmitComplete}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleMonthChange(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1))}
+                      className="size-8"
+                      aria-label="Previous month"
                     >
-                      {(triggerAttendance) => (
-                        <AttendanceCalendar
-                          calendarData={calendarData}
-                          windowStatus={windowStatus ?? {
-                            isOpen: false,
-                            session_label: null,
-                            window_open: null,
-                            window_close: null,
-                            seconds_until_open: null,
-                            seconds_until_close: null,
-                          }}
-                          onTakeAttendance={triggerAttendance}
-                          onDateClick={handleDateClick}
-                          month={displayMonth}
-                          onMonthChange={handleMonthChange}
-                        />
-                      )}
-                    </AttendanceSubmitFlow>
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleMonthChange(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1))}
+                      className="size-8"
+                      aria-label="Next month"
+                    >
+                      <ChevronRight className="size-4" />
+                    </Button>
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+              </CardHeader>
 
-      {/* Hidden flow trigger for accessibility */}
-      <div data-attendance-flow style={{ display: 'none' }} />
+              <CardContent className="p-4">
+                {calendarLoading ? (
+                  <Skeleton className="h-80 w-full rounded-lg" />
+                ) : (
+                  <AttendanceCalendar
+                    calendarData={calendarData}
+                    windowStatus={windowStatus ?? {
+                      isOpen: false,
+                      session_label: null,
+                      window_open: null,
+                      window_close: null,
+                      seconds_until_open: null,
+                      seconds_until_close: null,
+                    }}
+                    onTakeAttendance={triggerAttendance}
+                    onDateClick={handleDateClick}
+                    month={displayMonth}
+                    onMonthChange={handleMonthChange}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </AttendanceSubmitFlow>
     </DashboardLayout>
   );
 }

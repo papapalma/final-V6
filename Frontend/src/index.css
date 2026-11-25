@@ -74,6 +74,8 @@
   --duration-fast: 150ms;
   --duration-normal: 240ms;
   --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .dark {
@@ -206,6 +208,16 @@
   h3 {
     line-height: 1.25;
   }
+
+  /* Safeguard: --secondary and --accent are light surface tokens (#eff6ff);
+     ensure any SVG icon still using text-secondary or text-accent remains visible */
+  svg.text-secondary {
+    color: var(--primary);
+  }
+
+  svg.text-accent {
+    color: var(--accent-foreground);
+  }
 }
 
 /* ==========================================================================
@@ -254,10 +266,17 @@
       transform var(--duration-normal) var(--ease-standard);
   }
 
-  .ds-card-interactive:hover {
-    transform: translateY(-2px);
-    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
-    box-shadow: var(--shadow-hover);
+  @media (hover: hover) and (pointer: fine) {
+    .ds-card-interactive:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+      box-shadow: var(--shadow-hover);
+    }
+  }
+
+  .ds-card-interactive:active {
+    transform: scale(0.98);
+    transition: transform 120ms var(--ease-out);
   }
 
   .ds-button,
@@ -389,6 +408,128 @@
   animation: notif-badge-bump 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Messenger tactile feedback & shimmer (transform + opacity only) */
+.messenger-press-row {
+  transition: background-color 140ms var(--ease-out),
+    border-color 140ms var(--ease-out),
+    transform 120ms var(--ease-out);
+}
+.messenger-press-row:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.messenger-send-btn {
+  transition: transform 120ms var(--ease-out),
+    opacity 150ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+.messenger-send-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .messenger-send-btn:hover:not(:disabled) {
+    transform: translateY(-0.5px);
+  }
+  .messenger-send-btn:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+}
+
+@keyframes messenger-shimmer-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+.messenger-shimmer {
+  animation: messenger-shimmer-pulse 1.3s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   Attendance Tactile & Sheet Motion (Apple Fluid Principles, transform/opacity only)
+   ========================================================================== */
+@keyframes att-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes att-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes att-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes att-shutter-flash {
+  0% {
+    opacity: 0.78;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.att-modal-scrim {
+  background-color: rgba(2, 6, 23, 0.48);
+  backdrop-filter: blur(8px) saturate(150%);
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
+  animation: att-scrim-in 180ms var(--ease-out);
+}
+
+.att-modal-panel {
+  animation: att-panel-in 220ms var(--ease-drawer);
+}
+
+.att-camera-sheet {
+  animation: att-sheet-in 240ms var(--ease-drawer);
+}
+
+.att-shutter-flash {
+  animation: att-shutter-flash 140ms var(--ease-out) forwards;
+}
+
+.att-punch-trigger {
+  transition: transform 120ms var(--ease-out),
+    background-color 150ms var(--ease-out),
+    border-color 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out);
+}
+
+.att-punch-trigger:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .att-modal-scrim {
+    background-color: rgba(2, 6, 23, 0.78);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 /* ==========================================================================
    Reduced Motion Accessibility
    ========================================================================== */
@@ -398,8 +539,27 @@
   .scan-line,
   .corner-breathe,
   .viewfinder-pulse,
-  .notif-badge-bump {
+  .notif-badge-bump,
+  .messenger-shimmer,
+  .att-shutter-flash,
+  [data-slot="skeleton"] {
     animation: none !important;
+  }
+
+  .att-modal-scrim,
+  .att-modal-panel,
+  .att-camera-sheet {
+    animation: att-scrim-in 150ms ease !important;
+    transform: none !important;
+  }
+
+  .att-punch-trigger {
+    transform: none !important;
+    transition: opacity 140ms ease, background-color 140ms ease !important;
+  }
+
+  .messenger-shimmer {
+    opacity: 0.65;
   }
 
   .ds-card,
@@ -411,5 +571,11 @@
   [data-slot="notification-badge"] {
     transition-duration: 0.01ms !important;
     transform: none !important;
+  }
+
+  .messenger-press-row,
+  .messenger-send-btn {
+    transform: none !important;
+    transition: opacity 140ms ease, background-color 140ms ease !important;
   }
 }

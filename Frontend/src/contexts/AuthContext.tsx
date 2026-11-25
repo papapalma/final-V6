@@ -231,6 +231,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore storage errors on logout
     }
+
+    if (typeof document !== 'undefined') {
+      const unlockBody = () => {
+        document.body.style.pointerEvents = '';
+        document.body.style.overflow = '';
+        document.body.removeAttribute('data-scroll-locked');
+        document.documentElement.style.pointerEvents = '';
+        document.documentElement.style.overflow = '';
+      };
+      unlockBody();
+      setTimeout(unlockBody, 50);
+    }
   };
 
   const getPostAuthRedirectPath = (): string | null => {

@@ -57,26 +57,34 @@ function collectGps(): Promise<GeolocationCoordinates | null> {
 // Device info helper
 // ---------------------------------------------------------------------------
 
-async function collectDeviceInfo(): Promise<Record<string, unknown>> {
-  const info: Record<string, unknown> = {
-    browser:   navigator.userAgent,
-    os:        (navigator as any).userAgentData?.platform ?? navigator.platform ?? 'unknown',
-    timezone:  Intl.DateTimeFormat().resolvedOptions().timeZone,
-    networkType: (navigator as any).connection?.effectiveType ?? 'unknown',
-    appVersion: '1.0',
-  };
-
-  // Optional battery level
+function getOrCreateDeviceId(): string {
+  const KEY = 'bmdc_device_id';
   try {
-    const battery = await (navigator as any).getBattery?.();
-    if (battery) {
-      info.batteryLevel = Math.round(battery.level * 100);
+    const existing = localStorage.getItem(KEY);
+    if (existing && /^[a-zA-Z0-9-]+$/.test(existing) && existing.length <= 100) {
+      return existing;
     }
+    const generated =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(KEY, generated);
+    return generated;
   } catch {
-    // battery API not available — ignore
+    return `web-${Date.now()}`;
   }
+}
 
-  return info;
+async function collectDeviceInfo(): Promise<Record<string, unknown>> {
+  const platform = String((navigator as any).userAgentData?.platform ?? navigator.platform ?? 'Web').slice(0, 50);
+  const uaSummary = String(navigator.userAgent || 'Browser').slice(0, 100);
+  return {
+    device_id: getOrCreateDeviceId(),
+    device_model: uaSummary,
+    os_version: platform,
+    app_version: '1.0.0',
+    timestamp: new Date().toISOString(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +130,19 @@ export default function AttendanceSubmitFlow({
       fd.append('selfie',        blob, 'selfie.jpg');
       fd.append('session_label', sessionLabel);
       fd.append('device_info',   JSON.stringify(deviceInfo));
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        fd.append('idempotency_key', crypto.randomUUID());
+      }
 
-      if (gps) {
+      // Only attach GPS when precision is within backend's 100m GPS_BOUNDS.MAX_ACCURACY_M
+      // (desktop Wi-Fi/IP geolocation often reports 500–5000m, which would 400-reject)
+      if (
+        gps &&
+        Number.isFinite(gps.accuracy) &&
+        gps.accuracy > 0 &&
+        gps.accuracy <= 100 &&
+        !(gps.latitude === 0 && gps.longitude === 0)
+      ) {
         fd.append('gps_lat',      String(gps.latitude));
         fd.append('gps_lng',      String(gps.longitude));
         fd.append('gps_accuracy', String(gps.accuracy));

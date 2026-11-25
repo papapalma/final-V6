@@ -152,6 +152,36 @@ export class RegistrationService {
    * 
    * @param data Registration/application data
    * @param tenantId Tenant ID from the program
+  /**
+   * Select the active/pending target enrollment when a trainee has multiple historical enrollments.
+   * Prioritizes 'enrolled' (pending approval) and 'active' over 'dropped'/'failed'/'completed',
+   * breaking ties by the most recent updated_at / created_at / enrollment_date timestamp.
+   */
+  private pickTargetEnrollment(enrollments?: any[]): any | undefined {
+    if (!Array.isArray(enrollments) || enrollments.length === 0) return undefined;
+    if (enrollments.length === 1) return enrollments[0];
+
+    const statusPriority: Record<string, number> = {
+      enrolled: 3,
+      active: 2,
+      dropped: 1,
+      failed: 1,
+      completed: 0,
+    };
+
+    return [...enrollments].sort((a, b) => {
+      const prioDiff = (statusPriority[b?.status] ?? -1) - (statusPriority[a?.status] ?? -1);
+      if (prioDiff !== 0) return prioDiff;
+      const timeA = new Date(a?.updated_at || a?.created_at || a?.enrollment_date || 0).getTime();
+      const timeB = new Date(b?.updated_at || b?.created_at || b?.enrollment_date || 0).getTime();
+      return timeB - timeA;
+    })[0];
+  }
+
+  /**
+   * Submit a new registration request into trainees table with registration_status = 'pending' (normalized schema)
+   * @param data Registration input data
+   * @param tenantId The tenant ID to assign to this registration
    * @param isExistingTrainee Whether this is an existing trainee applying to a new program (optional)
    */
   async submitRegistration(data: TraineeRegistrationInput, tenantId: string, isExistingTrainee: boolean = false, enrollmentSource: string = 'direct'): Promise<PendingRegistration> {
@@ -160,25 +190,15 @@ export class RegistrationService {
       username: data.username,
       isExistingTrainee,
       tenantId,
-      enrollmentSource, // NEW: log the source
+      enrollmentSource,
     });
 
-    // For existing trainees, only check for pending registrations (not approved ones)
-    // since they already have approved registrations from their initial signup
-
-    const pendingStatusFilter = isExistingTrainee ? ['pending'] : ['pending', 'approved'];
-    
-    console.log('[RegistrationService] Checking for existing pending registrations with statuses:', pendingStatusFilter);
-    
-    // Check for duplicate email in trainees table with registration status
-    // (Normalized schema: pending_registrations merged into trainees table)
-
+    // Look up any existing trainee record for (tenant_id, email) in the 3NF trainees table
     const { data: existingTrainee, error: existingTraineeError } = await supabaseAdmin
       .from('trainees')
-      .select('id, registration_status')
+      .select('id, user_id, registration_status, status, qr_code')
       .eq('email', data.email.toLowerCase())
       .eq('tenant_id', tenantId)
-      .in('registration_status', pendingStatusFilter)
       .maybeSingle();
 
     if (existingTraineeError && existingTraineeError.code !== 'PGRST116') {
@@ -189,16 +209,25 @@ export class RegistrationService {
     console.log('[RegistrationService] Existing trainee registration found:', existingTrainee);
 
     if (existingTrainee) {
-      if (existingTrainee.registration_status === 'approved' || existingTrainee.registration_status === 'completed') {
-        throw new Error('An account with this email already exists. Please log in.');
+      if (existingTrainee.registration_status === 'pending') {
+        throw new ConflictError(
+          isExistingTrainee
+            ? 'You already have a pending application for a program. Please wait for administrator review.'
+            : 'A registration request with this email is already pending review.'
+        );
       }
-      throw new Error('A registration request with this email is already pending review.');
+      if (
+        !isExistingTrainee &&
+        (existingTrainee.registration_status === 'approved' || existingTrainee.registration_status === 'completed')
+      ) {
+        throw new ConflictError('An account with this email already exists. Please log in.');
+      }
     }
 
-    // Only check for existing user account if this is NOT an existing trainee applying to a new program
-    // Existing trainees already have user accounts, so we don't need to check
-    if (!isExistingTrainee) {
-      // Check if email already has an active user account
+    const isReapplyingWithExistingRecord = Boolean(existingTrainee);
+
+    // Only check for existing user account / username collisions if this is a brand-new trainee registration
+    if (!isExistingTrainee && !isReapplyingWithExistingRecord) {
       const { data: existingUser } = await supabaseAdmin
         .from('users')
         .select('id')
@@ -206,13 +235,9 @@ export class RegistrationService {
         .maybeSingle();
 
       if (existingUser) {
-        throw new Error('An account with this email already exists. Please log in.');
+        throw new ConflictError('An account with this email already exists. Please log in.');
       }
-    }
 
-    // Only check if username is taken if this is NOT an existing trainee
-    // Existing trainees are reusing their existing username
-    if (!isExistingTrainee) {
       const { data: existingUsername } = await supabaseAdmin
         .from('users')
         .select('id')
@@ -220,39 +245,21 @@ export class RegistrationService {
         .maybeSingle();
 
       if (existingUsername) {
-        throw new Error('This username is already taken. Please choose another.');
+        throw new ConflictError('This username is already taken. Please choose another.');
       }
     }
 
-    // Check for pending registration with same username (for new trainees only)
-    // In normalized schema, username is in users table, not trainees
-    if (!isExistingTrainee) {
-      const { data: existingPendingUsername } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('username', data.username)
-        .maybeSingle();
-
-      if (existingPendingUsername) {
-        throw new Error('This username is already taken. Please choose another.');
-      }
-    }
-
-    // ========== NEW: Check for incomplete enrollment in trainees table ==========
-    // Before allowing a new registration, verify the trainee doesn't have an 
-    // active or inactive enrollment already. Completed/dropped enrollments are 
+    // ========== Check for incomplete enrollment in trainees/enrollments tables ==========
+    // Before allowing a new registration, verify the trainee doesn't have an
+    // active or enrolled program already. Completed/dropped/failed enrollments are
     // allowed since those trainees may be re-enrolling.
-    // Requirements: 1.1, 1.2, 2.1, 4.3
-
-const incompleteEnrollmentCheck = await this.checkIncompleteEnrollment(
+    const incompleteEnrollmentCheck = await this.checkIncompleteEnrollment(
       data.email.toLowerCase(),
       tenantId
     );
 
     if (incompleteEnrollmentCheck.hasIncompleteEnrollment) {
-      // Log the rejection for audit purposes
-
-const trainee = incompleteEnrollmentCheck.trainee;
+      const trainee = incompleteEnrollmentCheck.trainee;
       console.log('[Registration] CONFLICT: Incomplete enrollment blocks application', {
         email: data.email.toLowerCase(),
         program_id: data.program_id,
@@ -266,14 +273,39 @@ const trainee = incompleteEnrollmentCheck.trainee;
         'You are already enrolled in an incomplete program. Please complete or drop your current program before applying to a new one.'
       );
     }
-    // ========== END: Incomplete enrollment check ==========
 
-    // Hash password
-    const hashedPassword = await hashPassword(data.password);
-    let userId: string | null = null;
+    // Check if the existing trainee already has an enrollment row for the target program
+    let existingProgramEnrollment: { id: string; status: string } | null = null;
+    if (existingTrainee && data.program_id) {
+      const { data: progEnrollment, error: progEnrollmentError } = await supabaseAdmin
+        .from('enrollments')
+        .select('id, status')
+        .eq('trainee_id', existingTrainee.id)
+        .eq('program_id', data.program_id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
 
-    // Create user account in users table (old/standard path)
-    if (!isExistingTrainee) {
+      if (progEnrollmentError && progEnrollmentError.code !== 'PGRST116') {
+        throw progEnrollmentError;
+      }
+
+      if (progEnrollment) {
+        if (progEnrollment.status === 'completed') {
+          throw new ConflictError('You have already completed this program.');
+        }
+        if (progEnrollment.status === 'enrolled' || progEnrollment.status === 'active') {
+          throw new ConflictError('You are already enrolled in this program.');
+        }
+        // status is 'dropped' or 'failed' -> eligible for reactivation
+        existingProgramEnrollment = progEnrollment;
+      }
+    }
+
+    // Hash password (if provided) and resolve user account
+    const hashedPassword = await hashPassword(data.password || '');
+    let userId: string | null = existingTrainee?.user_id || null;
+
+    if (!isExistingTrainee && !isReapplyingWithExistingRecord) {
       const { data: newUser, error: userError } = await supabaseAdmin
         .from('users')
         .insert({
@@ -291,7 +323,7 @@ const trainee = incompleteEnrollmentCheck.trainee;
       }
       userId = newUser.id;
       console.log('[Registration] User account created in users table:', { userId, email: data.email });
-    } else {
+    } else if (!userId) {
       const { data: existingUser } = await supabaseAdmin
         .from('users')
         .select('id')
@@ -300,81 +332,165 @@ const trainee = incompleteEnrollmentCheck.trainee;
       userId = existingUser?.id || null;
     }
 
-    // NORMALIZED SCHEMA: Insert into trainees table with registration_status = 'pending'
-    const { data: trainee, error } = await supabaseAdmin
-      .from('trainees')
-      .insert({
-        tenant_id: tenantId,
-        user_id: userId,
-        email: data.email.toLowerCase(),
-        first_name: data.first_name,
-        last_name: data.last_name,
-        middle_name: data.middle_name || '',
-        phone: data.phone,
-        sex: data.sex,
-        birth_date: data.birth_date,
-        birth_place: data.birth_place,
-        civil_status: data.civil_status,
-        province: data.province,
-        municipality: data.municipality,
-        barangay: data.barangay,
-        street: data.street,
-        educational_attainment: data.educational_attainment,
-        course: data.course,
-        year_graduated: data.year_graduated,
-        classification: data.classification,
-        disability: data.disability || null,
-        employment_status: data.employment_status,
-        registration_status: 'pending',  // Mark as pending approval
-        status: 'inactive',  // Inactive until registration is approved and completed
-        consent_given: false,
-        is_verified: true,  // Verified via OTP step 6
-      })
-      .select()
-      .single();
+    let trainee: any;
 
-    if (error) {
-      this.throwIfPendingRegistrationsMissing(error);
-      throw error;
+    if (existingTrainee) {
+      // Respect DB trigger enforce_registration_transitions (approved -> completed -> pending)
+      if (existingTrainee.registration_status === 'approved') {
+        await supabaseAdmin
+          .from('trainees')
+          .update({ registration_status: 'completed' })
+          .eq('id', existingTrainee.id);
+      }
+
+      // Reuse existing trainee record to respect UNIQUE(tenant_id, email) in 3NF schema
+      const { data: updatedTrainee, error: updateError } = await supabaseAdmin
+        .from('trainees')
+        .update({
+          user_id: userId,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          middle_name: data.middle_name || '',
+          phone: data.phone,
+          sex: data.sex,
+          birth_date: data.birth_date,
+          birth_place: data.birth_place,
+          civil_status: data.civil_status,
+          province: data.province,
+          municipality: data.municipality,
+          barangay: data.barangay,
+          street: data.street,
+          educational_attainment: data.educational_attainment,
+          course: data.course,
+          year_graduated: data.year_graduated,
+          classification: data.classification,
+          disability: data.disability || null,
+          employment_status: data.employment_status,
+          registration_status: 'pending',
+          registration_rejection_reason: null,
+          registration_reviewed_by: null,
+          registration_reviewed_at: null,
+          status: 'inactive', // Required by enforce_trainee_status_consistency while registration_status != 'completed'
+        })
+        .eq('id', existingTrainee.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        this.throwIfPendingRegistrationsMissing(updateError);
+        throw updateError;
+      }
+      trainee = updatedTrainee;
+    } else {
+      // Brand-new trainee in this tenant: insert new trainees row
+      const { data: insertedTrainee, error } = await supabaseAdmin
+        .from('trainees')
+        .insert({
+          tenant_id: tenantId,
+          user_id: userId,
+          email: data.email.toLowerCase(),
+          first_name: data.first_name,
+          last_name: data.last_name,
+          middle_name: data.middle_name || '',
+          phone: data.phone,
+          sex: data.sex,
+          birth_date: data.birth_date,
+          birth_place: data.birth_place,
+          civil_status: data.civil_status,
+          province: data.province,
+          municipality: data.municipality,
+          barangay: data.barangay,
+          street: data.street,
+          educational_attainment: data.educational_attainment,
+          course: data.course,
+          year_graduated: data.year_graduated,
+          classification: data.classification,
+          disability: data.disability || null,
+          employment_status: data.employment_status,
+          registration_status: 'pending',  // Mark as pending approval
+          status: 'inactive',  // Inactive until registration is approved and completed
+          consent_given: false,
+          is_verified: true,  // Verified via OTP step 6
+        })
+        .select()
+        .single();
+
+      if (error) {
+        this.throwIfPendingRegistrationsMissing(error);
+        throw error;
+      }
+      trainee = insertedTrainee;
     }
 
-    // Also populate pending tables for backward compatibility with any legacy read queries
-    try {
-      await supabaseAdmin
-        .from('pending_registration_usernames')
-        .insert({
-          trainee_id: trainee.id,
-          username: data.username,
-        });
+    // Populate pending credential tables only for new trainee accounts
+    if (!isExistingTrainee && !existingTrainee?.user_id) {
+      try {
+        await supabaseAdmin
+          .from('pending_registration_usernames')
+          .upsert(
+            {
+              trainee_id: trainee.id,
+              username: data.username,
+            },
+            { onConflict: 'trainee_id' }
+          );
 
-      await supabaseAdmin
-        .from('pending_registration_passwords')
-        .insert({
-          trainee_id: trainee.id,
-          password_hash: hashedPassword,
-        });
-    } catch (legacyErr) {
-      console.warn('[Registration] Warning inserting legacy pending tables:', legacyErr);
+        await supabaseAdmin
+          .from('pending_registration_passwords')
+          .upsert(
+            {
+              trainee_id: trainee.id,
+              password_hash: hashedPassword,
+            },
+            { onConflict: 'trainee_id' }
+          );
+      } catch (legacyErr) {
+        console.warn('[Registration] Warning upserting legacy pending tables:', legacyErr);
+      }
     }
 
-    // Create enrollment record with the specified enrollment source
-    const { data: enrollment, error: enrollmentError } = await supabaseAdmin
-      .from('enrollments')
-      .insert({
-        tenant_id: tenantId,
-        trainee_id: trainee.id,
-        program_id: data.program_id,
-        enrollment_date: new Date().toISOString().split('T')[0], // Today's date
-        source: enrollmentSource, // Store enrollment source: 'direct', 'social_share', 'admin_assigned'
-        status: 'enrolled', // Pending enrollment approval
-      })
-      .select()
-      .single();
+    const today = new Date().toISOString().split('T')[0];
+    let enrollment: any;
 
-    if (enrollmentError) {
-      console.error('[Registration] Failed to create enrollment record:', enrollmentError);
-      // Note: trainee was created but enrollment failed - this is unusual
-      throw enrollmentError;
+    if (existingProgramEnrollment) {
+      // Reactivate previously dropped/failed enrollment row to respect UNIQUE(trainee_id, program_id)
+      const { data: reactivatedEnrollment, error: reactivateError } = await supabaseAdmin
+        .from('enrollments')
+        .update({
+          enrollment_date: today,
+          completion_date: null,
+          source: enrollmentSource,
+          status: 'enrolled',
+        })
+        .eq('id', existingProgramEnrollment.id)
+        .select()
+        .single();
+
+      if (reactivateError) {
+        console.error('[Registration] Failed to reactivate enrollment record:', reactivateError);
+        throw reactivateError;
+      }
+      enrollment = reactivatedEnrollment;
+    } else {
+      // Create new enrollment record with the specified enrollment source
+      const { data: newEnrollment, error: enrollmentError } = await supabaseAdmin
+        .from('enrollments')
+        .insert({
+          tenant_id: tenantId,
+          trainee_id: trainee.id,
+          program_id: data.program_id,
+          enrollment_date: today,
+          source: enrollmentSource,
+          status: 'enrolled',
+        })
+        .select()
+        .single();
+
+      if (enrollmentError) {
+        console.error('[Registration] Failed to create enrollment record:', enrollmentError);
+        throw enrollmentError;
+      }
+      enrollment = newEnrollment;
     }
 
     try {
@@ -438,7 +554,7 @@ const trainee = incompleteEnrollmentCheck.trainee;
         created_at,
         updated_at,
         users:users!trainees_user_id_fkey(id, username),
-        enrollments(id, program_id, programs(id, name, description, start_date, end_date, status))
+        enrollments(id, program_id, status, enrollment_date, created_at, updated_at, programs(id, name, description, start_date, end_date, status))
       `)
       .order('created_at', { ascending: false });
 
@@ -467,13 +583,16 @@ const trainee = incompleteEnrollmentCheck.trainee;
     }
 
     // Normalize returned rows for frontend compatibility
-    return (data || []).map((row: any) => ({
-      ...row,
-      status: row.registration_status || row.status || 'pending',
-      username: row.users?.username || row.username || '',
-      program: row.enrollments?.[0]?.programs || row.program || undefined,
-      program_id: row.enrollments?.[0]?.program_id || row.program_id || undefined,
-    })) as PendingRegistration[];
+    return (data || []).map((row: any) => {
+      const targetEnrollment = this.pickTargetEnrollment(row.enrollments);
+      return {
+        ...row,
+        status: row.registration_status || row.status || 'pending',
+        username: row.users?.username || row.username || '',
+        program: targetEnrollment?.programs || row.program || undefined,
+        program_id: targetEnrollment?.program_id || row.program_id || undefined,
+      };
+    }) as PendingRegistration[];
   }
 
   /**
@@ -511,7 +630,7 @@ const trainee = incompleteEnrollmentCheck.trainee;
         created_at,
         updated_at,
         users:users!trainees_user_id_fkey(id, username),
-        enrollments(id, program_id, programs(id, name, description, start_date, end_date, status))
+        enrollments(id, program_id, status, enrollment_date, created_at, updated_at, programs(id, name, description, start_date, end_date, status))
       `)
       .eq('id', id);
 
@@ -529,12 +648,13 @@ const trainee = incompleteEnrollmentCheck.trainee;
 
     if (!data) return null;
     const { password_hash, ...safe } = data as any;
+    const targetEnrollment = this.pickTargetEnrollment(safe.enrollments);
     return {
       ...safe,
       status: safe.registration_status || safe.status || 'pending',
       username: safe.users?.username || safe.username || '',
-      program: safe.enrollments?.[0]?.programs || safe.program || undefined,
-      program_id: safe.enrollments?.[0]?.program_id || safe.program_id || undefined,
+      program: targetEnrollment?.programs || safe.program || undefined,
+      program_id: targetEnrollment?.program_id || safe.program_id || undefined,
     } as PendingRegistration;
   }
 
@@ -576,7 +696,7 @@ const trainee = incompleteEnrollmentCheck.trainee;
         registration_reviewed_at,
         created_at,
         updated_at,
-        enrollments(id, program_id, programs(id, name, description, start_date, end_date, status))
+        enrollments(id, program_id, status, enrollment_date, created_at, updated_at, programs(id, name, description, start_date, end_date, status))
       `)
       .eq('email', email.toLowerCase())
       .in('registration_status', ['pending', 'rejected']);
@@ -593,7 +713,15 @@ const trainee = incompleteEnrollmentCheck.trainee;
       throw error;
     }
 
-    return (data || []) as PendingRegistration[];
+    return (data || []).map((row: any) => {
+      const targetEnrollment = this.pickTargetEnrollment(row.enrollments);
+      return {
+        ...row,
+        status: row.registration_status || row.status || 'pending',
+        program: targetEnrollment?.programs || row.program || undefined,
+        program_id: targetEnrollment?.program_id || row.program_id || undefined,
+      };
+    }) as PendingRegistration[];
   }
 
   /**
@@ -617,7 +745,7 @@ const trainee = incompleteEnrollmentCheck.trainee;
         last_name,
         registration_status,
         created_at,
-        enrollments(program_id)
+        enrollments(program_id, status, enrollment_date, created_at, updated_at)
       `)
       .eq('id', id)
       .single();
@@ -629,10 +757,12 @@ const trainee = incompleteEnrollmentCheck.trainee;
     if (fetchError || !traineeReg) throw new Error('Registration not found');
     if (traineeReg.registration_status !== 'pending') throw new Error(`Registration is already ${traineeReg.registration_status}`);
 
+    const targetEnrollment = this.pickTargetEnrollment(traineeReg.enrollments);
+
     console.log('[RegistrationService] approveRegistration: Processing registration', {
       trainee_id: id,
       email: traineeReg.email,
-      program_id: traineeReg.enrollments?.[0]?.program_id,
+      program_id: targetEnrollment?.program_id,
     });
 
     // Update trainee record to mark registration as approved
@@ -850,6 +980,19 @@ const trainee = incompleteEnrollmentCheck.trainee;
         throw new ConflictError(`Cannot reject registration: ${errorMsg}`);
       }
       throw error;
+    }
+
+    // Transition any pending 'enrolled' enrollment row for this trainee to 'dropped'
+    // so rejected applications do not consume program capacity or block future applications
+    try {
+      await supabaseAdmin
+        .from('enrollments')
+        .update({ status: 'dropped' })
+        .eq('trainee_id', id)
+        .eq('tenant_id', trainee.tenant_id)
+        .eq('status', 'enrolled');
+    } catch (enrollCleanupErr) {
+      console.warn('[RegistrationService] Warning updating rejected enrollment status to dropped:', enrollCleanupErr);
     }
 
     // Send rejection email to trainee

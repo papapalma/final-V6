@@ -691,9 +691,17 @@ export function getThumbnailPath(path: string | null | undefined): string {
 
 /**
  * Convert a source image path to a full thumbnail URL.
+ * Returns empty string ('') when no real image exists (or when path points to the blank placeholder)
+ * so components render their semantic fallback icons / avatars instead of an empty gray box.
  */
 export function getThumbnailUrl(path: string | null | undefined, version?: string | number): string {
+  if (!path || path.includes('blank-thumbnail')) {
+    return '';
+  }
   const thumbnailPath = getThumbnailPath(path);
+  if (!thumbnailPath || thumbnailPath === DEFAULT_THUMBNAIL_PATH || thumbnailPath.includes('blank-thumbnail')) {
+    return '';
+  }
   return getFileUrl(thumbnailPath, version);
 }
 

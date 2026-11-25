@@ -40,7 +40,7 @@ export default function LendingsPage() {
     try {
       setLoading(true);
       const response = await lendingService.getLendingRecords();
-      
+
       // Map backend data to frontend format
       const mappedLendings = (response.data || []).map((lending: any) => ({
         id: lending.id,
@@ -61,7 +61,7 @@ export default function LendingsPage() {
         createdAt: lending.created_at,
         updatedAt: lending.updated_at
       }));
-      
+
       setLendings(mappedLendings);
     } catch (error) {
       logger.error('Failed to fetch lendings', { error });
@@ -132,8 +132,8 @@ export default function LendingsPage() {
               <Badge
                 variant={
                   lending.status === 'returned' ? 'secondary' :
-                  lending.status === 'overdue' ? 'destructive' :
-                  'default'
+                    lending.status === 'overdue' ? 'destructive' :
+                      'default'
                 }
                 className="shrink-0 text-xs"
               >
@@ -180,24 +180,24 @@ export default function LendingsPage() {
             <p className="text-xs sm:text-sm text-muted-foreground">Track borrowing and returning of items</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
-              className="flex-1 sm:flex-none" 
+              className="flex-1 sm:flex-none"
               onClick={() => {
                 const currentLendings = activeTab === 'borrowed' ? borrowed :
-                                       activeTab === 'returned' ? returned :
-                                       overdue;
-                
+                  activeTab === 'returned' ? returned :
+                    overdue;
+
                 if (currentLendings.length === 0) {
                   toast.error('No lendings to download');
                   return;
                 }
-                
+
                 const title = activeTab === 'borrowed' ? 'Borrowed Items Report' :
-                             activeTab === 'returned' ? 'Returned Items Report' :
-                             'Overdue Items Report';
-                
+                  activeTab === 'returned' ? 'Returned Items Report' :
+                    'Overdue Items Report';
+
                 generateLendingsPDF(currentLendings, title);
                 toast.success('PDF downloaded successfully');
               }}
@@ -251,8 +251,8 @@ export default function LendingsPage() {
                     <p className="text-xs sm:text-sm text-muted-foreground">Returned</p>
                     <h2 className="mt-1 text-lg sm:text-2xl">{returned.length}</h2>
                   </div>
-                  <div className="flex size-10 sm:size-12 items-center justify-center rounded-lg bg-secondary/10 shrink-0">
-                    <CheckCircle2 className="size-5 sm:size-6 text-secondary" />
+                  <div className="flex size-10 sm:size-12 items-center justify-center rounded-lg bg-emerald-500/10 shrink-0">
+                    <CheckCircle2 className="size-5 sm:size-6 text-emerald-600 dark:text-emerald-400" />
                   </div>
                 </div>
               </CardContent>

@@ -1,9 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Message, messengerApi } from '../../services/messengerService';
 import { getFileUrl } from '../../services/api';
 import { format } from 'date-fns';
-import { FileText, Download, Undo2, MoreVertical, Loader2, ImageOff } from 'lucide-react';
+import {
+  FileText,
+  Download,
+  Undo2,
+  MoreVertical,
+  Loader2,
+  ImageOff,
+  Check,
+  Clock,
+  AlertCircle,
+  RotateCcw,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -20,6 +31,7 @@ interface MessageBubbleProps {
   isCurrentUser: boolean;
   onUnsend?: (messageId: string) => void;
   onStartDM?: (userId: string) => void;
+  onRetry?: (clientKey: string) => void;
   showAvatar?: boolean;
 }
 
@@ -28,6 +40,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   isCurrentUser,
   onUnsend,
   onStartDM,
+  onRetry,
   showAvatar = true,
 }) => {
   const [isUnsending, setIsUnsending] = useState(false);
@@ -35,6 +48,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
 
   // Load private tenant-scoped image attachments via Bearer-authenticated Blob fetch
   useEffect(() => {
@@ -76,10 +90,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     };
   }, [message.isDeleted, message.attachmentUrl, message.attachmentType]);
 
-  // Check if message is within 15-minute unsend window
+  const isSending = message.status === 'sending';
+  const isFailed = message.status === 'failed';
+
+  // Check if message is within 15-minute unsend window (persisted messages only)
   const createdMs = new Date(message.createdAt).getTime();
   const messageAgeMs = Number.isNaN(createdMs) ? Infinity : Date.now() - createdMs;
-  const canUnsend = isCurrentUser && !message.isDeleted && messageAgeMs <= 15 * 60 * 1000;
+  const canUnsend =
+    isCurrentUser &&
+    !message.isDeleted &&
+    !isSending &&
+    !isFailed &&
+    messageAgeMs <= 15 * 60 * 1000;
 
   const handleUnsend = async () => {
     if (!onUnsend || isUnsending) return;
@@ -122,11 +144,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     </Avatar>
   );
 
+  // Only newly sent/received live messages animate — historical backlog mounts instantly
+  const shouldAnimateEntrance = Boolean(message.isNew);
+  const initialVariant = shouldAnimateEntrance
+    ? prefersReducedMotion
+      ? { opacity: 0 }
+      : { opacity: 0, y: 8, scale: 0.97 }
+    : false;
+  const entranceTransition = prefersReducedMotion
+    ? { duration: 0.14, ease: 'easeOut' as const }
+    : { type: 'spring' as const, duration: 0.2, bounce: 0 };
+
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ type: 'spring', duration: 0.28, bounce: 0 }}
+      initial={initialVariant}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={entranceTransition}
+      style={{ transformOrigin: isCurrentUser ? 'bottom right' : 'bottom left' }}
       className={`group flex items-end gap-2 mb-2 ${
         isCurrentUser ? 'justify-end' : 'justify-start'
       }`}
@@ -199,11 +233,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
 
           <div
-            className={`px-3.5 py-2.5 rounded-2xl text-[14px] leading-relaxed shadow-xs break-words select-text ${
+            className={`px-3.5 py-2.5 rounded-2xl text-[14px] leading-relaxed shadow-xs break-words select-text transition-opacity duration-150 ${
+              isSending ? 'opacity-85' : 'opacity-100'
+            } ${
               message.isDeleted
                 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 italic border border-dashed border-slate-300 dark:border-slate-700'
                 : isCurrentUser
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-br-xs shadow-blue-500/10'
+                ? `bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-br-xs shadow-blue-500/10 ${
+                    isFailed ? 'ring-2 ring-destructive/60' : ''
+                  }`
                 : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-bl-xs'
             }`}
           >
@@ -278,18 +316,44 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {/* Text Content */}
             {message.content && <p className="whitespace-pre-wrap">{message.content}</p>}
 
-            {/* Timestamp */}
-            {formattedTime && (
+            {/* Timestamp & Delivery Status */}
+            {(formattedTime || (isCurrentUser && !message.isDeleted)) && (
               <div
-                className={`text-[10px] mt-1 text-right select-none ${
-                  isCurrentUser ? 'text-blue-100/80' : 'text-slate-400 dark:text-slate-500'
+                className={`mt-1 flex items-center justify-end gap-1 text-[10px] select-none ${
+                  isCurrentUser ? 'text-blue-100/85' : 'text-slate-400 dark:text-slate-500'
                 }`}
               >
-                {formattedTime}
+                {formattedTime && <span>{formattedTime}</span>}
+                {isCurrentUser && !message.isDeleted && (
+                  <span className="inline-flex items-center transition-opacity duration-150">
+                    {isSending ? (
+                      <Clock className="size-2.5 opacity-80" aria-label="Sending" />
+                    ) : isFailed ? (
+                      <AlertCircle className="size-3 text-red-200" aria-label="Failed to send" />
+                    ) : (
+                      <Check className="size-3 opacity-90" aria-label="Sent" />
+                    )}
+                  </span>
+                )}
               </div>
             )}
           </div>
         </div>
+
+        {/* Inline Retry Bar for Failed Optimistic Sends */}
+        {isCurrentUser && isFailed && onRetry && (
+          <div className="mt-1 flex items-center gap-1.5 px-1 text-[11px] text-destructive">
+            <span>Not sent</span>
+            <button
+              type="button"
+              onClick={() => onRetry(message.clientKey || message.id)}
+              className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-0.5 font-semibold text-destructive transition-colors hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <RotateCcw className="size-3" />
+              <span>Retry</span>
+            </button>
+          </div>
+        )}
       </div>
     </motion.div>
   );

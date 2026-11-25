@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { useMessenger } from '../../contexts/MessengerContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { messengerApi, UserSummary } from '../../services/messengerService';
@@ -28,6 +29,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
 }) => {
   const { conversations, isLoading, startDMWithUser } = useMessenger();
   const { user } = useAuth();
+  const prefersReducedMotion = useReducedMotion();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'program_group' | 'direct'>('all');
@@ -164,13 +166,25 @@ export const ConversationList: React.FC<ConversationListProps> = ({
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setFilterType(tab.key)}
-                className={`flex flex-1 items-center justify-center rounded-lg px-2 text-xs whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`relative flex flex-1 items-center justify-center rounded-lg px-2 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   isActive
-                    ? 'bg-card font-semibold text-foreground shadow-xs'
+                    ? 'font-semibold text-foreground'
                     : 'font-medium text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {tab.label}
+                {isActive && (
+                  <motion.span
+                    layoutId="messenger-filter-pill"
+                    aria-hidden="true"
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0.12 }
+                        : { type: 'spring', duration: 0.22, bounce: 0 }
+                    }
+                    className="absolute inset-0 rounded-lg bg-card shadow-xs"
+                  />
+                )}
+                <span className="relative z-10">{tab.label}</span>
               </button>
             );
           })}
@@ -232,7 +246,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
                     ? formatBadgeAriaLabel(conv.title, conv.unreadCount, 'unread message')
                     : undefined
                 }
-                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`messenger-press-row flex w-full items-center gap-3 rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   isSelected
                     ? 'border-primary/30 bg-accent/70 dark:bg-primary/15'
                     : 'border-transparent bg-transparent hover:bg-muted/70'
@@ -371,7 +385,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
                     type="button"
                     disabled={Boolean(startingContactId)}
                     onClick={() => handleSelectContact(contact.id)}
-                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-transparent px-3.5 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                    className="messenger-press-row flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-transparent px-3.5 py-2.5 text-left hover:border-primary/40 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <Avatar className="size-10 shrink-0 border border-border">

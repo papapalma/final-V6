@@ -44,6 +44,18 @@ vi.mock('../../contexts/ThemeContext', () => ({
   ThemeProvider: ({ children }: any) => children,
 }));
 
+// Mock MessengerContext used by DashboardLayout
+vi.mock('../../contexts/MessengerContext', () => ({
+  useMessenger: () => ({
+    unreadTotalCount: 0,
+    isPanelOpen: false,
+    openPanel: vi.fn(),
+    closePanel: vi.fn(),
+    togglePanel: vi.fn(),
+  }),
+  MessengerProvider: ({ children }: any) => children,
+}));
+
 // Mock recharts to avoid rendering issues in tests
 vi.mock('recharts', () => ({
   LineChart: ({ children }: any) => <div data-testid="line-chart">{children}</div>,
