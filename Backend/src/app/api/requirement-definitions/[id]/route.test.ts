@@ -15,7 +15,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { PATCH, OPTIONS } from './route';
+import { PATCH, DELETE, OPTIONS } from './route';
 import { requireTenantContext } from '@/middleware/tenantContext';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
@@ -821,6 +821,92 @@ describe('PATCH /api/requirement-definitions/{id}', () => {
 
       expect(response.status).toBe(200);
       expect(response.headers.get('Access-Control-Allow-Methods')).toBeDefined();
+    });
+  });
+
+  describe('PATCH applicability_rules & DELETE soft-delete', () => {
+    it('should update applicability_rules via PATCH', async () => {
+      const rules = { marital_status: 'married' };
+      const updateRequest = {
+        ...mockRequest,
+        json: jest.fn().mockResolvedValue({ applicability_rules: rules }),
+      } as any;
+
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
+        update: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({
+                data: { ...mockExistingRequirement, applicability_rules: rules },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const response = await PATCH(
+        updateRequest as NextRequest,
+        { params: Promise.resolve({ id: 'req-uuid-001' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.data.applicability_rules).toEqual(rules);
+    });
+
+    it('should return 403 on DELETE when user is not admin', async () => {
+      (requireTenantContext as jest.Mock).mockReturnValue({
+        context: {
+          tenantId: 'tenant-uuid-001',
+          userId: 'user-uuid-001',
+          role: 'trainee',
+          isSuperAdmin: false,
+        },
+      });
+
+      const deleteReq = { ...mockRequest, method: 'DELETE' } as any;
+      const response = await DELETE(
+        deleteReq as NextRequest,
+        { params: Promise.resolve({ id: 'req-uuid-001' }) }
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it('should soft-delete requirement definition via DELETE', async () => {
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce(mockSelectChain);
+      (supabaseAdmin.from as jest.Mock).mockReturnValueOnce({
+        update: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnThis(),
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({
+                data: {
+                  ...mockExistingRequirement,
+                  is_active: false,
+                  deleted_at: '2026-11-26T00:00:00Z',
+                },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const deleteReq = { ...mockRequest, method: 'DELETE' } as any;
+      const response = await DELETE(
+        deleteReq as NextRequest,
+        { params: Promise.resolve({ id: 'req-uuid-001' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.data.id).toBe('req-uuid-001');
+      expect(body.data.deleted_at).toBeDefined();
     });
   });
 });

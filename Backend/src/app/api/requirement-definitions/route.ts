@@ -296,7 +296,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       .slice(0, 8)}`;
 
   // 4. Create the requirement definition
-  const { data: newRequirement, error: createError } = await supabaseAdmin
+  const nowIso = new Date().toISOString();
+  let { data: newRequirement, error: createError } = await supabaseAdmin
     .from('requirement_definitions')
     .insert([
       {
@@ -308,8 +309,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         is_active: createData.is_active,
         applicability_rules: createData.applicability_rules || null,
         display_order: createData.display_order || 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: nowIso,
+        updated_at: nowIso,
       },
     ])
     .select()
@@ -325,12 +326,52 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     // Check if this is a duplicate requirement_type error
     if (createError.code === '23505') { // Unique constraint violation
-      return errorResponse(
-        'A requirement definition with this type already exists for your tenant',
-        409
-      );
+      // If a soft-deleted row holds (tenant_id, requirement_type), revive and update it
+      const lookupTable: any = supabaseAdmin.from('requirement_definitions');
+      if (typeof lookupTable?.select === 'function') {
+        const { data: softDeleted } = await lookupTable
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('requirement_type', requirementType)
+          .not('deleted_at', 'is', null)
+          .maybeSingle();
+
+        if (softDeleted) {
+          const updateTable: any = supabaseAdmin.from('requirement_definitions');
+          if (typeof updateTable?.update === 'function') {
+            const { data: revived, error: reviveError } = await updateTable
+              .update({
+                display_name: createData.display_name.trim(),
+                description: createData.description.trim(),
+                is_mandatory: createData.is_mandatory,
+                is_active: createData.is_active,
+                applicability_rules: createData.applicability_rules || null,
+                display_order: createData.display_order || 0,
+                deleted_at: null,
+                updated_at: nowIso,
+              })
+              .eq('id', softDeleted.id)
+              .eq('tenant_id', tenantId)
+              .select()
+              .single();
+
+            if (!reviveError && revived) {
+              newRequirement = revived;
+              createError = null;
+            }
+          }
+        }
+      }
+
+      if (createError) {
+        return errorResponse(
+          'A requirement definition with this type already exists for your tenant',
+          409
+        );
+      }
+    } else {
+      return serverErrorResponse(`Failed to create requirement definition: ${createError.message}`);
     }
-    return serverErrorResponse(`Failed to create requirement definition: ${createError.message}`);
   }
 
   if (!newRequirement) {

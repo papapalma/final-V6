@@ -101,8 +101,8 @@ export interface RequirementDefinitionsResponse {
     limit: number;
     total: number;
     totalPages: number;
-    hasNextPage: boolean;
-    hasPreviousPage: boolean;
+    hasNextPage?: boolean;
+    hasPreviousPage?: boolean;
   };
 }
 
@@ -170,6 +170,9 @@ export interface UpdateRequirementPayload {
   isMandatory?: boolean;
   /** Whether this requirement is currently active (optional update field) */
   isActive?: boolean;
+  /** Conditional applicability rules (null clears rules) */
+  applicabilityRules?: ApplicabilityRules | null;
+  applicability_rules?: ApplicabilityRules | null;
   is_active?: boolean;
   is_mandatory?: boolean;
   display_name?: string;

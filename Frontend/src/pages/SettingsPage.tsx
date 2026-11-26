@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import PWAStatus from '../components/PWAStatus';
+import LanguageSegmentedControl from '../components/LanguageSegmentedControl';
 import { BrandLogo } from '../components/BrandLogo';
 import { useAuth } from '../contexts/AuthContext';
 import { useBranding } from '../contexts/BrandingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -25,6 +27,7 @@ import {
   Info,
   Sparkles,
   Wifi,
+  Globe,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -46,6 +49,7 @@ export default function SettingsPage() {
   const { user, hasPermission } = useAuth();
   const { companyName, tagline } = useBranding();
   const { isDark, toggleTheme } = useTheme();
+  const { t, tx } = useLanguage();
   const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(false);
   const [isPWAInstalled, setIsPWAInstalled] = useState(isStandalone());
@@ -81,7 +85,7 @@ export default function SettingsPage() {
 
   const handleInstallPWA = async () => {
     if (isPWAInstalled) {
-      toast.info('BMDC App is already installed on this device!');
+      toast.info(t('settings.alreadyInstalledToast'));
       return;
     }
 
@@ -89,25 +93,25 @@ export default function SettingsPage() {
       const result = await promptPWAInstall();
       if (result.outcome === 'accepted') {
         setIsPWAInstalled(true);
-        toast.success('BMDC App installed successfully!');
+        toast.success(t('settings.appInstalledSuccessToast'));
       } else {
-        toast.info('Installation cancelled.');
+        toast.info(t('settings.installCancelledToast'));
       }
     } else {
       setShowManualSteps(true);
       if (iosMode) {
-        toast.info('Tap the Safari Share button and select "Add to Home Screen"');
+        toast.info(t('settings.iosInstallToast'));
       } else if (desktopMode) {
-        toast.info('Look for the Install icon in your browser address bar or menu');
+        toast.info(t('settings.desktopInstallToast'));
       } else {
-        toast.info('Open your browser menu (⋮) and select "Install app"');
+        toast.info(t('settings.mobileInstallToast'));
       }
     }
   };
 
   const handleCheckForUpdates = async () => {
     if (!('serviceWorker' in navigator)) {
-      toast.info('Service Worker not supported in this browser.');
+      toast.info(t('settings.swUnsupportedToast'));
       return;
     }
 
@@ -116,12 +120,12 @@ export default function SettingsPage() {
       const registration = await navigator.serviceWorker.getRegistration();
       if (registration) {
         await registration.update();
-        toast.success('BMDC App is up to date!');
+        toast.success(t('settings.appUpToDateToast'));
       } else {
-        toast.info('No active service worker found.');
+        toast.info(t('settings.noServiceWorkerToast'));
       }
-    } catch (error) {
-      toast.error('Failed to check for updates.');
+    } catch {
+      toast.error(t('settings.updateCheckFailedToast'));
     } finally {
       setIsUpdating(false);
     }
@@ -134,13 +138,13 @@ export default function SettingsPage() {
       if (permission === 'granted') {
         const subscriptionId = await subscribeToPushNotifications();
         if (subscriptionId) {
-          toast.success('Push notifications enabled');
+          toast.success(t('settings.pushEnabledToast'));
         } else {
-          toast.error('Failed to enable push notifications');
+          toast.error(t('settings.pushFailedToast'));
           setNotifications(false);
         }
       } else {
-        toast.info('Notification permission denied');
+        toast.info(t('settings.pushDeniedToast'));
         setNotifications(false);
       }
     } else {
@@ -150,34 +154,32 @@ export default function SettingsPage() {
           await unsubscribeFromPushNotifications(sub.id);
         }
       }
-      toast.info('Notifications disabled');
+      toast.info(t('settings.pushDisabledToast'));
     }
   };
 
   return (
-    <DashboardLayout title={isTrainee ? 'Trainee Settings' : 'Settings'}>
+    <DashboardLayout title={isTrainee ? t('settings.traineePageTitle') : t('settings.pageTitle')}>
       <div className="mx-auto max-w-4xl space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">
-              {isTrainee ? 'Trainee Settings & Preferences' : 'Settings'}
+              {isTrainee ? t('settings.traineeHeading') : t('settings.heading')}
             </h2>
-            <p className="text-muted-foreground">
-              {isTrainee
-                ? 'Manage your portal preferences and download the BMDC app for your phone or computer'
-                : 'Manage your app preferences and configuration'}
+            <p className="text-muted-foreground mt-1">
+              {isTrainee ? t('settings.traineeSubtitle') : t('settings.subtitle')}
             </p>
           </div>
           {isPWAInstalled ? (
-            <Badge variant="default" className="bg-green-600 gap-1.5 self-start sm:self-auto py-1 px-3">
+            <Badge variant="default" className="bg-green-600 gap-1.5 self-start sm:self-auto py-1 px-2.5">
               <CheckCircle2 className="size-3.5" />
-              <span>Installed App</span>
+              <span>{t('settings.installedAppBadge')}</span>
             </Badge>
           ) : (
-            <Badge variant="secondary" className="gap-1.5 self-start sm:self-auto py-1 px-3">
+            <Badge variant="secondary" className="gap-1.5 self-start sm:self-auto py-1 px-2.5">
               {desktopMode ? <Monitor className="size-3.5" /> : <Smartphone className="size-3.5" />}
-              <span>{desktopMode ? 'Desktop Browser' : 'Mobile Browser'}</span>
+              <span>{desktopMode ? t('settings.desktopBrowserBadge') : t('settings.mobileBrowserBadge')}</span>
             </Badge>
           )}
         </div>
@@ -194,24 +196,24 @@ export default function SettingsPage() {
                     <Download className="size-5" />
                   </div>
                   <div>
-                    <CardTitle className="text-xl">Download BMDC App</CardTitle>
+                    <CardTitle className="text-xl">{t('settings.pwaCardTitle')}</CardTitle>
                     <CardDescription>
-                      Progressive Web App (PWA) for {instructions.label}
+                      {t('settings.pwaCardDescription', { platform: instructions.label })}
                     </CardDescription>
                   </div>
                 </div>
               </div>
               {isPWAInstalled ? (
-                <Badge variant="default" className="bg-green-600 text-xs">
-                  <CheckCircle2 className="mr-1 size-3" /> Installed
+                <Badge variant="default" className="bg-green-600 text-xs py-0.5 px-2">
+                  <CheckCircle2 className="mr-1 size-3" /> {t('settings.installedBadge')}
                 </Badge>
               ) : canInstall ? (
-                <Badge variant="default" className="bg-blue-600 text-xs animate-pulse">
-                  <Sparkles className="mr-1 size-3" /> Ready to Install
+                <Badge variant="default" className="bg-blue-600 text-xs animate-pulse py-0.5 px-2">
+                  <Sparkles className="mr-1 size-3" /> {t('settings.readyToInstallBadge')}
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="text-xs">
-                  <Info className="mr-1 size-3" /> Web Mode
+                <Badge variant="secondary" className="text-xs py-0.5 px-2">
+                  <Info className="mr-1 size-3" /> {t('settings.webModeBadge')}
                 </Badge>
               )}
             </div>
@@ -222,10 +224,9 @@ export default function SettingsPage() {
               <div className="space-y-3">
                 <Alert className="border-green-500/20 bg-green-500/10 text-green-800 dark:text-green-200">
                   <CheckCircle2 className="size-4 text-green-600" />
-                  <AlertTitle className="font-semibold">BMDC App is installed!</AlertTitle>
+                  <AlertTitle className="font-semibold">{t('settings.pwaInstalledAlertTitle')}</AlertTitle>
                   <AlertDescription className="text-sm">
-                    You are enjoying the full standalone BMDC application experience with offline capabilities,
-                    instant launching, and fast cache performance.
+                    {t('settings.pwaInstalledAlertDesc')}
                   </AlertDescription>
                 </Alert>
 
@@ -233,34 +234,32 @@ export default function SettingsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-2"
+                    className="gap-2 py-2 px-3.5"
                     onClick={handleCheckForUpdates}
                     disabled={isUpdating}
                   >
                     <RefreshCw className={`size-4 ${isUpdating ? 'animate-spin' : ''}`} />
-                    <span>{isUpdating ? 'Checking...' : 'Check for App Updates'}</span>
+                    <span>{isUpdating ? t('settings.checkingUpdatesBtn') : t('settings.checkUpdatesBtn')}</span>
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Install BMDC on your {desktopMode ? 'desktop computer' : 'mobile phone'} for a faster,
-                  native app experience without browser URL bars or tabs. Access your attendance QR code,
-                  training modules, and records even without an active internet connection.
+                  {desktopMode ? t('settings.pwaPitchDesktop') : t('settings.pwaPitchMobile')}
                 </p>
 
                 {/* Feature highlight grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+                  <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
                     <Wifi className="size-4 text-primary shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-semibold text-foreground">Offline Support</p>
-                      <p className="text-muted-foreground">Access schedules and profiles without internet</p>
+                      <p className="font-semibold text-foreground">{t('settings.offlineSupportTitle')}</p>
+                      <p className="text-muted-foreground">{t('settings.offlineSupportDesc')}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+                  <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
                     {desktopMode ? (
                       <Monitor className="size-4 text-primary shrink-0 mt-0.5" />
                     ) : (
@@ -268,19 +267,19 @@ export default function SettingsPage() {
                     )}
                     <div>
                       <p className="font-semibold text-foreground">
-                        {desktopMode ? 'Desktop Shortcut' : 'Home Screen App'}
+                        {desktopMode ? t('settings.desktopShortcutTitle') : t('settings.homeScreenAppTitle')}
                       </p>
                       <p className="text-muted-foreground">
-                        {desktopMode ? 'Launches in its own clean window' : 'One-tap access like a native app'}
+                        {desktopMode ? t('settings.desktopShortcutDesc') : t('settings.homeScreenAppDesc')}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+                  <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
                     <Bell className="size-4 text-primary shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-semibold text-foreground">Fast Alerts</p>
-                      <p className="text-muted-foreground">Real-time attendance reminders and notices</p>
+                      <p className="font-semibold text-foreground">{t('settings.fastAlertsTitle')}</p>
+                      <p className="text-muted-foreground">{t('settings.fastAlertsDesc')}</p>
                     </div>
                   </div>
                 </div>
@@ -289,35 +288,35 @@ export default function SettingsPage() {
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <Button
                     size="lg"
-                    className="w-full sm:w-auto gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md"
+                    className="w-full sm:w-auto gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3.5 px-6 shadow-md"
                     onClick={handleInstallPWA}
                   >
                     <Download className="size-5" />
-                    <span>Download & Install BMDC App</span>
+                    <span>{t('settings.downloadInstallBtn')}</span>
                   </Button>
 
                   <Button
                     variant="outline"
                     size="lg"
-                    className="w-full sm:w-auto gap-2"
+                    className="w-full sm:w-auto gap-2 py-3.5 px-6"
                     onClick={() => setShowManualSteps(!showManualSteps)}
                   >
                     <Info className="size-4" />
-                    <span>{showManualSteps ? 'Hide Instructions' : 'How to Install'}</span>
+                    <span>{showManualSteps ? t('settings.hideInstructionsBtn') : t('settings.howToInstallBtn')}</span>
                   </Button>
                 </div>
 
-                {/* Step-by-step instructions (expanded by default if not direct promptable or on toggle) */}
+                {/* Step-by-step instructions */}
                 {(showManualSteps || iosMode || (!canInstall && !isPWAInstalled)) && (
-                  <div className="mt-3 rounded-xl border border-primary/20 bg-muted/60 p-4 text-sm">
+                  <div className="settings-disclosure-in mt-3 rounded-xl border border-primary/20 bg-muted/60 p-4 text-sm">
                     <p className="font-semibold text-foreground mb-2 flex items-center gap-2">
                       <Info className="size-4 text-primary" />
-                      Installation Steps for {instructions.label}:
+                      {t('settings.installStepsTitle', { platform: instructions.label })}
                     </p>
-                    <ol className="list-decimal ml-5 space-y-1.5 text-muted-foreground text-sm">
+                    <ol className="list-decimal ml-4 space-y-1.5 text-muted-foreground text-sm">
                       {instructions.steps.map((step, idx) => (
                         <li key={idx} className="leading-relaxed">
-                          {step}
+                          {tx(step)}
                         </li>
                       ))}
                     </ol>
@@ -332,20 +331,37 @@ export default function SettingsPage() {
         {/* DESKTOP LAYOUT (Tablet / Desktop Screens)                             */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         <div className="hidden md:block space-y-6">
-          {/* Appearance */}
+          {/* Appearance & Language */}
           <Card>
             <CardHeader>
-              <CardTitle>Appearance</CardTitle>
-              <CardDescription>Customize the look and feel of the app</CardDescription>
+              <CardTitle>{t('settings.appearanceTitle')}</CardTitle>
+              <CardDescription>{t('settings.appearanceDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Moon className="size-5 text-muted-foreground" />
-                  <div>
-                    <Label htmlFor="dark-mode" className="font-medium">Dark Mode</Label>
+              {/* Language Switcher Row */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Globe className="size-5 text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{t('settings.languageLabel')}</p>
                     <p className="text-sm text-muted-foreground">
-                      Switch between light and dark theme
+                      {t('settings.languageDesc')}
+                    </p>
+                  </div>
+                </div>
+                <LanguageSegmentedControl idPrefix="settings-desktop" />
+              </div>
+
+              <Separator />
+
+              {/* Dark Mode Row */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Moon className="size-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <Label htmlFor="dark-mode" className="font-medium">{t('settings.darkModeLabel')}</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {t('settings.darkModeDesc')}
                     </p>
                   </div>
                 </div>
@@ -355,6 +371,7 @@ export default function SettingsPage() {
                   onCheckedChange={toggleTheme}
                 />
               </div>
+
               {hasPermission('canManageCMS') && (
                 <>
                   <Separator />
@@ -362,14 +379,16 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-3 min-w-0">
                       <BrandLogo size="sm" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">Organization Logo &amp; Branding</p>
+                        <p className="text-sm font-medium text-foreground">{t('settings.brandingLabel')}</p>
                         <p className="text-sm text-muted-foreground">
-                          Update the logo used across sidebar, login, browser tab, printouts, and landing page
+                          {t('settings.brandingDesc')}
                         </p>
                       </div>
                     </div>
                     <Link to="/admin/landing-content">
-                      <Button variant="outline" size="sm">Manage Logo</Button>
+                      <Button variant="outline" size="sm" className="py-2 px-3.5">
+                        {t('settings.manageLogoBtn')}
+                      </Button>
                     </Link>
                   </div>
                 </>
@@ -380,19 +399,19 @@ export default function SettingsPage() {
           {/* Notifications */}
           <Card>
             <CardHeader>
-              <CardTitle>Notifications</CardTitle>
-              <CardDescription>Configure notification preferences</CardDescription>
+              <CardTitle>{t('settings.notificationsTitle')}</CardTitle>
+              <CardDescription>{t('settings.notificationsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <Bell className="size-5 text-muted-foreground" />
+                  <Bell className="size-5 text-muted-foreground shrink-0" />
                   <div>
-                    <Label htmlFor="push-notifications" className="font-medium">Push Notifications</Label>
+                    <Label htmlFor="push-notifications" className="font-medium">
+                      {t('settings.pushNotificationsLabel')}
+                    </Label>
                     <p className="text-sm text-muted-foreground">
-                      {isTrainee
-                        ? 'Receive attendance reminders, program updates, and announcements'
-                        : 'Receive notifications for overdue items and center alerts'}
+                      {isTrainee ? t('settings.pushDescTrainee') : t('settings.pushDescStaff')}
                     </p>
                   </div>
                 </div>
@@ -403,11 +422,13 @@ export default function SettingsPage() {
                 />
               </div>
               <Separator />
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label htmlFor="email-notifications" className="font-medium">Email Notifications</Label>
+                  <Label htmlFor="email-notifications" className="font-medium">
+                    {t('settings.emailNotificationsLabel')}
+                  </Label>
                   <p className="text-sm text-muted-foreground">
-                    Receive daily summary and official announcements via email
+                    {t('settings.emailNotificationsDesc')}
                   </p>
                 </div>
                 <Switch
@@ -419,9 +440,9 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* PWA Status & Advanced Storage Settings */}
+          {/* PWA Status & Advanced Storage Settings (Golden Rule asymmetric heading mt-8 mb-3) */}
           <div>
-            <h3 className="text-lg font-semibold mb-3">PWA Diagnostic & Offline Storage</h3>
+            <h3 className="text-lg font-semibold mt-8 mb-3">{t('settings.pwaDiagnosticTitle')}</h3>
             <PWAStatus />
           </div>
 
@@ -431,22 +452,22 @@ export default function SettingsPage() {
               <div className="flex items-center gap-3">
                 <BrandLogo size="sm" />
                 <div>
-                  <CardTitle>About {companyName}</CardTitle>
-                  <CardDescription>{tagline || 'Application & system information'}</CardDescription>
+                  <CardTitle>{t('settings.aboutTitle', { company: companyName })}</CardTitle>
+                  <CardDescription>{tagline || t('settings.defaultTagline')}</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Version:</span>
-                <span className="font-medium">1.2.0 (PWA Enabled)</span>
+                <span className="text-muted-foreground">{t('settings.versionLabel')}</span>
+                <span className="font-medium">{t('settings.versionValue')}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Application Type:</span>
-                <span className="font-medium">Responsive Progressive Web App (Desktop & Mobile)</span>
+                <span className="text-muted-foreground">{t('settings.appTypeLabel')}</span>
+                <span className="font-medium">{t('settings.appTypeValue')}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Offline Storage:</span>
+                <span className="text-muted-foreground">{t('settings.offlineStorageLabel')}</span>
                 <span className="font-medium">IndexedDB + CacheStorage</span>
               </div>
             </CardContent>
@@ -456,20 +477,32 @@ export default function SettingsPage() {
         {/* ════════════════════════════════════════════════════════════════════ */}
         {/* MOBILE LAYOUT (Mobile Screens)                                       */}
         {/* ════════════════════════════════════════════════════════════════════ */}
-        <Accordion type="single" collapsible className="md:hidden space-y-4">
+        <Accordion type="single" collapsible defaultValue="appearance" className="md:hidden space-y-4">
           <AccordionItem value="appearance" className="rounded-lg border bg-card px-4">
             <AccordionTrigger>
               <div className="flex items-center gap-3">
-                <Moon className="size-5" />
-                <span>Appearance</span>
+                <Globe className="size-5" />
+                <span>{t('settings.appearanceTitle')}</span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="pb-4">
-              <div className="flex items-center justify-between pt-2">
+            <AccordionContent className="space-y-4 pb-4">
+              <div className="space-y-2 pt-2">
                 <div>
-                  <Label htmlFor="dark-mode-mobile">Dark Mode</Label>
+                  <p className="text-sm font-medium text-foreground">{t('settings.languageLabel')}</p>
                   <p className="text-xs text-muted-foreground">
-                    Switch theme
+                    {t('settings.languageDescMobile')}
+                  </p>
+                </div>
+                <LanguageSegmentedControl idPrefix="settings-mobile" className="w-full grid grid-cols-2" />
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="dark-mode-mobile">{t('settings.darkModeLabel')}</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t('settings.darkModeDescMobile')}
                   </p>
                 </div>
                 <Switch
@@ -485,15 +518,15 @@ export default function SettingsPage() {
             <AccordionTrigger>
               <div className="flex items-center gap-3">
                 <Bell className="size-5" />
-                <span>Notifications</span>
+                <span>{t('settings.notificationsTitle')}</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="space-y-4 pb-4">
               <div className="flex items-center justify-between pt-2">
                 <div>
-                  <Label htmlFor="push-notifications-mobile">Push Notifications</Label>
+                  <Label htmlFor="push-notifications-mobile">{t('settings.pushNotificationsLabel')}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Program & attendance alerts
+                    {t('settings.pushDescMobile')}
                   </p>
                 </div>
                 <Switch
@@ -504,9 +537,9 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <Label htmlFor="email-notifications-mobile">Email Notifications</Label>
+                  <Label htmlFor="email-notifications-mobile">{t('settings.emailNotificationsLabel')}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Daily summary
+                    {t('settings.emailNotificationsDescMobile')}
                   </p>
                 </div>
                 <Switch
@@ -522,7 +555,7 @@ export default function SettingsPage() {
             <AccordionTrigger>
               <div className="flex items-center gap-3">
                 <Wifi className="size-5" />
-                <span>Offline & Cache Status</span>
+                <span>{t('settings.offlineCacheStatus')}</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pb-4">
@@ -533,8 +566,11 @@ export default function SettingsPage() {
 
         {/* Mobile Save Button */}
         <div className="md:hidden">
-          <Button className="w-full" onClick={() => toast.success('Settings saved!')}>
-            Save Preferences
+          <Button
+            className="w-full py-2.5 px-4"
+            onClick={() => toast.success(t('settings.settingsSavedToast'))}
+          >
+            {t('settings.savePreferencesBtn')}
           </Button>
         </div>
       </div>

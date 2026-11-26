@@ -551,7 +551,7 @@ describe('QR Scanner Modal - Render Tests (Task 13)', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
 
     // Verify header is present
-    expect(screen.getByText('Lending QR Scan')).toBeInTheDocument();
+    expect(screen.getByText('Borrowing QR Scan')).toBeInTheDocument();
 
     // Verify mode buttons are present
     expect(screen.getByRole('button', { name: /BORROW/i })).toBeInTheDocument();

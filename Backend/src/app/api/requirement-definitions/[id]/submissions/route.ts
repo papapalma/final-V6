@@ -26,11 +26,24 @@ import { handleOptionsRequest } from '@/middleware/cors';
 import { paginatedResponse, notFoundResponse, forbiddenResponse, errorResponse } from '@/utils/responses';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
+const VALID_STATUSES = ['pending', 'submitted', 'verified', 'rejected', 'waived'] as const;
+type SubmissionStatus = (typeof VALID_STATUSES)[number];
+
+const SORT_BY_ALIASES: Record<string, 'name' | 'date'> = {
+  name: 'name',
+  traineeName: 'name',
+  trainee_name: 'name',
+  date: 'date',
+  submittedAt: 'date',
+  submitted_at: 'date',
+  verifiedAt: 'date',
+  verified_at: 'date',
+};
+
 // Validation schema for query parameters
 const queryParamsSchema = z.object({
-  status: z
-    .enum(['pending', 'submitted', 'verified', 'rejected', 'waived'])
-    .optional(),
+  statuses: z.array(z.enum(VALID_STATUSES)).optional(),
+  search: z.string().optional(),
   sort_by: z.enum(['name', 'date']).default('name'),
   order: z.enum(['asc', 'desc']).default('asc'),
   page: z.coerce.number().int().min(1).default(1),
@@ -43,16 +56,20 @@ type QueryParams = z.infer<typeof queryParamsSchema>;
  * Response type for submission records
  */
 interface SubmissionRecord {
+  id: string;
+  requirement_id: string;
+  trainee_id: string;
   enrollment_id: string;
   trainee_name: string;
   trainee_email: string;
-  submission_status: 'pending' | 'submitted' | 'verified' | 'rejected' | 'waived';
+  submission_status: SubmissionStatus;
   document_url: string | null;
   submitted_at: string | null;
   verified_at: string | null;
   verified_by: string | null;
   rejection_reason: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -93,13 +110,22 @@ export const GET = withErrorHandler(async (
 
   // 4. Parse and validate query parameters
   const { searchParams } = new URL(request.url);
+  const rawStatus = searchParams.get('status');
+  const parsedStatuses = rawStatus
+    ? rawStatus.split(',').map((s) => s.trim()).filter(Boolean)
+    : undefined;
+  const rawSortBy = searchParams.get('sort_by');
+  const normalizedSortBy = rawSortBy ? (SORT_BY_ALIASES[rawSortBy] ?? rawSortBy) : undefined;
+  const rawOrder = searchParams.get('order') || searchParams.get('sort_order') || undefined;
+  const rawSearch = searchParams.get('search')?.trim() || undefined;
 
   let queryParams: QueryParams;
   try {
     queryParams = queryParamsSchema.parse({
-      status: searchParams.get('status') || undefined,
-      sort_by: searchParams.get('sort_by') || undefined,
-      order: searchParams.get('order') || undefined,
+      statuses: parsedStatuses,
+      search: rawSearch,
+      sort_by: normalizedSortBy,
+      order: rawOrder,
       page: searchParams.get('page') || undefined,
       limit: searchParams.get('limit') || undefined,
     });
@@ -108,9 +134,9 @@ export const GET = withErrorHandler(async (
       const fieldErrors: Record<string, string[]> = {};
       const issues = error.issues || (error as any).errors || [];
       issues.forEach((err: any) => {
-        const field = err.path.join('.');
-        if (!fieldErrors[field]) fieldErrors[field] = [];
-        fieldErrors[field].push(err.message);
+        const rawField = err.path[0] === 'statuses' ? 'status' : err.path.join('.');
+        if (!fieldErrors[rawField]) fieldErrors[rawField] = [];
+        fieldErrors[rawField].push(err.message);
       });
       return NextResponse.json(
         {
@@ -142,6 +168,7 @@ export const GET = withErrorHandler(async (
       verified_by,
       rejection_reason,
       created_at,
+      updated_at,
       enrollments!inner(
         id
       ),
@@ -160,15 +187,15 @@ export const GET = withErrorHandler(async (
     .eq('requirement_id', id)
     .eq('tenant_id', tenantId);
 
-  // Apply status filter if provided
-  if (queryParams.status) {
-    query = query.eq('submission_status', queryParams.status);
+  // Apply single status filter directly on query (multi-status is filtered below)
+  if (queryParams.statuses && queryParams.statuses.length === 1) {
+    query = query.eq('submission_status', queryParams.statuses[0]);
   }
 
   query = query.is('deleted_at', null);
 
   // 6. Execute query
-  const { data: submissions, error: submissionError, count } = await query;
+  const { data: submissions, error: submissionError } = await query;
 
   if (submissionError) throw submissionError;
 
@@ -178,25 +205,49 @@ export const GET = withErrorHandler(async (
   }
 
   // 7. Transform data to response format
-  const transformedData: SubmissionRecord[] = submissions.map((submission: any) => {
-    const trainee = submission.trainee_status_records?.trainees;
-    const firstName = trainee?.first_name || '';
-    const lastName = trainee?.last_name || '';
-    const email = trainee?.email || '';
+  const statusFilterSet =
+    queryParams.statuses && queryParams.statuses.length > 0
+      ? new Set<SubmissionStatus>(queryParams.statuses)
+      : null;
+  const searchLower = queryParams.search?.toLowerCase();
 
-    return {
-      enrollment_id: submission.enrollment_id,
-      trainee_name: `${firstName} ${lastName}`.trim(),
-      trainee_email: email,
-      submission_status: submission.submission_status,
-      document_url: submission.document_url,
-      submitted_at: submission.submitted_at,
-      verified_at: submission.verified_at,
-      verified_by: submission.verified_by,
-      rejection_reason: submission.rejection_reason,
-      created_at: submission.created_at,
-    };
-  });
+  const transformedData: SubmissionRecord[] = submissions
+    .map((submission: any) => {
+      const trainee = submission.trainee_status_records?.trainees;
+      const firstName = trainee?.first_name || '';
+      const lastName = trainee?.last_name || '';
+      const email = trainee?.email || '';
+      const traineeId = trainee?.id || submission.trainee_status_records?.trainee_id || '';
+
+      return {
+        id: submission.id || submission.enrollment_id,
+        requirement_id: id,
+        trainee_id: traineeId,
+        enrollment_id: submission.enrollment_id,
+        trainee_name: `${firstName} ${lastName}`.trim(),
+        trainee_email: email,
+        submission_status: submission.submission_status,
+        document_url: submission.document_url,
+        submitted_at: submission.submitted_at,
+        verified_at: submission.verified_at,
+        verified_by: submission.verified_by,
+        rejection_reason: submission.rejection_reason,
+        created_at: submission.created_at,
+        updated_at: submission.updated_at || submission.created_at,
+      };
+    })
+    .filter((record) => {
+      if (statusFilterSet && !statusFilterSet.has(record.submission_status)) {
+        return false;
+      }
+      if (searchLower) {
+        const haystack = `${record.trainee_name} ${record.trainee_email}`.toLowerCase();
+        if (!haystack.includes(searchLower)) {
+          return false;
+        }
+      }
+      return true;
+    });
 
   // 8. Apply sorting
   const sortedData = [...transformedData];

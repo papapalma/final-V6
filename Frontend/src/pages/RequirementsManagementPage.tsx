@@ -30,12 +30,12 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import { RequirementDefinitionsList } from '../components/RequirementDefinitionsList';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -53,10 +53,10 @@ import logger from '../utils/logger';
  */
 function RequirementsBreadcrumb() {
   return (
-    <nav className="flex items-center gap-1 text-xs sm:text-sm mb-4">
-      <a href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+    <nav className="flex items-center gap-1.5 text-xs sm:text-sm mb-4">
+      <Link to="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
         Dashboard
-      </a>
+      </Link>
       <ChevronRight className="size-4 text-muted-foreground" />
       <span className="font-medium text-foreground">Requirements Management</span>
     </nav>
@@ -149,18 +149,18 @@ export default function RequirementsManagementPage() {
   return (
     <DashboardLayout>
       <ErrorBoundary>
-        <div className="space-y-4 md:space-y-6">
+        <div className="ds-page space-y-6 md:space-y-8">
           {/* Breadcrumb Navigation */}
           <RequirementsBreadcrumb />
 
           {/* Page Header */}
-          <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <h1 className="flex items-center gap-2 text-lg sm:text-2xl font-bold">
-                <BookOpen className="size-6 sm:size-8 flex-shrink-0" />
+              <h1 className="flex items-center gap-2 text-lg sm:text-2xl font-bold tracking-tight">
+                <BookOpen className="size-6 sm:size-7 flex-shrink-0 text-primary" />
                 <span>Requirements Management</span>
               </h1>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
                 Configure and manage training enrollment requirements
               </p>
             </div>
@@ -168,28 +168,28 @@ export default function RequirementsManagementPage() {
               <Button
                 onClick={handleAddNewRequirement}
                 disabled={isNavigating}
-                size="sm"
-                className="sm:size-default w-full sm:w-auto"
+                className="sm:size-default w-full sm:w-auto py-2.5 px-4"
               >
-                <Plus className="mr-2 size-4" />
+                <Plus className="size-4" />
                 Add New Requirement
               </Button>
             </div>
           </div>
 
           {/* Information Alert */}
-          <Alert className="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20">
-            <Settings className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <AlertDescription className="text-xs sm:text-sm text-blue-800 dark:text-blue-300">
+          <Alert className="border-primary/20 bg-secondary/70 dark:border-primary/30 dark:bg-secondary/40">
+            <Settings className="size-4 text-primary" />
+            <AlertDescription className="text-xs sm:text-sm text-secondary-foreground">
               Manage training enrollment requirements here. Define requirement types, set mandatory flags, and track trainee submissions. Requirements are applied based on trainee eligibility criteria (e.g., marital status).
             </AlertDescription>
           </Alert>
 
           {/* Main Content: Requirement Definitions List */}
-          <div className="mt-6 md:mt-8">
+          <div>
             <ErrorBoundary>
               <RequirementDefinitionsList
                 onRequirementSelect={handleRequirementSelect}
+                onAddRequirement={handleAddNewRequirement}
               />
             </ErrorBoundary>
           </div>

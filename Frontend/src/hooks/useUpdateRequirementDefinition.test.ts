@@ -201,18 +201,40 @@ describe('useUpdateRequirementDefinition', () => {
       expect(invalidateQueriesSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           queryKey: ['requirementDefinitions'],
-          refetchType: 'stale',
         })
       );
 
       expect(invalidateQueriesSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          queryKey: ['requirementDefinition', 'req-123'],
-          refetchType: 'stale',
+          queryKey: ['requirementDefinitions', 'detail', 'req-123'],
         })
       );
 
       invalidateQueriesSpy.mockRestore();
+    });
+
+    it('should forward applicabilityRules as applicability_rules in PATCH payload', async () => {
+      const { wrapper } = createTestWrapper();
+
+      (api.patch as any).mockResolvedValueOnce({
+        success: true,
+        data: mockRequirement,
+      });
+
+      const { result } = renderHook(() => useUpdateRequirementDefinition(), {
+        wrapper,
+      });
+
+      await result.current.mutate('req-123', {
+        applicabilityRules: { marital_status: 'married' },
+      });
+
+      expect(api.patch).toHaveBeenCalledWith(
+        '/requirement-definitions/req-123',
+        expect.objectContaining({
+          applicability_rules: { marital_status: 'married' },
+        })
+      );
     });
   });
 

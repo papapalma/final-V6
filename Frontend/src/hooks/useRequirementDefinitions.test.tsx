@@ -113,8 +113,8 @@ describe('useRequirementDefinitions', () => {
     React.createElement(QueryClientProvider, { client: queryClient }, children);
 
   describe('Basic Functionality', () => {
-    it('should fetch requirement definitions on mount', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+    it('should fetch requirement definitions on mount using unwrapped ApiResponse envelope', async () => {
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       const { result } = renderHook(() => useRequirementDefinitions(), {
@@ -142,11 +142,21 @@ describe('useRequirementDefinitions', () => {
       expect(mockApiGet).toHaveBeenCalledWith('/requirement-definitions');
     });
 
-    it('should return pagination info correctly', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+    it('should return pagination info correctly and derive hasNextPage/hasPreviousPage when omitted by backend', async () => {
+      const backendWireResponse = {
+        success: true,
+        data: mockRequirementDefinitions,
+        pagination: {
+          page: 2,
+          limit: 20,
+          total: 60,
+          totalPages: 3,
+        },
+      };
+      const mockApiGet = vi.fn().mockResolvedValue(backendWireResponse);
       (api.get as any) = mockApiGet;
 
-      const { result } = renderHook(() => useRequirementDefinitions(), {
+      const { result } = renderHook(() => useRequirementDefinitions({ page: 2, limit: 20 }), {
         wrapper,
       });
 
@@ -154,18 +164,19 @@ describe('useRequirementDefinitions', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
+      expect(result.current.isError).toBe(false);
       expect(result.current.pagination).toEqual({
-        page: 1,
+        page: 2,
         limit: 20,
-        total: 2,
-        totalPages: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
+        total: 60,
+        totalPages: 3,
+        hasNextPage: true,
+        hasPreviousPage: true,
       });
     });
 
     it('should include submission stats in data', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       const { result } = renderHook(() => useRequirementDefinitions(), {
@@ -190,7 +201,7 @@ describe('useRequirementDefinitions', () => {
 
   describe('Query Parameters', () => {
     it('should include sort_by parameter in query string', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       renderHook(() => useRequirementDefinitions({ sortBy: 'name' }), {
@@ -207,7 +218,7 @@ describe('useRequirementDefinitions', () => {
     });
 
     it('should include is_active parameter in query string', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       renderHook(() => useRequirementDefinitions({ isActive: true }), {
@@ -224,7 +235,7 @@ describe('useRequirementDefinitions', () => {
     });
 
     it('should include pagination parameters', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       renderHook(
@@ -246,7 +257,7 @@ describe('useRequirementDefinitions', () => {
     });
 
     it('should include all parameters together', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       renderHook(
@@ -296,8 +307,8 @@ describe('useRequirementDefinitions', () => {
     it('should provide refetch function', async () => {
       const mockApiGet = vi
         .fn()
-        .mockResolvedValueOnce({ data: mockResponse })
-        .mockResolvedValueOnce({ data: mockResponse });
+        .mockResolvedValueOnce(mockResponse)
+        .mockResolvedValueOnce(mockResponse);
       (api.get as any) = mockApiGet;
 
       const { result } = renderHook(() => useRequirementDefinitions(), {
@@ -321,7 +332,7 @@ describe('useRequirementDefinitions', () => {
 
   describe('Conditional Query', () => {
     it('should not fetch if enabled is false', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       renderHook(() => useRequirementDefinitions({ enabled: false }), {
@@ -335,7 +346,7 @@ describe('useRequirementDefinitions', () => {
     });
 
     it('should fetch when enabled changes from false to true', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       let enabled = false;
@@ -371,7 +382,7 @@ describe('useRequirementDefinitions', () => {
         },
       };
 
-      const mockApiGet = vi.fn().mockResolvedValue({ data: emptyResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(emptyResponse);
       (api.get as any) = mockApiGet;
 
       const { result } = renderHook(() => useRequirementDefinitions(), {
@@ -403,7 +414,7 @@ describe('useRequirementDefinitions', () => {
         },
       };
 
-      const mockApiGet = vi.fn().mockResolvedValue({ data: paginatedResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(paginatedResponse);
       (api.get as any) = mockApiGet;
 
       const { result } = renderHook(
@@ -428,7 +439,7 @@ describe('useRequirementDefinitions', () => {
 
   describe('Data Caching', () => {
     it('should use cached data for same query parameters', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       // First render
@@ -458,7 +469,7 @@ describe('useRequirementDefinitions', () => {
 
   describe('Logging', () => {
     it('should log fetch start and success', async () => {
-      const mockApiGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      const mockApiGet = vi.fn().mockResolvedValue(mockResponse);
       (api.get as any) = mockApiGet;
 
       renderHook(() => useRequirementDefinitions(), {

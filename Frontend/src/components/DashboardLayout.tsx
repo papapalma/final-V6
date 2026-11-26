@@ -5,6 +5,8 @@ import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { useBranding } from '../contexts/BrandingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage, TranslationKey } from '../contexts/LanguageContext';
+import { usePortalDomLocalizer } from '../i18n/portalDomLocalizer';
 import { useMessenger } from '../contexts/MessengerContext';
 import { BrandLogo } from './BrandLogo';
 import { TraineeMessengerDrawer } from './messenger/TraineeMessengerDrawer';
@@ -68,6 +70,7 @@ interface DashboardLayoutProps {
 
 interface NavItem {
   name: string;
+  labelKey?: TranslationKey;
   href?: string;
   icon: any;
   permission?: keyof import('../utils/roles').Permission;
@@ -77,46 +80,49 @@ interface NavItem {
 // Memoized navigation arrays to prevent recalculation
 const NAVIGATION_ARRAYS = {
   desktop: [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Platform Admin', href: '/super-admin', icon: ActivityIcon },
-    { name: 'Trainees', href: '/trainees', icon: Users, permission: 'canManageTrainees' as const },
-    { name: 'Inventory', href: '/items', icon: Package, permission: 'canManageItems' as const },
-    { name: 'Borrowing', href: '/lendings', icon: FileText, permission: 'canManageLendings' as const },
-    { name: 'Programs', href: '/programs', icon: GraduationCap, permission: 'canManagePrograms' as const },
-    { name: 'Registrations', href: '/registrations', icon: ClipboardList, permission: 'canManageTrainees' as const },
-    { name: 'Reports', href: '/reports', icon: BarChart3, permission: 'canViewReports' as const },
-    { name: 'Announcements', href: '/admin/announcements', icon: Megaphone, permission: 'canManageCMS' as const },
-    { name: 'Messenger', href: '/messages', icon: MessageSquare },
+    { name: 'Dashboard', labelKey: 'nav.dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Platform Admin', labelKey: 'nav.platformAdmin', href: '/super-admin', icon: ActivityIcon },
+    { name: 'Trainees', labelKey: 'nav.trainees', href: '/trainees', icon: Users, permission: 'canManageTrainees' as const },
+    { name: 'Inventory', labelKey: 'nav.inventory', href: '/items', icon: Package, permission: 'canManageItems' as const },
+    { name: 'Borrowing', labelKey: 'nav.borrowing', href: '/lendings', icon: FileText, permission: 'canManageLendings' as const },
+    { name: 'Programs', labelKey: 'nav.programs', href: '/programs', icon: GraduationCap, permission: 'canManagePrograms' as const },
+    { name: 'Registrations', labelKey: 'nav.registrations', href: '/registrations', icon: ClipboardList, permission: 'canManageTrainees' as const },
+    { name: 'Reports', labelKey: 'nav.reports', href: '/reports', icon: BarChart3, permission: 'canViewReports' as const },
+    { name: 'Announcements', labelKey: 'nav.announcements', href: '/admin/announcements', icon: Megaphone, permission: 'canManageCMS' as const },
+    { name: 'Messenger', labelKey: 'nav.messenger', href: '/messages', icon: MessageSquare },
     { 
       name: 'Settings', 
+      labelKey: 'nav.settings',
       icon: Settings, 
       children: [
-        { name: 'Activity Logs', href: '/activity-logs', icon: Activity, permission: 'canViewActivityLogs' as const },
-        { name: 'Non-Attendance Dates', href: '/non-attendance-dates', icon: Calendar, permission: 'canManagePrograms' as const },
-        { name: 'Landing Content', href: '/admin/landing-content', icon: FileText, permission: 'canManageCMS' as const },
-        { name: 'Requirements Management', href: '/admin/requirements', icon: BookOpen, permission: 'canManagePrograms' as const },
-        { name: 'Archive', href: '/admin/archive', icon: Trash2, permission: 'canManageAccounts' as const },
-        { name: 'Account', href: '/account-management', icon: UserCog, permission: 'canManageAccounts' as const },
+        { name: 'Preferences', labelKey: 'nav.preferences', href: '/settings', icon: Settings },
+        { name: 'Activity Logs', labelKey: 'nav.activityLogs', href: '/activity-logs', icon: Activity, permission: 'canViewActivityLogs' as const },
+        { name: 'Non-Attendance Dates', labelKey: 'nav.nonAttendanceDates', href: '/non-attendance-dates', icon: Calendar, permission: 'canManagePrograms' as const },
+        { name: 'Landing Content', labelKey: 'nav.landingContent', href: '/admin/landing-content', icon: FileText, permission: 'canManageCMS' as const },
+        { name: 'Requirements Management', labelKey: 'nav.requirementsManagement', href: '/admin/requirements', icon: BookOpen, permission: 'canManagePrograms' as const },
+        { name: 'Archive', labelKey: 'nav.archive', href: '/admin/archive', icon: Trash2, permission: 'canManageAccounts' as const },
+        { name: 'Account', labelKey: 'nav.account', href: '/account-management', icon: UserCog, permission: 'canManageAccounts' as const },
       ]
     },
   ] as NavItem[],
   trainee: [
-    { name: 'Dashboard', href: '/trainee/dashboard', icon: LayoutDashboard },
+    { name: 'Dashboard', labelKey: 'nav.dashboard', href: '/trainee/dashboard', icon: LayoutDashboard },
     // Attendance is now in the program details modal
     // { name: 'Attendance', href: '/trainee/attendance', icon: Calendar },
-    { name: 'Profile', href: '/trainee/profile', icon: User },
-    { name: 'Programs', href: '/trainee/programs', icon: GraduationCap },
-    { name: 'Applications', href: '/trainee/applications', icon: ClipboardList },
-    { name: 'Messenger', href: '/messages', icon: MessageSquare },
-    { name: 'Settings', href: '/settings', icon: Settings },
+    { name: 'Profile', labelKey: 'nav.profile', href: '/trainee/profile', icon: User },
+    { name: 'Programs', labelKey: 'nav.programs', href: '/trainee/programs', icon: GraduationCap },
+    { name: 'Applications', labelKey: 'nav.applications', href: '/trainee/applications', icon: ClipboardList },
+    { name: 'Messenger', labelKey: 'nav.messenger', href: '/messages', icon: MessageSquare },
+    { name: 'Settings', labelKey: 'nav.settings', href: '/settings', icon: Settings },
   ] as NavItem[],
   superAdmin: [
-    { name: 'Dashboard', href: '/super-admin', icon: ActivityIcon },
-    { name: 'Reports', href: '/super-admin/reports', icon: BarChart3 },
-    { name: 'Messenger', href: '/messages', icon: MessageSquare },
-    { name: 'Activity Logs', href: '/activity-logs', icon: Activity },
-    { name: 'Extension Requests', href: '/extension-requests', icon: ClipboardList },
-    { name: 'Account', href: '/super-admin/accounts', icon: UserCog },
+    { name: 'Dashboard', labelKey: 'nav.dashboard', href: '/super-admin', icon: ActivityIcon },
+    { name: 'Reports', labelKey: 'nav.reports', href: '/super-admin/reports', icon: BarChart3 },
+    { name: 'Messenger', labelKey: 'nav.messenger', href: '/messages', icon: MessageSquare },
+    { name: 'Activity Logs', labelKey: 'nav.activityLogs', href: '/activity-logs', icon: Activity },
+    { name: 'Extension Requests', labelKey: 'nav.extensionRequests', href: '/extension-requests', icon: ClipboardList },
+    { name: 'Account', labelKey: 'nav.account', href: '/super-admin/accounts', icon: UserCog },
+    { name: 'Preferences', labelKey: 'nav.preferences', href: '/settings', icon: Settings },
   ] as NavItem[],
 };
 
@@ -147,14 +153,14 @@ const filterNavigation = (nav: NavItem[], hasPermission: (perm: any) => boolean,
 };
 
 // Memoized Sidebar Logo Component
-const SidebarLogo = memo(({ companyName, tagline, user }: { companyName: string; tagline: string; user: any }) => {
+const SidebarLogo = memo(({ companyName, tagline, user, fallbackTagline }: { companyName: string; tagline: string; user: any; fallbackTagline: string }) => {
   const displayName = user?.tenantName || companyName || 'Bongabong MDC';
   return (
     <div className="flex h-16 shrink-0 items-center gap-3">
       <BrandLogo size="sm" companyName={displayName} />
       <div className="min-w-0">
         <h3 className="text-sm font-bold text-foreground truncate">{displayName}</h3>
-        <p className="text-xs font-medium text-muted-foreground truncate max-w-[140px]">{tagline || 'Training Center'}</p>
+        <p className="text-xs font-medium text-muted-foreground truncate max-w-[140px]">{tagline || fallbackTagline}</p>
       </div>
     </div>
   );
@@ -162,7 +168,8 @@ const SidebarLogo = memo(({ companyName, tagline, user }: { companyName: string;
 SidebarLogo.displayName = 'SidebarLogo';
 
 // Memoized Navigation Item Component
-const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDropdown, badgeCount }: any) => {
+const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDropdown, badgeCount, t }: any) => {
+  const displayLabel = item.labelKey ? t(item.labelKey) : item.name;
   if (item.children) {
     return (
       <div>
@@ -176,7 +183,7 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
         >
           <div className="flex items-center gap-x-3">
             <item.icon className="size-4.5 shrink-0" />
-            {item.name}
+            {displayLabel}
           </div>
           <ChevronDown className={`size-4 transition-transform ${
             openDropdown === item.name ? 'rotate-180' : ''
@@ -190,21 +197,24 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="mt-1 space-y-1 pl-4 overflow-hidden"
           >
-            {item.children.map((child: NavItem) => (
-              <li key={child.name}>
-                <Link
-                  to={child.href!}
-                  className={`ds-nav-item flex items-center gap-x-3 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-                    isActive(child.href!)
-                      ? 'is-active bg-primary text-primary-foreground font-semibold shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
-                >
-                  <child.icon className="size-4 shrink-0" />
-                  {child.name}
-                </Link>
-              </li>
-            ))}
+            {item.children.map((child: NavItem) => {
+              const childLabel = child.labelKey ? t(child.labelKey) : child.name;
+              return (
+                <li key={child.name}>
+                  <Link
+                    to={child.href!}
+                    className={`ds-nav-item flex items-center gap-x-3 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                      isActive(child.href!)
+                        ? 'is-active bg-primary text-primary-foreground font-semibold shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <child.icon className="size-4 shrink-0" />
+                    {childLabel}
+                  </Link>
+                </li>
+              );
+            })}
           </motion.ul>
         )}
       </div>
@@ -216,7 +226,7 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
   const navAriaLabel =
     numericBadgeCount > 0
       ? formatBadgeAriaLabel(
-          item.name,
+          displayLabel,
           numericBadgeCount,
           item.href === '/messages' ? 'unread message' : 'pending item',
         )
@@ -234,7 +244,7 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
     >
       <div className="flex items-center gap-x-3">
         <item.icon className="size-4.5 shrink-0" />
-        <span>{item.name}</span>
+        <span>{displayLabel}</span>
       </div>
       <NotificationBadge
         variant="count"
@@ -248,7 +258,7 @@ const NavItemComponent = memo(({ item, isActive, isChildActive, onToggle, openDr
 NavItemComponent.displayName = 'NavItemComponent';
 
 // Memoized User Profile Section
-const UserProfileSection = memo(({ user, isDark, toggleTheme, openLogoutDialog }: any) => (
+const UserProfileSection = memo(({ user, isDark, toggleTheme, language, toggleLanguage, t, openLogoutDialog }: any) => (
   <div className="border-t border-border pt-4">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -262,29 +272,33 @@ const UserProfileSection = memo(({ user, isDark, toggleTheme, openLogoutDialog }
             <p className="text-xs font-semibold text-foreground truncate">{user?.name}</p>
             <div className="flex items-center gap-1 mt-0.5">
               <Badge className={`text-[10px] px-1.5 py-0 font-medium ${user ? getRoleBadgeColor(user.role) : ''}`}>
-                {user ? getRoleDisplayName(user.role) : 'User'}
+                {user ? getRoleDisplayName(user.role, language) : t('roles.userFallback')}
               </Badge>
             </div>
           </div>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+        <DropdownMenuLabel>{t('nav.myAccount')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to="/settings" className="flex items-center cursor-pointer">
             <Settings className="mr-2 size-4" />
-            Settings
+            {t('nav.settings')}
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={toggleLanguage}>
+          <Globe className="mr-2 size-4" />
+          {language === 'en' ? t('nav.quickSwitchToFilipino') : t('nav.quickSwitchToEnglish')}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={toggleTheme}>
           {isDark ? <Sun className="mr-2 size-4" /> : <Moon className="mr-2 size-4" />}
-          {isDark ? 'Light Mode' : 'Dark Mode'}
+          {isDark ? t('nav.lightMode') : t('nav.darkMode')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={openLogoutDialog}>
           <LogOut className="mr-2 size-4" />
-          Log out
+          {t('nav.logOut')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -296,9 +310,11 @@ UserProfileSection.displayName = 'UserProfileSection';
 export default function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, hasPermission, isAuthReady } = useAuth();
+  const { user, logout, hasPermission, isAuthReady, isAuthenticated } = useAuth();
   const { companyName, tagline } = useBranding();
   const { isDark, toggleTheme } = useTheme();
+  const { language, toggleLanguage, t, tx } = useLanguage();
+  usePortalDomLocalizer(language, isAuthenticated && !!user);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
@@ -472,10 +488,10 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
       <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col no-print">
         <div className="ds-sidebar flex grow flex-col gap-y-6 overflow-y-auto border-r border-border bg-card px-6 pb-4">
           {/* Logo */}
-          <SidebarLogo companyName={companyName} tagline={tagline} user={user} />
+          <SidebarLogo companyName={companyName} tagline={tagline} user={user} fallbackTagline={t('nav.trainingCenterFallback')} />
 
           {/* Navigation */}
-          <nav className="flex flex-1 flex-col" aria-label="Main navigation">
+          <nav className="flex flex-1 flex-col" aria-label={t('nav.mainNavAria')}>
             <ul className="flex flex-1 flex-col gap-y-1">
               {filteredNavigation.map((item) => (
                 <li key={item.name}>
@@ -485,6 +501,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                     isChildActive={isChildActive}
                     onToggle={toggleDropdown}
                     openDropdown={openDropdown}
+                    t={t}
                     badgeCount={
                       item.href === '/registrations'
                         ? pendingRegistrationCount
@@ -503,6 +520,9 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
             user={user}
             isDark={isDark}
             toggleTheme={toggleTheme}
+            language={language}
+            toggleLanguage={toggleLanguage}
+            t={t}
             openLogoutDialog={openLogoutDialog}
           />
         </div>
@@ -516,14 +536,14 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
             aria-describedby={undefined}
             className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left duration-200 lg:hidden no-print"
           >
-            <DialogPrimitive.Title className="sr-only">Navigation menu</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="sr-only">{t('nav.navigationMenuSr')}</DialogPrimitive.Title>
             <div className="flex items-center justify-between border-b border-border px-6">
-              <SidebarLogo companyName={companyName} tagline={tagline} user={user} />
+              <SidebarLogo companyName={companyName} tagline={tagline} user={user} fallbackTagline={t('nav.trainingCenterFallback')} />
               <DialogPrimitive.Close asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Close navigation menu"
+                  aria-label={t('nav.closeNavMenuAria')}
                   className="shrink-0"
                 >
                   <X className="size-5" />
@@ -531,7 +551,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
               </DialogPrimitive.Close>
             </div>
             <div className="flex grow flex-col gap-y-6 overflow-y-auto px-6 py-4">
-              <nav className="flex flex-1 flex-col" aria-label="Drawer navigation">
+              <nav className="flex flex-1 flex-col" aria-label={t('nav.drawerNavAria')}>
                 <ul className="flex flex-1 flex-col gap-y-1">
                   {filteredNavigation.map((item) => (
                     <li key={item.name}>
@@ -541,6 +561,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                         isChildActive={isChildActive}
                         onToggle={toggleDropdown}
                         openDropdown={openDropdown}
+                        t={t}
                         badgeCount={
                           item.href === '/registrations'
                             ? pendingRegistrationCount
@@ -557,6 +578,9 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                 user={user}
                 isDark={isDark}
                 toggleTheme={toggleTheme}
+                language={language}
+                toggleLanguage={toggleLanguage}
+                t={t}
                 openLogoutDialog={openLogoutDialog}
               />
             </div>
@@ -566,7 +590,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
 
       {/* Mobile Bottom Navigation (< 768px) */}
       <nav
-        aria-label="Mobile navigation"
+        aria-label={t('nav.mobileNavAria')}
         className={`${!isAuthReady ? 'hidden' : 'md:hidden fixed'} bottom-0 left-0 right-0 z-50 border-t border-border bg-card shadow-lg transition-transform duration-300 ease-out no-print ${
           showBottomNav ? 'translate-y-0' : 'translate-y-full'
         }`}
@@ -574,6 +598,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
         <div className="flex h-16 w-full items-stretch">
           {mobileMenuItems.slice(0, 5).map((item) => {
             const isCurrentActive = item.href && isActive(item.href);
+            const mobileLabel = item.labelKey ? t(item.labelKey) : item.name;
             const itemBadgeCount =
               item.href === '/registrations'
                 ? pendingRegistrationCount
@@ -583,7 +608,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
             const mobileItemAriaLabel =
               itemBadgeCount > 0
                 ? formatBadgeAriaLabel(
-                    item.name,
+                    mobileLabel,
                     itemBadgeCount,
                     item.href === '/messages' ? 'unread message' : 'pending item',
                   )
@@ -611,7 +636,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                     ringClassName="ring-card"
                   />
                 </div>
-                <span className="line-clamp-1 text-center">{item.name}</span>
+                <span className="line-clamp-1 text-center">{mobileLabel}</span>
               </Link>
             );
           })}
@@ -627,7 +652,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    aria-label={hasAlertInMore ? 'More navigation options, new alerts' : 'More navigation options'}
+                    aria-label={hasAlertInMore ? t('nav.moreOptionsAlertsAria') : t('nav.moreOptionsAria')}
                     className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     <div className="relative">
@@ -639,11 +664,12 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                         ringClassName="ring-card"
                       />
                     </div>
-                    <span>More</span>
+                    <span>{t('nav.more')}</span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
                   {mobileMenuItems.slice(5).map((item) => {
+                    const overflowLabel = item.labelKey ? t(item.labelKey) : item.name;
                     const overflowCount =
                       item.href === '/registrations'
                         ? pendingRegistrationCount
@@ -653,7 +679,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                     const overflowAriaLabel =
                       overflowCount > 0
                         ? formatBadgeAriaLabel(
-                            item.name,
+                            overflowLabel,
                             overflowCount,
                             item.href === '/messages' ? 'unread message' : 'pending item',
                           )
@@ -667,7 +693,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                         >
                           <div className="flex items-center gap-2">
                             <item.icon className="size-4" />
-                            {item.name}
+                            {overflowLabel}
                           </div>
                           <NotificationBadge
                             variant="count"
@@ -695,8 +721,8 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
             size="icon"
             onClick={() => setMobileDrawerOpen(true)}
             className="lg:hidden shrink-0"
-            aria-label="Open navigation menu"
-            title="Menu"
+            aria-label={t('nav.openNavMenuAria')}
+            title={t('nav.menuTitle')}
           >
             <Menu className="size-5" />
           </Button>
@@ -704,7 +730,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
             <div className="flex min-w-0 flex-1 items-center">
               {title && (
                 <h1 className="truncate text-lg sm:text-xl font-semibold leading-tight tracking-tight text-foreground">
-                  {title}
+                  {tx(title)}
                 </h1>
               )}
             </div>
@@ -721,8 +747,8 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
               </Suspense>
 
               {hasPermission('canScanQR') && (
-                <Link to="/scan" aria-label="Open QR Scanner">
-                  <Button variant="ghost" size="icon" title="QR Scanner" aria-label="Open QR Scanner">
+                <Link to="/scan" aria-label={t('nav.openQrScannerAria')}>
+                  <Button variant="ghost" size="icon" title={t('nav.qrScannerTitle')} aria-label={t('nav.openQrScannerAria')}>
                     <QrCode className="size-5" />
                   </Button>
                 </Link>
@@ -732,7 +758,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
               <div className="lg:hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="Open account menu" title="Account">
+                    <Button variant="ghost" size="icon" aria-label={t('nav.openAccountMenuAria')} title={t('nav.accountTitle')}>
                       <Avatar className="size-6">
                         <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                           {user?.name?.charAt(0) || 'U'}
@@ -745,7 +771,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                       <div className="flex flex-col space-y-1">
                         <p className="text-sm font-medium leading-none">{user?.name}</p>
                         <p className="text-xs leading-none text-muted-foreground">
-                          {user ? getRoleDisplayName(user.role) : 'User'}
+                          {user ? getRoleDisplayName(user.role, language) : t('roles.userFallback')}
                         </p>
                         {user?.tenantName && (
                           <p className="text-xs leading-none text-primary mt-1">{user.tenantName}</p>
@@ -756,17 +782,21 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                     <DropdownMenuItem asChild>
                       <Link to="/settings" className="flex items-center cursor-pointer">
                         <Settings className="mr-2 size-4" />
-                        Settings
+                        {t('nav.settings')}
                       </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={toggleLanguage}>
+                      <Globe className="mr-2 size-4" />
+                      {language === 'en' ? t('nav.quickSwitchToFilipino') : t('nav.quickSwitchToEnglish')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={toggleTheme}>
                       {isDark ? <Sun className="mr-2 size-4" /> : <Moon className="mr-2 size-4" />}
-                      {isDark ? 'Light Mode' : 'Dark Mode'}
+                      {isDark ? t('nav.lightMode') : t('nav.darkMode')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={openLogoutDialog} className="text-destructive focus:text-destructive">
                       <LogOut className="mr-2 size-4" />
-                      Log out
+                      {t('nav.logOut')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -777,8 +807,8 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
                 size="icon"
                 onClick={toggleTheme}
                 className="hidden lg:flex"
-                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                title={isDark ? 'Light mode' : 'Dark mode'}
+                aria-label={isDark ? t('nav.switchToLightModeAria') : t('nav.switchToDarkModeAria')}
+                title={isDark ? t('nav.lightMode') : t('nav.darkMode')}
               >
                 {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
               </Button>
@@ -797,14 +827,14 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
       <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to log out?</AlertDialogTitle>
+            <AlertDialogTitle>{t('nav.logoutConfirmTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              You will be signed out of your account and returned to the login screen.
+              {t('nav.logoutConfirmDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmLogout} className="bg-red-600 hover:bg-red-700">Log out</AlertDialogAction>
+            <AlertDialogCancel>{t('nav.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLogout} className="bg-red-600 hover:bg-red-700">{t('nav.logOut')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

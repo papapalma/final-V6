@@ -164,7 +164,24 @@ export function getRoleBadgeColor(role: UserRole | string): string {
   }
 }
 
-export function getRoleDisplayName(role: UserRole | string): string {
+export function getRoleDisplayName(role: UserRole | string, language: 'en' | 'fil' = 'en'): string {
+  if (language === 'fil') {
+    switch (role) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'local_admin':
+        return 'Lokal na Admin';
+      case 'staff_training_coordinator':
+        return 'Staff (Mga Trainee)';
+      case 'staff_inventory_manager':
+        return 'Staff (Imbentaryo)';
+      case 'trainee':
+        return 'Trainee';
+      default:
+        return role;
+    }
+  }
+
   switch (role) {
     case 'super_admin':
       return 'Super Admin';

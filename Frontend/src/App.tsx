@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { BrandingProvider } from './contexts/BrandingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ProgramsProvider } from './contexts/ProgramsContext';
@@ -167,6 +168,7 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <ErrorBoundary>
           <AuthProvider>
+            <LanguageProvider>
             <BrandingProvider>
               <ProgramsProvider>
               <MessengerProvider>
@@ -241,6 +243,7 @@ export default function App() {
             </MessengerProvider>
           </ProgramsProvider>
             </BrandingProvider>
+            </LanguageProvider>
         </AuthProvider>
         </ErrorBoundary>
       </QueryClientProvider>

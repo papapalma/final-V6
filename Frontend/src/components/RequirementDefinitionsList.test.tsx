@@ -594,7 +594,7 @@ describe('RequirementDefinitionsList Component', () => {
     });
   });
 
-  it('should display action menu with view, edit, delete options', async () => {
+  it('should display action menu with view, edit, deactivate, and delete options', async () => {
     const requirement = createMockRequirement({
       id: 'req-1',
       display_name: 'Test Requirement',
@@ -620,8 +620,10 @@ describe('RequirementDefinitionsList Component', () => {
       wrapper: createTestWrapper(),
     });
 
-    // Click menu button (⋮)
-    const menuButtons = screen.getAllByRole('button', { name: '⋮' });
+    // Click action menu button
+    const menuButtons = screen.getAllByRole('button', {
+      name: /Actions for Test Requirement/i,
+    });
     expect(menuButtons.length).toBeGreaterThan(0);
     await userEvent.click(menuButtons[0]);
 
@@ -629,7 +631,20 @@ describe('RequirementDefinitionsList Component', () => {
     await waitFor(() => {
       expect(screen.getByText('View Details')).toBeInTheDocument();
       expect(screen.getByText('Edit')).toBeInTheDocument();
+      expect(screen.getByText('Deactivate')).toBeInTheDocument();
       expect(screen.getByText('Delete')).toBeInTheDocument();
+    });
+
+    // Clicking Delete opens AlertDialog instead of window.confirm
+    await userEvent.click(screen.getByText('Delete'));
+    await waitFor(() => {
+      expect(screen.getByText('Delete Requirement')).toBeInTheDocument();
+    });
+
+    // Close the AlertDialog cleanly so Radix restores body pointer-events
+    await userEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+    await waitFor(() => {
+      expect(screen.queryByText('Delete Requirement')).not.toBeInTheDocument();
     });
   });
 

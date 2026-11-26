@@ -123,30 +123,49 @@ export function useRequirementDefinitions(
         options: queryOptions,
       });
 
-      // Fetch from API with tenant context automatically handled by api service
-      const response = await api.get<RequirementDefinitionsResponse>(url);
+      // Fetch from API with tenant context automatically handled by api service.
+      // Note: api.get() already unwraps axiosResponse.data and returns { success, data: RequirementDefinition[], pagination }.
+      const response = await api.get<RequirementDefinition[]>(url);
+      const rawBody = response as any;
 
-      // Extract data and pagination from response
-      const { data, pagination } = response.data;
+      const items: RequirementDefinition[] = Array.isArray(rawBody?.data)
+        ? rawBody.data
+        : Array.isArray(rawBody?.data?.data)
+          ? rawBody.data.data
+          : [];
+      const rawPagination = rawBody?.pagination ?? rawBody?.data?.pagination;
 
-      // Transform pagination response to match our interface
+      const resolvedPage = rawPagination?.page ?? queryOptions.page ?? 1;
+      const resolvedLimit = rawPagination?.limit ?? queryOptions.limit ?? 20;
+      const resolvedTotal = rawPagination?.total ?? items.length;
+      const resolvedTotalPages =
+        rawPagination?.totalPages ??
+        (resolvedLimit > 0 ? Math.ceil(resolvedTotal / resolvedLimit) : 0);
+
+      // Normalize pagination response (backend paginatedResponse omits hasNextPage/hasPreviousPage)
       const paginationInfo: PaginationInfo = {
-        page: pagination.page,
-        limit: pagination.limit,
-        total: pagination.total,
-        totalPages: pagination.totalPages,
-        hasNextPage: pagination.hasNextPage,
-        hasPreviousPage: pagination.hasPreviousPage,
+        page: resolvedPage,
+        limit: resolvedLimit,
+        total: resolvedTotal,
+        totalPages: resolvedTotalPages,
+        hasNextPage:
+          typeof rawPagination?.hasNextPage === 'boolean'
+            ? rawPagination.hasNextPage
+            : resolvedPage < resolvedTotalPages,
+        hasPreviousPage:
+          typeof rawPagination?.hasPreviousPage === 'boolean'
+            ? rawPagination.hasPreviousPage
+            : resolvedPage > 1,
       };
 
       logger.info('[useRequirementDefinitions] Fetch successful', {
-        count: data.length,
-        page: pagination.page,
-        total: pagination.total,
+        count: items.length,
+        page: paginationInfo.page,
+        total: paginationInfo.total,
       });
 
       return {
-        data,
+        data: items,
         pagination: paginationInfo,
       };
     } catch (err) {

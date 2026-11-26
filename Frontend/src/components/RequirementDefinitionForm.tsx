@@ -127,6 +127,7 @@ type RequirementFormData = z.infer<typeof requirementFormSchema>;
 interface RequirementDefinitionFormProps {
   requirementId?: string;
   onSuccess?: () => void;
+  onCancel?: () => void;
 }
 
 /**
@@ -149,6 +150,7 @@ interface RequirementDefinitionFormProps {
 export function RequirementDefinitionForm({
   requirementId,
   onSuccess,
+  onCancel,
 }: RequirementDefinitionFormProps) {
   const queryClient = useQueryClient();
 
@@ -219,12 +221,13 @@ export function RequirementDefinitionForm({
       });
 
       if (isEditMode && requirementId) {
-        // Update existing requirement
+        // Update existing requirement (including applicabilityRules)
         await updateRequirement(requirementId, {
           displayName: data.displayName,
           description: data.description,
           isMandatory: data.isMandatory,
           isActive: data.isActive,
+          applicabilityRules: data.applicabilityRules,
         });
 
         toast.success('Requirement updated successfully');
@@ -282,12 +285,12 @@ export function RequirementDefinitionForm({
   // Show error state if fetch failed
   if (isEditMode && isErrorLoadingRequirement) {
     return (
-      <Card className="border-red-200 bg-red-50">
+      <Card className="req-surface-in border-destructive/30 bg-destructive/10">
         <CardContent className="flex items-start gap-3 py-6">
-          <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+          <AlertCircle className="size-5 text-destructive mt-0.5 flex-shrink-0" />
           <div>
-            <h3 className="font-semibold text-red-900">Failed to Load</h3>
-            <p className="text-sm text-red-800 mt-1">
+            <h3 className="font-semibold text-destructive">Failed to Load</h3>
+            <p className="text-sm text-muted-foreground mt-1">
               {loadingError?.message ||
                 'Could not load the requirement definition. Please try again.'}
             </p>
@@ -300,12 +303,12 @@ export function RequirementDefinitionForm({
   // Show error if requirement was not found
   if (isEditMode && !isLoadingRequirement && !existingRequirement) {
     return (
-      <Card className="border-red-200 bg-red-50">
+      <Card className="req-surface-in border-destructive/30 bg-destructive/10">
         <CardContent className="flex items-start gap-3 py-6">
-          <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+          <AlertCircle className="size-5 text-destructive mt-0.5 flex-shrink-0" />
           <div>
-            <h3 className="font-semibold text-red-900">Requirement Not Found</h3>
-            <p className="text-sm text-red-800 mt-1">
+            <h3 className="font-semibold text-destructive">Requirement Not Found</h3>
+            <p className="text-sm text-muted-foreground mt-1">
               The requirement definition you're trying to edit does not exist.
             </p>
           </div>
@@ -315,7 +318,7 @@ export function RequirementDefinitionForm({
   }
 
   return (
-    <Card>
+    <Card className="req-surface-in">
       <CardHeader>
         <CardTitle>
           {isEditMode ? 'Edit Requirement Definition' : 'Create Requirement Definition'}
@@ -439,55 +442,60 @@ export function RequirementDefinitionForm({
               )}
             />
 
-            {/* Applicability Rules Field (Create Mode Only) */}
-            {!isEditMode && (
-              <FormField
-                control={form.control}
-                name="applicabilityRules"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Applicability Rules (Optional)</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder={`e.g., {"marital_status": "married"}\n\nLeave empty for all trainees.`}
-                        className="font-mono text-sm min-h-24"
-                        disabled={isSubmitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Optional JSON rules to limit applicability. Example: only married trainees
-                      for marriage certificate. Leave empty if requirement applies to everyone.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            {/* Applicability Rules Field */}
+            <FormField
+              control={form.control}
+              name="applicabilityRules"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Applicability Rules (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder={`e.g., {"marital_status": "married"}\n\nLeave empty for all trainees.`}
+                      className="font-mono text-sm min-h-24"
+                      disabled={isSubmitting}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Optional JSON rules to limit applicability. Example: only married trainees
+                    for marriage certificate. Leave empty if requirement applies to everyone.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {/* Form Actions */}
-            <div className="flex gap-4 justify-end pt-4 border-t">
+            <div className="flex gap-3 justify-end pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
                 disabled={isSubmitting}
-                onClick={() => form.reset()}
+                className="py-2.5 px-4"
+                onClick={() => {
+                  if (onCancel) {
+                    onCancel();
+                  } else {
+                    form.reset();
+                  }
+                }}
               >
-                {isEditMode ? 'Close' : 'Clear'}
+                {onCancel ? 'Cancel' : isEditMode ? 'Reset' : 'Clear'}
               </Button>
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="gap-2"
+                className="gap-2 py-2.5 px-4"
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="size-4 animate-spin" />
                     {isEditMode ? 'Updating...' : 'Creating...'}
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="h-4 w-4" />
+                    <CheckCircle className="size-4" />
                     {isEditMode ? 'Update Requirement' : 'Create Requirement'}
                   </>
                 )}

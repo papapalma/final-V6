@@ -17,6 +17,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRequirementDefinitions } from '../hooks/useRequirementDefinitions';
 import { useUpdateRequirementDefinition } from '../hooks/useUpdateRequirementDefinition';
+import { useDeleteRequirementDefinition } from '../hooks/useDeleteRequirementDefinition';
 import { RequirementDefinition } from '../types/requirementDefinition';
 import {
   Card,
@@ -61,6 +62,9 @@ import {
   CheckCircle2,
   Clock,
   Filter,
+  MoreVertical,
+  Power,
+  Plus,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -69,6 +73,16 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from './ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 import logger from '../utils/logger';
 
 /**
@@ -81,6 +95,10 @@ export interface RequirementDefinitionsListProps {
    * @param id - The ID of the selected requirement definition
    */
   onRequirementSelect?: (id: string) => void;
+  /**
+   * Optional callback when the empty-state "Add New Requirement" button is clicked
+   */
+  onAddRequirement?: () => void;
 }
 
 /**
@@ -88,6 +106,7 @@ export interface RequirementDefinitionsListProps {
  */
 export function RequirementDefinitionsList({
   onRequirementSelect,
+  onAddRequirement,
 }: RequirementDefinitionsListProps) {
   // State for filtering and pagination
   const [page, setPage] = useState(1);
@@ -99,8 +118,10 @@ export function RequirementDefinitionsList({
     'all'
   );
   const [searchTerm, setSearchTerm] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<RequirementDefinition | null>(null);
   const navigate = useNavigate();
-  const { mutate: updateRequirement } = useUpdateRequirementDefinition();
+  const { mutate: updateRequirement, isPending: isUpdating } = useUpdateRequirementDefinition();
+  const { mutateAsync: deleteRequirement, isPending: isDeleting } = useDeleteRequirementDefinition();
 
   // Determine isActive query parameter based on filter
   const isActiveQuery =
@@ -179,20 +200,41 @@ export function RequirementDefinitionsList({
     navigate(`/admin/requirements/${requirement.id}/edit`);
   };
 
-  // Handle delete action (soft delete)
-  const handleDelete = (requirement: RequirementDefinition) => {
-    logger.info('[RequirementDefinitionsList] Delete clicked', {
+  // Handle active/inactive quick toggle
+  const handleToggleActive = async (requirement: RequirementDefinition) => {
+    const nextActive = !requirement.is_active;
+    logger.info('[RequirementDefinitionsList] Toggle active clicked', {
       requirementId: requirement.id,
+      nextActive,
     });
-    if (window.confirm(`Delete "${requirement.display_name}"?`)) {
-      try {
-        updateRequirement(requirement.id, { isActive: false });
-        toast.success('Requirement deleted successfully');
-        void refetch();
-      } catch (err) {
-        logger.error('[RequirementDefinitionsList] Delete failed', { error: err });
-        toast.error('Failed to delete requirement');
-      }
+    try {
+      await updateRequirement(requirement.id, { isActive: nextActive });
+      toast.success(
+        nextActive
+          ? `"${requirement.display_name}" activated`
+          : `"${requirement.display_name}" deactivated`
+      );
+      await refetch();
+    } catch (err) {
+      logger.error('[RequirementDefinitionsList] Toggle active failed', { error: err });
+      toast.error('Failed to update requirement status');
+    }
+  };
+
+  // Confirm true soft-delete via AlertDialog
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    logger.info('[RequirementDefinitionsList] Confirming soft delete', {
+      requirementId: deleteTarget.id,
+    });
+    try {
+      await deleteRequirement(deleteTarget.id);
+      toast.success('Requirement deleted successfully');
+      setDeleteTarget(null);
+      await refetch();
+    } catch (err: any) {
+      logger.error('[RequirementDefinitionsList] Delete failed', { error: err });
+      toast.error(err?.message || 'Failed to delete requirement');
     }
   };
 
@@ -281,7 +323,7 @@ export function RequirementDefinitionsList({
   // Error state
   if (isError) {
     return (
-      <Card>
+      <Card className="req-surface-in">
         <CardHeader>
           <CardTitle>Requirement Definitions</CardTitle>
           <CardDescription>
@@ -290,12 +332,12 @@ export function RequirementDefinitionsList({
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+            <AlertTriangle className="size-12 text-destructive mb-4" />
             <h3 className="font-semibold text-lg mb-2">Error Loading Requirements</h3>
-            <p className="text-sm text-muted-foreground mb-4 max-w-md">
+            <p className="text-sm text-muted-foreground mb-6 max-w-md">
               {error instanceof Error ? error.message : 'An error occurred while fetching requirements.'}
             </p>
-            <Button onClick={() => refetch()} variant="outline">
+            <Button onClick={() => refetch()} variant="outline" className="py-2.5 px-4">
               Try Again
             </Button>
           </div>
@@ -307,7 +349,7 @@ export function RequirementDefinitionsList({
   // Empty state (no data from API)
   if (data.length === 0) {
     return (
-      <Card>
+      <Card className="req-surface-in">
         <CardHeader>
           <CardTitle>Requirement Definitions</CardTitle>
           <CardDescription>
@@ -316,15 +358,26 @@ export function RequirementDefinitionsList({
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
-              <Eye className="h-8 w-8 text-muted-foreground" />
+            <div className="flex size-16 items-center justify-center rounded-full bg-muted mb-4">
+              <Eye className="size-8 text-muted-foreground" />
             </div>
             <h3 className="font-semibold text-lg mb-2">No Requirements Found</h3>
-            <p className="text-sm text-muted-foreground mb-4 max-w-md">
+            <p className="text-sm text-muted-foreground mb-6 max-w-md">
               {activeFilter !== 'all'
                 ? `No ${activeFilter} requirement definitions found. Try changing the filter.`
                 : 'No requirement definitions have been created yet. Create your first requirement to get started.'}
             </p>
+            {activeFilter === 'all' && (
+              <Button
+                onClick={() =>
+                  onAddRequirement ? onAddRequirement() : navigate('/admin/requirements/new')
+                }
+                className="py-2.5 px-4"
+              >
+                <Plus className="size-4" />
+                Add New Requirement
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -334,7 +387,7 @@ export function RequirementDefinitionsList({
   // Empty search results state
   if (filteredData.length === 0 && searchTerm) {
     return (
-      <Card>
+      <Card className="req-surface-in">
         <CardHeader>
           <CardTitle>Requirement Definitions</CardTitle>
           <CardDescription>
@@ -386,7 +439,7 @@ export function RequirementDefinitionsList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 req-surface-in">
       <Card>
         <CardHeader>
           <CardTitle>Requirement Definitions</CardTitle>
@@ -395,7 +448,7 @@ export function RequirementDefinitionsList({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* Filters and Search */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1">
@@ -406,10 +459,10 @@ export function RequirementDefinitionsList({
                   className="w-full"
                 />
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
                 <Select value={activeFilter} onValueChange={handleFilterChange}>
                   <SelectTrigger className="w-full sm:w-[140px]">
-                    <Filter className="h-4 w-4 mr-2" />
+                    <Filter className="size-4 mr-2" />
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -451,12 +504,17 @@ export function RequirementDefinitionsList({
                   {filteredData.map((requirement) => (
                     <TableRow
                       key={requirement.id}
-                      className="hover:bg-muted/50 cursor-pointer"
+                      onClick={() => handleViewDetails(requirement)}
+                      className="req-row-interactive cursor-pointer"
                     >
                       <TableCell className="font-semibold">
                         <button
-                          onClick={() => handleViewDetails(requirement)}
-                          className="text-left hover:underline"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewDetails(requirement);
+                          }}
+                          className="text-left hover:underline focus-visible:outline-none focus-visible:underline"
                         >
                           {requirement.display_name}
                         </button>
@@ -481,7 +539,7 @@ export function RequirementDefinitionsList({
                           variant={requirement.is_active ? 'default' : 'outline'}
                           className={
                             requirement.is_active
-                              ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300'
+                              ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/25 dark:bg-emerald-500/20 dark:text-emerald-300'
                               : 'text-muted-foreground'
                           }
                         >
@@ -496,9 +554,14 @@ export function RequirementDefinitionsList({
                             </span>
                             <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
                               <div
-                                className="bg-primary h-full transition-all"
+                                className="req-progress-fill bg-primary h-full w-full"
                                 style={{
-                                  width: `${requirement.submission_stats.completion_rate}%`,
+                                  transform: `scaleX(${
+                                    Math.min(
+                                      100,
+                                      Math.max(0, requirement.submission_stats.completion_rate)
+                                    ) / 100
+                                  })`,
                                 }}
                               />
                             </div>
@@ -513,48 +576,65 @@ export function RequirementDefinitionsList({
                         <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                           {requirement.submission_stats && (
                             <>
-                              <div className="flex items-center gap-0.5">
-                                <Clock className="h-3 w-3 text-yellow-500" />
+                              <div className="flex items-center gap-1" title="Pending">
+                                <Clock className="size-3 text-amber-500" />
                                 <span>{requirement.submission_stats.pending_count}</span>
                               </div>
-                              <div className="flex items-center gap-0.5">
-                                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                              <div className="flex items-center gap-1" title="Verified">
+                                <CheckCircle2 className="size-3 text-emerald-500" />
                                 <span>{requirement.submission_stats.verified_count}</span>
                               </div>
-                              <div className="flex items-center gap-0.5">
-                                <AlertTriangle className="h-3 w-3 text-red-500" />
+                              <div className="flex items-center gap-1" title="Rejected">
+                                <AlertTriangle className="size-3 text-red-500" />
                                 <span>{requirement.submission_stats.rejected_count}</span>
                               </div>
                             </>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell
+                        className="text-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              ⋮
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Actions for ${requirement.display_name}`}
+                            >
+                              <MoreVertical className="size-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => handleViewDetails(requirement)}
                             >
-                              <Eye className="h-4 w-4 mr-2" />
+                              <Eye className="size-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleEdit(requirement)}
                             >
-                              <Edit2 className="h-4 w-4 mr-2" />
+                              <Edit2 className="size-4 mr-2" />
                               Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={isUpdating}
+                              onClick={() => void handleToggleActive(requirement)}
+                            >
+                              <Power className="size-4 mr-2" />
+                              {requirement.is_active ? 'Deactivate' : 'Activate'}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => handleDelete(requirement)}
+                              variant="destructive"
+                              onSelect={() => {
+                                setTimeout(() => setDeleteTarget(requirement), 0);
+                              }}
                               className="text-destructive focus:text-destructive"
                             >
-                              <Trash2 className="h-4 w-4 mr-2" />
+                              <Trash2 className="size-4 mr-2" />
                               Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -571,7 +651,7 @@ export function RequirementDefinitionsList({
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Items per page:</span>
                 <Select value={String(limit)} onValueChange={handleLimitChange}>
-                  <SelectTrigger className="w-[70px]">
+                  <SelectTrigger className="w-[72px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -584,7 +664,7 @@ export function RequirementDefinitionsList({
               </div>
 
               <div className="text-sm text-muted-foreground">
-                Showing {(page - 1) * limit + 1} to{' '}
+                Showing {pagination.total === 0 ? 0 : (page - 1) * limit + 1} to{' '}
                 {Math.min(page * limit, pagination.total)} of{' '}
                 {pagination.total} requirements
               </div>
@@ -622,6 +702,38 @@ export function RequirementDefinitionsList({
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Requirement</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{deleteTarget?.display_name}&quot;? It will be removed from active enrollment requirements, while existing trainee records remain preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmDelete();
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

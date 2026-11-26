@@ -234,7 +234,7 @@ export default function AddLendingModal({ open, onOpenChange, onSuccess, presele
               Cancel
             </Button>
             <Button type="submit" className="w-full sm:w-auto" disabled={loading}>
-              {loading ? 'Saving...' : 'Create Lending'}
+              {loading ? 'Saving...' : 'Borrow'}
             </Button>
           </div>
         </form>

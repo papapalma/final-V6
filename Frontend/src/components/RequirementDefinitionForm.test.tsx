@@ -271,7 +271,7 @@ describe('RequirementDefinitionForm', () => {
       expect(screen.getByText(/Edit Requirement Definition/i)).toBeInTheDocument();
     });
 
-    it('should not display applicability rules field in edit mode', () => {
+    it('should display applicability rules field in edit mode', () => {
       const mockRequirement = {
         id: 'test-id',
         tenant_id: 'tenant-id',
@@ -280,7 +280,7 @@ describe('RequirementDefinitionForm', () => {
         description: 'NSO/PSA Birth Certificate',
         is_mandatory: true,
         is_active: true,
-        applicability_rules: null,
+        applicability_rules: { marital_status: 'married' },
         display_order: 1,
         created_at: '2024-01-01',
         updated_at: '2024-01-01',
@@ -299,10 +299,8 @@ describe('RequirementDefinitionForm', () => {
         wrapper: createTestWrapper(),
       });
 
-      // Applicability Rules field label should NOT be visible in edit mode
-      // Only check for the label with "(Optional)" to avoid matching other text
-      const applicabilityLabel = screen.queryByText(/Applicability Rules \(Optional\)/);
-      expect(applicabilityLabel).not.toBeInTheDocument();
+      const applicabilityLabel = screen.getByText(/Applicability Rules \(Optional\)/);
+      expect(applicabilityLabel).toBeInTheDocument();
     });
   });
 

@@ -63,6 +63,10 @@
     "uuid": "^14.0.1",
     "ws": "^8.21.0"
   },
+  "overrides": {
+    "babel-plugin-istanbul": "^8.0.0",
+    "glob": "^14.0.6"
+  },
   "allowScripts": {
     "unrs-resolver@1.11.1": true
   }

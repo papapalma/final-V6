@@ -74,11 +74,21 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   // ── Step 1: Find user by email ──────────────────────────────────────────
 
-const { data: user, error } = await supabaseAdmin
+  let { data: user, error } = await supabaseAdmin
     .from('users')
-    .select('id, email, username, role, password_hash')
+    .select('id, email, username, role, password_hash, preferred_language')
     .eq('email', validatedData.email)
     .single();
+
+  if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('preferred_language'))) {
+    const fallback = await supabaseAdmin
+      .from('users')
+      .select('id, email, username, role, password_hash')
+      .eq('email', validatedData.email)
+      .single();
+    user = fallback.data ? { ...fallback.data, preferred_language: 'en' } : null;
+    error = fallback.error;
+  }
 
   if (error || !user) {
     // Generic message — do not reveal whether email exists (Req 6.9)
@@ -260,6 +270,7 @@ await activityLogService.logAction(user.id, 'login_tenant_selection_required', '
         email: user.email,
         username: user.username,
         role: user.role,
+        preferred_language: user.preferred_language === 'fil' ? 'fil' : 'en',
       },
     },
     message: 'Please select a tenant to continue',
@@ -277,7 +288,7 @@ await activityLogService.logAction(user.id, 'login_tenant_selection_required', '
 
 async function buildLoginResponse(
   request: NextRequest,
-  user: { id: string; email: string; username: string; role: string },
+  user: { id: string; email: string; username: string; role: string; preferred_language?: string | null },
   token: string,
   tenantId: string,
   tenantName: string | null
@@ -323,6 +334,7 @@ async function buildLoginResponse(
         email: user.email,
         username: user.username,
         role: user.role,
+        preferred_language: user.preferred_language === 'fil' ? 'fil' : 'en',
         tenantId,
         ...(tenantName ? { tenantName } : {}),
       },

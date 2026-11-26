@@ -6,6 +6,14 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -35,12 +43,18 @@ import {
   Clock,
   AlertCircle,
   FileCheck,
+  LayoutGrid,
+  Table as TableIcon,
+  Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import registrationService from '../services/registrationService';
 import api from '../services/api';
+import { TableSkeleton } from '../components/LoadingSkeletons';
 import { PaginationWrapper } from '../components/PaginationWrapper';
 import logger from '../utils/logger';
+
+type ViewMode = 'card' | 'table';
 
 interface Registration {
   id: string;
@@ -76,7 +90,16 @@ export default function RegistrationsPage() {
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('registrationsViewMode');
+    return saved === 'table' || saved === 'card' ? saved : 'card';
+  });
   const [page, setPage] = useState(1);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem('registrationsViewMode', mode);
+  };
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
 
@@ -278,7 +301,7 @@ export default function RegistrationsPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -288,39 +311,75 @@ export default function RegistrationsPage() {
               className="pl-10 h-9 text-sm"
             />
           </div>
-          <Select value={statusFilter} onValueChange={(value: any) => {
-            setStatusFilter(value);
-            setPage(1);
-          }}>
-            <SelectTrigger className="w-full sm:w-40 h-9 text-sm">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Registrations</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Select value={statusFilter} onValueChange={(value: any) => {
+              setStatusFilter(value);
+              setPage(1);
+            }}>
+              <SelectTrigger className="w-full sm:w-40 h-9 text-sm">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Registrations</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="hidden sm:flex items-center gap-1 h-9 border border-input rounded-lg p-1 bg-muted/20 shrink-0">
+              <Button
+                type="button"
+                variant={viewMode === 'card' ? 'default' : 'ghost'}
+                size="icon"
+                onClick={() => handleViewModeChange('card')}
+                className="size-7 rounded-md"
+                title="Card View"
+                aria-label="Card view"
+                aria-pressed={viewMode === 'card'}
+              >
+                <LayoutGrid className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === 'table' ? 'default' : 'ghost'}
+                size="icon"
+                onClick={() => handleViewModeChange('table')}
+                className="size-7 rounded-md"
+                title="Table View"
+                aria-label="Table view"
+                aria-pressed={viewMode === 'table'}
+              >
+                <TableIcon className="size-4" />
+              </Button>
+            </div>
+          </div>
         </div>
 
-        {/* Registrations Grid */}
+        {/* Registrations List / Grid */}
         {loading ? (
-          <div className="grid gap-3 sm:gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className="h-5 w-2/3" />
-                  <Skeleton className="h-4 w-1/2 mt-2" />
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-2/3" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <>
+            {viewMode === 'table' && (
+              <div className="hidden sm:block">
+                <TableSkeleton rows={6} />
+              </div>
+            )}
+            <div className={`${viewMode === 'card' ? 'grid' : 'grid sm:hidden'} gap-3 sm:gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-5 w-2/3" />
+                    <Skeleton className="h-4 w-1/2 mt-2" />
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </>
         ) : registrations.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-8 sm:py-12 text-center">
@@ -331,100 +390,219 @@ export default function RegistrationsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3 sm:gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            <AnimatePresence mode="popLayout">
-              {paginatedRegistrations.map((registration) => (
-                <motion.div
-                  layout
-                  key={registration.id}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9, y: -10 }}
-                  transition={{ duration: 0.22, ease: "easeOut" }}
-                  className="flex flex-col"
-                >
-                  <Card 
-                    className="group hover:shadow-lg transition-all cursor-pointer flex flex-col h-full"
-                    onClick={() => {
-                      setSelectedRegistration(registration);
-                      setViewDetailsOpen(true);
-                    }}
-                  >
-                    <CardHeader className="pb-3 sm:pb-4">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <CardTitle className="truncate text-sm sm:text-base">
-                            {registration.first_name} {registration.last_name}
-                          </CardTitle>
-                          <CardDescription className="text-xs mt-1">
-                            @{registration.username}
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {getStatusBadge(registration.registration_status)}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col">
-                      <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm flex-1">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Email</p>
-                          <p className="font-medium break-all truncate">{registration.email}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Phone</p>
-                          <p className="font-medium">{registration.phone}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Program</p>
-                          <p className="font-medium truncate">{registration.program?.name}</p>
-                        </div>
-                        <div className="pt-2 border-t">
-                          <p className="text-xs text-muted-foreground">
+          <>
+            {/* Desktop Table View */}
+            {viewMode === 'table' && (
+              <Card className="hidden sm:block animate-in fade-in-0 duration-200 ease-out">
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Trainee</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Program</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="w-[120px] text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedRegistrations.map((registration) => (
+                        <TableRow
+                          key={registration.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => {
+                            setSelectedRegistration(registration);
+                            setViewDetailsOpen(true);
+                          }}
+                        >
+                          <TableCell>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate">
+                                {registration.first_name} {registration.last_name}
+                              </p>
+                              {registration.username && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                  @{registration.username}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="min-w-0">
+                              <p className="text-sm truncate max-w-[220px]">{registration.email}</p>
+                              {registration.phone && (
+                                <p className="text-xs text-muted-foreground">{registration.phone}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="block truncate max-w-[220px]">
+                              {registration.program?.name || '—'}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(registration.registration_status)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
                             {new Date(registration.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
+                          </TableCell>
+                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                title="View details"
+                                aria-label="View details"
+                                onClick={() => {
+                                  setSelectedRegistration(registration);
+                                  setViewDetailsOpen(true);
+                                }}
+                              >
+                                <Eye className="size-4" />
+                              </Button>
+                              {registration.registration_status === 'pending' && (
+                                <>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    className="size-8"
+                                    title="Approve"
+                                    aria-label="Approve"
+                                    onClick={() => {
+                                      setSelectedRegistration(registration);
+                                      setActionType('approve');
+                                      setActionDialogOpen(true);
+                                    }}
+                                  >
+                                    <Check className="size-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="icon"
+                                    className="size-8"
+                                    title="Reject"
+                                    aria-label="Reject"
+                                    onClick={() => {
+                                      setSelectedRegistration(registration);
+                                      setActionType('reject');
+                                      setRejectionReason('');
+                                      setActionDialogOpen(true);
+                                    }}
+                                  >
+                                    <X className="size-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
 
-                      {/* Action Buttons */}
-                      {registration.registration_status === 'pending' && (
-                        <div className="flex gap-2 mt-3 sm:mt-4" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            size="sm"
-                            className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
-                            onClick={() => {
-                              setSelectedRegistration(registration);
-                              setActionType('approve');
-                              setActionDialogOpen(true);
-                            }}
-                          >
-                            <Check className="size-3 sm:size-4 mr-1" />
-                            <span className="hidden xs:inline">Approve</span>
-                            <span className="inline xs:hidden">OK</span>
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
-                            onClick={() => {
-                              setSelectedRegistration(registration);
-                              setActionType('reject');
-                              setRejectionReason('');
-                              setActionDialogOpen(true);
-                            }}
-                          >
-                            <X className="size-3 sm:size-4 mr-1" />
-                            <span className="hidden xs:inline">Reject</span>
-                            <span className="inline xs:hidden">No</span>
-                          </Button>
+            {/* Card View (Desktop when 'card', always on Mobile) */}
+            <div className={`${viewMode === 'card' ? 'grid' : 'grid sm:hidden'} gap-3 sm:gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`}>
+              <AnimatePresence mode="popLayout">
+                {paginatedRegistrations.map((registration) => (
+                  <motion.div
+                    layout
+                    key={registration.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                    transition={{ duration: 0.22, ease: "easeOut" }}
+                    className="flex flex-col"
+                  >
+                    <Card
+                      className="group hover:shadow-lg transition-all cursor-pointer flex flex-col h-full"
+                      onClick={() => {
+                        setSelectedRegistration(registration);
+                        setViewDetailsOpen(true);
+                      }}
+                    >
+                      <CardHeader className="pb-3 sm:pb-4">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <CardTitle className="truncate text-sm sm:text-base">
+                              {registration.first_name} {registration.last_name}
+                            </CardTitle>
+                            <CardDescription className="text-xs mt-1">
+                              @{registration.username}
+                            </CardDescription>
+                          </div>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+                        <div className="flex flex-wrap gap-2">
+                          {getStatusBadge(registration.registration_status)}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col">
+                        <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm flex-1">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Email</p>
+                            <p className="font-medium break-all truncate">{registration.email}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Phone</p>
+                            <p className="font-medium">{registration.phone}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Program</p>
+                            <p className="font-medium truncate">{registration.program?.name}</p>
+                          </div>
+                          <div className="pt-2 border-t">
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(registration.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        {registration.registration_status === 'pending' && (
+                          <div className="flex gap-2 mt-3 sm:mt-4" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              size="sm"
+                              className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
+                              onClick={() => {
+                                setSelectedRegistration(registration);
+                                setActionType('approve');
+                                setActionDialogOpen(true);
+                              }}
+                            >
+                              <Check className="size-3 sm:size-4 mr-1" />
+                              <span className="hidden xs:inline">Approve</span>
+                              <span className="inline xs:hidden">OK</span>
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="flex-1 h-8 text-xs sm:h-9 sm:text-sm"
+                              onClick={() => {
+                                setSelectedRegistration(registration);
+                                setActionType('reject');
+                                setRejectionReason('');
+                                setActionDialogOpen(true);
+                              }}
+                            >
+                              <X className="size-3 sm:size-4 mr-1" />
+                              <span className="hidden xs:inline">Reject</span>
+                              <span className="inline xs:hidden">No</span>
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </>
         )}
 
         {/* Pagination */}

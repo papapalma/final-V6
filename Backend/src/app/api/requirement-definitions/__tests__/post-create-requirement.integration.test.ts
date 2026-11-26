@@ -604,6 +604,78 @@ describe('POST /api/requirement-definitions', () => {
       expect(data.error).toContain('already exists');
     });
 
+    it('should revive and update a soft-deleted requirement_type on 23505 collision', async () => {
+      const revivedRequirement = {
+        id: 'req-revived-001',
+        tenant_id: 'tenant-001',
+        requirement_type: 'test_requirement_deadbeef',
+        display_name: 'Test Requirement',
+        description: 'Revived description',
+        is_mandatory: true,
+        is_active: true,
+        applicability_rules: null,
+        display_order: 0,
+        deleted_at: null,
+      };
+
+      // 1st call: insert returns 23505
+      mockSupabaseFrom
+        .mockReturnValueOnce({
+          insert: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({
+                data: null,
+                error: { code: '23505', message: 'Unique constraint violation' },
+              }),
+            }),
+          }),
+        })
+        // 2nd call: lookup finds soft-deleted row
+        .mockReturnValueOnce({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                not: jest.fn().mockReturnValue({
+                  maybeSingle: jest.fn().mockResolvedValue({
+                    data: { id: 'req-revived-001', deleted_at: '2026-01-01T00:00:00Z' },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        })
+        // 3rd call: update clears deleted_at and returns revived record
+        .mockReturnValueOnce({
+          update: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                  single: jest.fn().mockResolvedValue({
+                    data: revivedRequirement,
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        });
+
+      (mockRequest.json as jest.Mock).mockResolvedValue({
+        display_name: 'Test Requirement',
+        description: 'Revived description',
+        is_mandatory: true,
+      });
+
+      const response = await POST(mockRequest as NextRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.data.id).toBe('req-revived-001');
+      expect(data.data.description).toBe('Revived description');
+    });
+
     it('should handle database errors appropriately', async () => {
       // Since the handler wraps with withErrorHandler, throwing an error will be caught
       mockSingle.mockRejectedValue(new Error('Database connection failed'));

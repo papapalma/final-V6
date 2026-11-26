@@ -43,6 +43,7 @@ export interface AuthResponse {
     username: string;
     email: string;
     role: string;
+    preferred_language?: 'en' | 'fil';
     tenantId?: string;
     tenantName?: string;
   };
@@ -59,6 +60,7 @@ export interface TenantSelectionResponse {
     username: string;
     email: string;
     role: string;
+    preferred_language?: 'en' | 'fil';
   };
 }
 
@@ -69,6 +71,7 @@ export interface User {
   username: string;
   email: string;
   role: string;
+  preferred_language?: 'en' | 'fil';
   created_at?: string;
   updated_at?: string;
 }
@@ -159,6 +162,20 @@ class AuthService {
    */
   async getCurrentUser(): Promise<User> {
     const response = await api.get<User>('/auth/me');
+    return response.data;
+  }
+
+  /**
+   * Update authenticated user's preferred language
+   */
+  async updatePreferredLanguage(
+    preferred_language: 'en' | 'fil'
+  ): Promise<{ id: string; preferred_language: 'en' | 'fil'; persisted?: boolean }> {
+    const response = await api.patch<{ id: string; preferred_language: 'en' | 'fil'; persisted?: boolean }>(
+      '/auth/me',
+      { preferred_language },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
     return response.data;
   }
 

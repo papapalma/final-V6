@@ -1,9 +1,10 @@
 /**
- * GET  /api/requirement-definitions/{id} - Get requirement definition by ID (tenant-scoped)
- * PATCH /api/requirement-definitions/{id} - Update requirement definition (admin only)
+ * GET    /api/requirement-definitions/{id} - Get requirement definition by ID (tenant-scoped)
+ * PATCH  /api/requirement-definitions/{id} - Update requirement definition (admin only)
+ * DELETE /api/requirement-definitions/{id} - Soft-delete requirement definition (admin only)
  *
  * Requirements: FR1.1, FR2.2, FR2.3
- * Roles: authenticated (GET), admin (PATCH)
+ * Roles: authenticated (GET), admin (PATCH, DELETE)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -28,6 +29,7 @@ const updateRequirementSchema = z.object({
   description: z.string().max(5000, 'Description must be max 5000 characters').optional(),
   is_mandatory: z.boolean().optional(),
   is_active: z.boolean().optional(),
+  applicability_rules: z.record(z.string(), z.any()).nullable().optional(),
 }).strict(); // Reject unknown fields
 
 type UpdateRequirementInput = z.infer<typeof updateRequirementSchema>;
@@ -158,6 +160,9 @@ export const PATCH = withErrorHandler(async (
   if (updateData.is_active !== undefined) {
     updatePayload.is_active = updateData.is_active;
   }
+  if (updateData.applicability_rules !== undefined) {
+    updatePayload.applicability_rules = updateData.applicability_rules;
+  }
 
   // 6. Update the requirement definition
   let updatedRequirement: any;
@@ -189,8 +194,75 @@ export const PATCH = withErrorHandler(async (
     description: updatedRequirement.description,
     is_mandatory: updatedRequirement.is_mandatory,
     is_active: updatedRequirement.is_active,
+    applicability_rules: updatedRequirement.applicability_rules ?? null,
+    display_order: updatedRequirement.display_order ?? 0,
     created_at: updatedRequirement.created_at,
     updated_at: updatedRequirement.updated_at,
     submission_stats,
   });
+});
+
+export const DELETE = withErrorHandler(async (
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) => {
+  const { id } = await context.params;
+
+  // 1. Extract and validate tenant context
+  const ctxResult = requireTenantContext(request);
+  if (ctxResult.error) return ctxResult.error as NextResponse;
+
+  const { tenantId, role } = ctxResult.context;
+
+  // 2. Check if user has admin role
+  if (role !== 'admin' && role !== 'local_admin' && role !== 'super_admin') {
+    return forbiddenResponse('Only admins can delete requirement definitions');
+  }
+
+  // 3. Verify requirement exists and belongs to current tenant (not already soft-deleted)
+  try {
+    const existingRes = await supabaseAdmin
+      .from('requirement_definitions')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (existingRes.error || !existingRes.data) {
+      return notFoundResponse('Requirement definition not found');
+    }
+  } catch {
+    return notFoundResponse('Requirement definition not found');
+  }
+
+  // 4. Perform soft delete (set deleted_at and deactivate)
+  const nowIso = new Date().toISOString();
+  try {
+    const res = await supabaseAdmin
+      .from('requirement_definitions')
+      .update({
+        deleted_at: nowIso,
+        is_active: false,
+        updated_at: nowIso,
+      })
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (res.error || !res.data) {
+      return serverErrorResponse('Database error deleting requirement definition');
+    }
+
+    return successResponse(
+      {
+        id: res.data.id,
+        deleted_at: res.data.deleted_at ?? nowIso,
+      },
+      'Requirement definition deleted successfully'
+    );
+  } catch {
+    return serverErrorResponse('Database error deleting requirement definition');
+  }
 });

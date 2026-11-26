@@ -10,6 +10,7 @@ interface User {
   name: string;
   email: string;
   role: UserRole;
+  preferredLanguage?: 'en' | 'fil';
   avatar?: string;
   tenantId?: string;
   tenantName?: string;
@@ -27,6 +28,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean | TenantSelectionRequired>;
   selectTenant: (selectionToken: string, tenantId: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  updateUserPreferredLanguage?: (lang: 'en' | 'fil') => void;
   isAuthenticated: boolean;
   isAuthReady: boolean;
   permissions: Permission;
@@ -86,11 +88,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
 
         const existing = savedUser ? JSON.parse(savedUser) : {};
+        const resolvedLanguage =
+          currentUser.preferred_language === 'fil' || currentUser.preferred_language === 'en'
+            ? currentUser.preferred_language
+            : existing.preferredLanguage;
         const userData: User = {
           id: currentUser.id,
           name: currentUser.username,
           email: currentUser.email,
           role: currentUser.role as UserRole,
+          preferredLanguage: resolvedLanguage,
           tenantId: existing.tenantId,
           tenantName: existing.tenantName,
         };
@@ -157,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: response.user.username,
         email: response.user.email,
         role: response.user.role as UserRole,
+        preferredLanguage: response.user.preferred_language === 'fil' ? 'fil' : 'en',
         tenantId: (response.user as any).tenantId,
         tenantName: (response.user as any).tenantName,
       };
@@ -194,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: response.user.username,
         email: response.user.email,
         role: response.user.role as UserRole,
+        preferredLanguage: response.user.preferred_language === 'fil' ? 'fil' : 'en',
         tenantId: (response.user as any).tenantId,
         tenantName: (response.user as any).tenantName,
       };
@@ -245,12 +254,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUserPreferredLanguage = (lang: 'en' | 'fil') => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, preferredLanguage: lang };
+      try {
+        sessionStorage.setItem('bmdc-user', JSON.stringify(updated));
+      } catch {
+        // Ignore storage errors
+      }
+      return updated;
+    });
+  };
+
   const getPostAuthRedirectPath = (): string | null => {
     return postAuthRedirectPath;
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, selectTenant, logout, isAuthenticated: !!user, isAuthReady, permissions, hasPermission, getPostAuthRedirectPath }}>
+    <AuthContext.Provider value={{ user, login, selectTenant, logout, updateUserPreferredLanguage, isAuthenticated: !!user, isAuthReady, permissions, hasPermission, getPostAuthRedirectPath }}>
       {children}
     </AuthContext.Provider>
   );

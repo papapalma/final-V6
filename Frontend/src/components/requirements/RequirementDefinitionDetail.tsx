@@ -100,12 +100,12 @@ export function RequirementDefinitionDetail({
    */
   if (isError || !requirement) {
     return (
-      <Card className="border-red-200 bg-red-50">
+      <Card className="req-surface-in border-destructive/30 bg-destructive/10">
         <CardContent className="flex items-center gap-3 pt-6">
-          <AlertCircle className="h-5 w-5 text-red-600" />
+          <AlertCircle className="size-5 text-destructive flex-shrink-0" />
           <div>
-            <h3 className="font-semibold text-red-900">Requirement Not Found</h3>
-            <p className="text-sm text-red-800">
+            <h3 className="font-semibold text-destructive">Requirement Not Found</h3>
+            <p className="text-sm text-muted-foreground">
               {error?.message || 'The requirement definition could not be loaded.'}
             </p>
           </div>
@@ -115,25 +115,25 @@ export function RequirementDefinitionDetail({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 req-surface-in">
       {/* Header Card */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex-1">
               <CardTitle className="text-2xl">{requirement.display_name}</CardTitle>
-              <CardDescription className="mt-2 text-sm">
+              <CardDescription className="mt-1.5 text-sm">
                 {requirement.requirement_type}
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               {requirement.is_mandatory && (
-                <Badge variant="default" className="bg-red-600 hover:bg-red-700">
+                <Badge variant="default" className="bg-red-600 text-white hover:bg-red-700">
                   Mandatory
                 </Badge>
               )}
               {requirement.is_active ? (
-                <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                <Badge variant="default" className="bg-emerald-600 text-white hover:bg-emerald-700">
                   Active
                 </Badge>
               ) : (
@@ -149,19 +149,19 @@ export function RequirementDefinitionDetail({
         <CardHeader>
           <CardTitle className="text-lg">Details</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           {/* Description */}
           <div>
-            <h4 className="font-semibold text-sm text-gray-600">Description</h4>
-            <p className="mt-1 text-sm text-gray-900">{requirement.description}</p>
+            <h4 className="font-semibold text-sm text-muted-foreground mb-1.5">Description</h4>
+            <p className="text-sm text-foreground leading-relaxed">{requirement.description}</p>
           </div>
 
           {/* Applicability Rules */}
           {requirement.applicability_rules && Object.keys(requirement.applicability_rules).length > 0 && (
             <div>
-              <h4 className="font-semibold text-sm text-gray-600">Applicability Rules</h4>
-              <div className="mt-2 rounded-md bg-blue-50 p-3">
-                <pre className="overflow-auto text-xs text-gray-700">
+              <h4 className="font-semibold text-sm text-muted-foreground mb-2">Applicability Rules</h4>
+              <div className="rounded-lg bg-secondary/70 dark:bg-secondary/40 border border-border p-3">
+                <pre className="overflow-auto text-xs text-foreground">
                   {JSON.stringify(requirement.applicability_rules, null, 2)}
                 </pre>
               </div>
@@ -171,18 +171,18 @@ export function RequirementDefinitionDetail({
           {/* Metadata */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div>
-              <p className="text-xs font-semibold text-gray-600">Display Order</p>
-              <p className="mt-1 text-sm text-gray-900">{requirement.display_order}</p>
+              <p className="text-xs font-semibold text-muted-foreground">Display Order</p>
+              <p className="mt-1 text-sm text-foreground">{requirement.display_order}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-600">Created</p>
-              <p className="mt-1 text-sm text-gray-900">
+              <p className="text-xs font-semibold text-muted-foreground">Created</p>
+              <p className="mt-1 text-sm text-foreground">
                 {new Date(requirement.created_at).toLocaleDateString()}
               </p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-600">Updated</p>
-              <p className="mt-1 text-sm text-gray-900">
+              <p className="text-xs font-semibold text-muted-foreground">Updated</p>
+              <p className="mt-1 text-sm text-foreground">
                 {new Date(requirement.updated_at).toLocaleDateString()}
               </p>
             </div>
@@ -202,45 +202,45 @@ export function RequirementDefinitionDetail({
               <StatBox
                 label="Total Trainees"
                 value={requirement.submission_stats.total_trainees}
-                className="bg-gray-50"
+                className="bg-muted/60"
               />
               <StatBox
                 label="Completion Rate"
                 value={`${requirement.submission_stats.completion_rate.toFixed(1)}%`}
-                className="bg-green-50"
+                className="bg-emerald-500/10 dark:bg-emerald-500/15"
               />
               <StatBox
                 label="Pending"
                 value={requirement.submission_stats.pending_count}
-                className="bg-yellow-50"
+                className="bg-amber-500/10 dark:bg-amber-500/15"
               />
               <StatBox
                 label="Submitted"
                 value={requirement.submission_stats.submitted_count}
-                className="bg-blue-50"
+                className="bg-blue-500/10 dark:bg-blue-500/15"
               />
               <StatBox
                 label="Verified"
                 value={requirement.submission_stats.verified_count}
-                className="bg-green-100"
+                className="bg-emerald-500/15 dark:bg-emerald-500/20"
               />
               <StatBox
                 label="Rejected"
                 value={requirement.submission_stats.rejected_count}
-                className="bg-red-50"
+                className="bg-red-500/10 dark:bg-red-500/15"
               />
               {requirement.submission_stats.waived_count !== undefined && (
                 <StatBox
                   label="Waived"
                   value={requirement.submission_stats.waived_count}
-                  className="bg-purple-50"
+                  className="bg-purple-500/10 dark:bg-purple-500/15"
                 />
               )}
             </div>
 
             {/* Visual Progress Bar */}
             <div>
-              <h4 className="mb-3 text-sm font-semibold text-gray-600">Submission Breakdown</h4>
+              <h4 className="mt-6 mb-2 text-sm font-semibold text-muted-foreground">Submission Breakdown</h4>
               <SubmissionProgressBar stats={requirement.submission_stats} />
             </div>
           </CardContent>
@@ -248,32 +248,32 @@ export function RequirementDefinitionDetail({
       )}
 
       {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2 sm:gap-3">
+      <div className="flex flex-wrap gap-3">
         <Button
           onClick={onEdit}
           disabled={!onEdit}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 py-2.5 px-4"
           variant="outline"
         >
-          <Edit2 className="h-4 w-4" />
+          <Edit2 className="size-4" />
           Edit
         </Button>
         <Button
           onClick={() => onViewSubmissions?.(requirementId)}
           disabled={!onViewSubmissions}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 py-2.5 px-4"
           variant="outline"
         >
-          <Eye className="h-4 w-4" />
+          <Eye className="size-4" />
           View Submissions
         </Button>
         <Button
           onClick={() => setDeleteDialogOpen(true)}
           disabled={!onDelete}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 py-2.5 px-4"
           variant="destructive"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="size-4" />
           Delete
         </Button>
       </div>
@@ -284,16 +284,15 @@ export function RequirementDefinitionDetail({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Requirement</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{requirement.display_name}"? This action cannot be
-              undone.
+              Are you sure you want to delete &quot;{requirement.display_name}&quot;? This requirement will be soft-deleted while preserving historical trainee submissions.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex gap-2">
+          <div className="flex justify-end gap-2">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {isDeleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
@@ -301,10 +300,12 @@ export function RequirementDefinitionDetail({
         </AlertDialogContent>
       </AlertDialog>
 
-      <RequirementSubmittedTraineesList
-        requirementId={requirement.id}
-        requirementType={requirement.requirement_type}
-      />
+      <div id="requirement-submitted-files" tabIndex={-1} className="outline-none scroll-mt-20">
+        <RequirementSubmittedTraineesList
+          requirementId={requirement.id}
+          requirementType={requirement.requirement_type}
+        />
+      </div>
     </div>
   );
 }
@@ -383,9 +384,9 @@ interface StatBoxProps {
 
 function StatBox({ label, value, className }: StatBoxProps) {
   return (
-    <div className={cn('rounded-lg p-3 text-center sm:p-4', className)}>
-      <p className="text-xs font-semibold text-gray-600 sm:text-sm">{label}</p>
-      <p className="mt-1 text-lg font-bold text-gray-900 sm:text-2xl">{value}</p>
+    <div className={cn('rounded-lg border border-border/60 p-3 text-center sm:p-4', className)}>
+      <p className="text-xs font-semibold text-muted-foreground sm:text-sm">{label}</p>
+      <p className="mt-1 text-lg font-bold text-foreground sm:text-2xl">{value}</p>
     </div>
   );
 }
@@ -412,7 +413,7 @@ function SubmissionProgressBar({ stats }: SubmissionProgressBarProps) {
 
   return (
     <div>
-      <div className="flex h-8 overflow-hidden rounded-lg border border-gray-200">
+      <div className="flex h-8 overflow-hidden rounded-lg border border-border bg-muted/40">
         {pending > 0 && (
           <div
             className="bg-yellow-400"
@@ -484,9 +485,9 @@ interface LegendItemProps {
 
 function LegendItem({ color, label, count }: LegendItemProps) {
   return (
-    <div className="flex items-center gap-1">
-      <div className={cn('h-3 w-3 rounded', color)} />
-      <span className="text-gray-600">
+    <div className="flex items-center gap-1.5">
+      <div className={cn('size-3 rounded', color)} />
+      <span className="text-muted-foreground">
         {label}: {count}
       </span>
     </div>

@@ -498,7 +498,7 @@ This is an official borrowing slip. Keep for your records.
             <Skeleton className="h-24 w-full" />
           </div>
         ) : lending ? (
-          <div className="space-y-6">
+          <div className="space-y-6" data-no-translate="true">
             {/* Borrower Information */}
             <div className="bg-slate-50 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">

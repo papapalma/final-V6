@@ -43,7 +43,7 @@ import type {
   UpdateRequirementPayload,
 } from '../types/requirementDefinition';
 import logger from '../utils/logger';
-import { invalidationStrategies } from '../services/queryClient';
+import { queryKeys } from '../services/queryClient';
 
 /**
  * Hook return type
@@ -151,13 +151,24 @@ export function useUpdateRequirementDefinition(): UseUpdateRequirementDefinition
 
         // Send PATCH request to update the requirement
         // API expects data with snake_case field names
+        const resolvedDisplayName = data.displayName ?? data.display_name;
+        const resolvedIsMandatory = data.isMandatory ?? data.is_mandatory;
+        const resolvedIsActive = data.isActive ?? data.is_active;
+        const resolvedApplicabilityRules =
+          data.applicabilityRules !== undefined
+            ? data.applicabilityRules
+            : data.applicability_rules;
+
         const payloadWithSnakeCase = {
-          ...(data.displayName && { display_name: data.displayName }),
-          ...(data.description && { description: data.description }),
-          ...(data.isMandatory !== undefined && {
-            is_mandatory: data.isMandatory,
+          ...(resolvedDisplayName !== undefined && { display_name: resolvedDisplayName }),
+          ...(data.description !== undefined && { description: data.description }),
+          ...(resolvedIsMandatory !== undefined && {
+            is_mandatory: resolvedIsMandatory,
           }),
-          ...(data.isActive !== undefined && { is_active: data.isActive }),
+          ...(resolvedIsActive !== undefined && { is_active: resolvedIsActive }),
+          ...(resolvedApplicabilityRules !== undefined && {
+            applicability_rules: resolvedApplicabilityRules,
+          }),
         };
 
         const response = await api.patch<RequirementDefinition>(
@@ -212,17 +223,19 @@ export function useUpdateRequirementDefinition(): UseUpdateRequirementDefinition
         '[useUpdateRequirementDefinition] Invalidating requirement definition queries'
       );
 
-      // Invalidate requirement definition queries
-      // Using a targeted invalidation pattern to avoid unnecessary refetches
+      // Invalidate requirement definition list & detail queries using canonical queryKeys
       queryClient.invalidateQueries({
-        queryKey: ['requirementDefinitions'],
-        refetchType: 'stale' as any,
+        queryKey: queryKeys.requirementDefinitions.all,
       });
 
-      // Also invalidate the specific requirement query if it exists
+      if (updatedData?.id) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.requirementDefinitions.detail(updatedData.id),
+        });
+      }
+
       queryClient.invalidateQueries({
-        queryKey: ['requirementDefinition', updatedData.id],
-        refetchType: 'stale' as any,
+        queryKey: ['requirementsAnalytics'],
       });
     },
 

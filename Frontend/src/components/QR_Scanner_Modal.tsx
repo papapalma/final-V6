@@ -426,7 +426,7 @@ export default function QR_Scanner_Modal({
           <div className="flex items-center gap-2">
             <QrCode className="size-5 text-primary" />
             <div>
-              <h2 className="text-base font-bold text-foreground">Lending QR Scan</h2>
+              <h2 className="text-base font-bold text-foreground">Borrowing QR Scan</h2>
               <p className="text-xs text-muted-foreground">Scan items to borrow</p>
             </div>
           </div>

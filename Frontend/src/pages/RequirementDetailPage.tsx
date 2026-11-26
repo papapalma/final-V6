@@ -28,13 +28,14 @@
  */
 
 import React, { useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import { RequirementDefinitionDetail } from '../components/requirements/RequirementDefinitionDetail';
 import { RequirementDefinitionForm } from '../components/RequirementDefinitionForm';
+import { RequirementSubmissionList } from '../components/RequirementSubmissionList';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -45,7 +46,7 @@ import {
 } from 'lucide-react';
 import logger from '../utils/logger';
 import { useRequirementDefinition } from '../hooks/useRequirementDefinition';
-import { useUpdateRequirementDefinition } from '../hooks/useUpdateRequirementDefinition';
+import { useDeleteRequirementDefinition } from '../hooks/useDeleteRequirementDefinition';
 
 /**
  * Breadcrumb navigation component
@@ -53,14 +54,14 @@ import { useUpdateRequirementDefinition } from '../hooks/useUpdateRequirementDef
  */
 function RequirementDetailBreadcrumb({ requirementName }: { requirementName?: string }) {
   return (
-    <nav className="flex items-center gap-1 text-xs sm:text-sm mb-4">
-      <a href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+    <nav className="flex items-center gap-1.5 text-xs sm:text-sm mb-4">
+      <Link to="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
         Dashboard
-      </a>
+      </Link>
       <ChevronRight className="size-4 text-muted-foreground" />
-      <a href="/admin/requirements" className="text-muted-foreground hover:text-foreground transition-colors">
+      <Link to="/admin/requirements" className="text-muted-foreground hover:text-foreground transition-colors">
         Requirements Management
-      </a>
+      </Link>
       <ChevronRight className="size-4 text-muted-foreground" />
       <span className="font-medium text-foreground line-clamp-1">
         {requirementName || 'Requirement Details'}
@@ -111,7 +112,7 @@ export default function RequirementDetailPage() {
   const requirementId = mode === 'new' ? undefined : id;
   
   const { data: requirement, isLoading, isError, error } = useRequirementDefinition(requirementId || '');
-  const { mutateAsync: updateRequirement } = useUpdateRequirementDefinition();
+  const { mutateAsync: deleteRequirement } = useDeleteRequirementDefinition();
 
   // Log page access
   React.useEffect(() => {
@@ -189,13 +190,7 @@ export default function RequirementDetailPage() {
 
   const handleDelete = async (deletingId: string) => {
     try {
-      // Soft delete by setting isActive to false
-      if (updateRequirement) {
-        await updateRequirement(deletingId, {
-          isActive: false,
-        });
-      }
-      // Navigate back to requirements list
+      await deleteRequirement(deletingId);
       setIsNavigating(true);
       navigate('/admin/requirements', { state: { deletedId: deletingId } });
     } catch (err) {
@@ -204,16 +199,46 @@ export default function RequirementDetailPage() {
     }
   };
 
+  const handleViewSubmissions = () => {
+    const sectionEl =
+      document.getElementById('requirement-submissions-section') ||
+      document.getElementById('requirement-submitted-files');
+    if (sectionEl) {
+      const prefersReduced =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      sectionEl.scrollIntoView({
+        behavior: prefersReduced ? 'auto' : 'smooth',
+        block: 'start',
+      });
+      sectionEl.focus({ preventScroll: true });
+    }
+  };
+
   const handleFormSuccess = () => {
     setIsNavigating(true);
-    navigate('/admin/requirements');
+    if (mode === 'edit' && requirementId) {
+      navigate(`/admin/requirements/${requirementId}`);
+    } else {
+      navigate('/admin/requirements');
+    }
+  };
+
+  const handleFormCancel = () => {
+    setIsNavigating(true);
+    if (mode === 'edit' && requirementId) {
+      navigate(`/admin/requirements/${requirementId}`);
+    } else {
+      navigate('/admin/requirements');
+    }
   };
 
   // Render based on mode
   return (
     <DashboardLayout>
       <ErrorBoundary>
-        <div className="space-y-4 md:space-y-6">
+        <div className="ds-page space-y-6 md:space-y-8">
           {/* Breadcrumb Navigation */}
           <RequirementDetailBreadcrumb requirementName={mode === 'new' ? 'New Requirement' : requirement?.display_name} />
 
@@ -223,6 +248,7 @@ export default function RequirementDetailPage() {
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Back to Requirements Management"
                 onClick={() => {
                   setIsNavigating(true);
                   navigate('/admin/requirements');
@@ -233,13 +259,13 @@ export default function RequirementDetailPage() {
                 <ArrowLeft className="size-4" />
               </Button>
               <div className="min-w-0">
-                <h1 className="flex items-center gap-2 text-lg sm:text-2xl font-bold">
-                  <BookOpen className="size-6 sm:size-8 flex-shrink-0" />
+                <h1 className="flex items-center gap-2 text-lg sm:text-2xl font-bold tracking-tight">
+                  <BookOpen className="size-6 sm:size-7 flex-shrink-0 text-primary" />
                   <span className="truncate">
                     {mode === 'new' ? 'Create Requirement' : mode === 'edit' ? 'Edit Requirement' : 'Requirement Details'}
                   </span>
                 </h1>
-                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
                   {mode === 'new' ? 'Create a new training requirement' : mode === 'edit' ? 'Modify requirement information' : 'View and manage requirement information'}
                 </p>
               </div>
@@ -252,6 +278,7 @@ export default function RequirementDetailPage() {
               <RequirementDefinitionForm
                 requirementId={requirementId}
                 onSuccess={handleFormSuccess}
+                onCancel={handleFormCancel}
               />
             </ErrorBoundary>
           )}
@@ -280,25 +307,35 @@ export default function RequirementDetailPage() {
 
               {/* Error State */}
               {isError && (
-                <Alert className="border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20">
-                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                  <AlertDescription className="text-xs sm:text-sm text-red-800 dark:text-red-300">
+                <Alert variant="destructive" className="border-destructive/30 bg-destructive/10">
+                  <AlertTriangle className="size-4" />
+                  <AlertDescription className="text-xs sm:text-sm">
                     {error?.message || 'Failed to load requirement details. Please try again.'}
                   </AlertDescription>
                 </Alert>
               )}
 
-              {/* Main Content: Requirement Definition Detail */}
+              {/* Main Content: Requirement Definition Detail + Submissions */}
               {!isLoading && !isError && (
-                <div className="space-y-6">
+                <div className="space-y-8">
                   <ErrorBoundary>
                     <RequirementDefinitionDetail
                       requirementId={requirementId!}
                       onEdit={handleEdit}
                       onDelete={handleDelete}
+                      onViewSubmissions={handleViewSubmissions}
                     />
                   </ErrorBoundary>
 
+                  <section
+                    id="requirement-submissions-section"
+                    tabIndex={-1}
+                    className="outline-none scroll-mt-20"
+                  >
+                    <ErrorBoundary>
+                      <RequirementSubmissionList requirementId={requirementId!} />
+                    </ErrorBoundary>
+                  </section>
                 </div>
               )}
             </>

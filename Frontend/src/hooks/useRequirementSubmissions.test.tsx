@@ -99,12 +99,11 @@ describe('useRequirementSubmissions Hook (Task 3.3)', () => {
 
     vi.clearAllMocks();
 
-    // Default mock implementation
+    // Default mock implementation matching api.get() unwrapped ApiResponse envelope
     (api.get as any).mockResolvedValue({
-      data: {
-        data: mockSubmissions,
-        pagination: mockPaginationInfo,
-      },
+      success: true,
+      data: mockSubmissions,
+      pagination: mockPaginationInfo,
     });
   });
 
@@ -356,10 +355,9 @@ describe('useRequirementSubmissions Hook (Task 3.3)', () => {
       };
 
       (api.get as any).mockResolvedValue({
-        data: {
-          data: mockSubmissions,
-          pagination: paginationResponse,
-        },
+        success: true,
+        data: mockSubmissions,
+        pagination: paginationResponse,
       });
 
       const { result } = renderHook(
@@ -522,6 +520,59 @@ describe('useRequirementSubmissions Hook (Task 3.3)', () => {
       const rejectedSubmission = result.current.data.find(s => s.status === 'rejected');
       expect(rejectedSubmission?.rejectionReason).toBeDefined();
       expect(rejectedSubmission?.rejectionReason).toBe('Document is not clearly legible');
+    });
+
+    it('should normalize snake_case backend payloads and derive hasMore from totalPages', async () => {
+      (api.get as any).mockResolvedValue({
+        success: true,
+        data: [
+          {
+            id: 'sub-snake-1',
+            enrollment_id: 'enr-101',
+            requirement_id: requirementId,
+            trainee_id: 'trn-101',
+            trainee_name: 'Maria Santos',
+            trainee_email: 'maria@example.com',
+            submission_status: 'submitted',
+            document_url: '/uploads/doc.pdf',
+            submitted_at: '2024-02-01T10:00:00Z',
+            verified_at: null,
+            verified_by: null,
+            rejection_reason: null,
+            created_at: '2024-02-01T09:00:00Z',
+          },
+        ],
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 45,
+          totalPages: 3,
+        },
+      });
+
+      const { result } = renderHook(() => useRequirementSubmissions(requirementId), { wrapper });
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.data).toHaveLength(1);
+      expect(result.current.data[0]).toMatchObject({
+        id: 'sub-snake-1',
+        enrollmentId: 'enr-101',
+        requirementId,
+        traineeId: 'trn-101',
+        traineeName: 'Maria Santos',
+        traineeEmail: 'maria@example.com',
+        status: 'submitted',
+        documentUrl: '/uploads/doc.pdf',
+      });
+      expect(result.current.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 45,
+        hasMore: true,
+      });
     });
   });
 

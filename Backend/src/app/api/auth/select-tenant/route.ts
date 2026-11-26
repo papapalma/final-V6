@@ -95,11 +95,20 @@ const { data: tenant } = await supabaseAdmin
 
   // ── Fetch user details for the response ─────────────────────────────────
 
-const { data: user } = await supabaseAdmin
+  let { data: user, error: userError } = await supabaseAdmin
     .from('users')
-    .select('id, email, username, role')
+    .select('id, email, username, role, preferred_language')
     .eq('id', result.userId)
     .single();
+
+  if (userError && (userError.code === '42703' || userError.code === 'PGRST204' || userError.message?.includes('preferred_language'))) {
+    const fallback = await supabaseAdmin
+      .from('users')
+      .select('id, email, username, role')
+      .eq('id', result.userId)
+      .single();
+    user = fallback.data ? { ...fallback.data, preferred_language: 'en' } : null;
+  }
 
   if (!user) {
     return unauthorizedResponse('User not found');
@@ -131,6 +140,7 @@ await activityLogService.logAction(result.userId, 'login', 'user', result.userId
         email: user.email,
         username: user.username,
         role: user.role,
+        preferred_language: user.preferred_language === 'fil' ? 'fil' : 'en',
         tenantId: validatedData.tenant_id,
         tenantName: tenant.name,
       },

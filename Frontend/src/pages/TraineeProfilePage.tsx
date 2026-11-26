@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import DashboardLayout from '../components/DashboardLayout';
+import LanguageSegmentedControl from '../components/LanguageSegmentedControl';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -9,7 +11,7 @@ import { Label } from '../components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Separator } from '../components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Edit2, Save, X, Award, CheckCircle2, BookOpen, Camera, Settings, Download } from 'lucide-react';
+import { Edit2, Save, X, Award, CheckCircle2, BookOpen, Camera, Settings, Download, Globe } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { isStandalone, canInstallPWA, promptPWAInstall, getInstallInstructions } from '../utils/pwa';
 import { getFileUrl } from '../services/api';
@@ -60,6 +62,7 @@ interface Achievement {
 
 export default function TraineeProfilePage() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -560,6 +563,26 @@ export default function TraineeProfilePage() {
 
             {/* SETTINGS TAB */}
             <TabsContent value="settings" className="mt-6 space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="space-y-1">
+                      <CardTitle className="flex items-center gap-2">
+                        <Globe className="size-5 text-primary" />
+                        {t('traineeProfile.languageCardTitle')}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {t('traineeProfile.languageCardDesc')}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('traineeProfile.perAccountNote')}
+                      </p>
+                    </div>
+                    <LanguageSegmentedControl idPrefix="trainee-profile" />
+                  </div>
+                </CardHeader>
+              </Card>
+
               <Card className="border-2 border-primary/20 shadow-sm bg-gradient-to-br from-card to-primary/5">
                 <CardHeader>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

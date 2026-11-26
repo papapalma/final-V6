@@ -522,6 +522,68 @@
   transform: scale(0.95);
 }
 
+/* Language Segmented Control & Settings Disclosure (Apple Fluid Principles) */
+.lang-segment-btn {
+  transition: color 140ms var(--ease-out),
+    transform 100ms var(--ease-out);
+}
+
+.lang-segment-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@keyframes settings-disclosure-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.settings-disclosure-in {
+  animation: settings-disclosure-enter 180ms var(--ease-out);
+}
+
+/* Requirements Management Tactile & Surface Continuity (Apple Fluid Principles) */
+@keyframes req-surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.req-surface-in {
+  animation: req-surface-enter 180ms var(--ease-out);
+}
+
+.req-row-interactive {
+  transition: background-color 140ms var(--ease-out),
+    transform 120ms var(--ease-out);
+}
+
+.req-row-interactive:active {
+  transform: scale(0.995);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .req-row-interactive:hover {
+    background-color: color-mix(in oklab, var(--muted) 65%, transparent);
+  }
+}
+
+.req-progress-fill {
+  transform-origin: left center;
+  transition: transform var(--duration-normal) var(--ease-out);
+  will-change: transform;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .att-modal-scrim {
     background-color: rgba(2, 6, 23, 0.78);
@@ -574,8 +636,24 @@
   }
 
   .messenger-press-row,
-  .messenger-send-btn {
+  .messenger-send-btn,
+  .lang-segment-btn {
+    transform: none !important;
+    transition: opacity 140ms ease, background-color 140ms ease, color 140ms ease !important;
+  }
+
+  .settings-disclosure-in,
+  .req-surface-in {
+    animation: att-scrim-in 140ms ease !important;
+    transform: none !important;
+  }
+
+  .req-row-interactive {
     transform: none !important;
     transition: opacity 140ms ease, background-color 140ms ease !important;
+  }
+
+  .req-progress-fill {
+    transition-duration: 0.01ms !important;
   }
 }

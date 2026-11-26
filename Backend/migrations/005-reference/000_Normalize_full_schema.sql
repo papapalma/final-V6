@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS users (
                                 'staff_inventory_manager',
                                 'trainee'
                               )),
+  preferred_language VARCHAR(5) NOT NULL DEFAULT 'en'
+                              CHECK (preferred_language IN ('en', 'fil')),
   created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );

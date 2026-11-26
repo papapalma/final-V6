@@ -4,6 +4,7 @@ export interface User {
   email: string;
   username: string;
   role: 'super_admin' | 'local_admin' | 'staff_training_coordinator' | 'staff_inventory_manager' | 'trainee';
+  preferred_language?: 'en' | 'fil';
   created_at: string;
   updated_at: string;
 }

@@ -213,20 +213,65 @@ export function useRequirementSubmissions(
         limit,
       });
 
-      // Fetch from API
-      const response = await api.get<{
-        data: RequirementSubmission[];
-        pagination: PaginationInfo;
-      }>(`/requirement-definitions/${requirementId}/submissions`, queryParams);
+      // Fetch from API (api.get already unwraps axiosResponse.data -> { success, data, pagination })
+      const response = await api.get<any>(
+        `/requirement-definitions/${requirementId}/submissions`,
+        queryParams
+      );
+      const rawBody = response as any;
+      const rawItems: any[] = Array.isArray(rawBody?.data)
+        ? rawBody.data
+        : Array.isArray(rawBody?.data?.data)
+          ? rawBody.data.data
+          : [];
+      const rawPagination = rawBody?.pagination ?? rawBody?.data?.pagination;
 
-      // Extract data and pagination info
-      const submissions = response.data?.data || [];
-      const paginationData = response.data?.pagination || {
-        page,
-        limit,
-        total: 0,
-        hasMore: false,
-      };
+      const submissions: RequirementSubmission[] = rawItems.map((item: any) => {
+        // Preserve already-normalized camelCase objects
+        if (item && typeof item.enrollmentId === 'string' && typeof item.status === 'string') {
+          return item as RequirementSubmission;
+        }
+        return {
+          id: item.id ?? item.enrollment_id ?? '',
+          enrollmentId: item.enrollment_id ?? item.enrollmentId ?? '',
+          requirementId: item.requirement_id ?? item.requirementId ?? requirementId,
+          status: item.submission_status ?? item.status ?? 'pending',
+          traineeId: item.trainee_id ?? item.traineeId ?? '',
+          traineeName: item.trainee_name ?? item.traineeName ?? '',
+          ...(item.trainee_email ? { traineeEmail: item.trainee_email } : {}),
+          ...(item.document_url ? { documentUrl: item.document_url } : {}),
+          ...(item.submitted_at ? { submittedAt: item.submitted_at } : {}),
+          ...(item.verified_at ? { verifiedAt: item.verified_at } : {}),
+          ...(item.verified_by ? { verifiedBy: item.verified_by } : {}),
+          ...(item.rejection_reason ? { rejectionReason: item.rejection_reason } : {}),
+          createdAt: item.created_at ?? item.createdAt ?? '',
+          updatedAt: item.updated_at ?? item.updatedAt ?? item.created_at ?? '',
+        };
+      });
+
+      const resolvedPage = rawPagination?.page ?? page;
+      const resolvedLimit = rawPagination?.limit ?? limit;
+      const resolvedTotal = rawPagination?.total ?? 0;
+      const resolvedTotalPages =
+        rawPagination?.totalPages ??
+        (resolvedLimit > 0 ? Math.ceil(resolvedTotal / resolvedLimit) : 0);
+
+      const paginationData: PaginationInfo = rawPagination
+        ? {
+            page: resolvedPage,
+            limit: resolvedLimit,
+            total: resolvedTotal,
+            hasMore:
+              typeof rawPagination.hasMore === 'boolean'
+                ? rawPagination.hasMore
+                : resolvedPage < resolvedTotalPages,
+          }
+        : {
+            page,
+            limit,
+            total: 0,
+            hasMore: false,
+          };
 
       logger.info('[useRequirementSubmissions] Fetch successful', {
         requirementId,
@@ -268,7 +313,12 @@ export function useRequirementSubmissions(
     { data: RequirementSubmission[]; pagination: PaginationInfo },
     Error
   >({
-    queryKey: queryKeys.requirementSubmissions.byRequirement(requirementId, otherOptions, { page, limit }),
+    queryKey: queryKeys.requirementSubmissions.byRequirement(
+      requirementId,
+      { status: otherOptions.status, searchTerm: otherOptions.searchTerm },
+      { sortBy: otherOptions.sortBy, order: otherOptions.order },
+      { page, limit }
+    ),
     queryFn,
     // Only query if enabled and requirementId is provided
     enabled: enabled && !!requirementId,
