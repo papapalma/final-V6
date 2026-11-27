@@ -9,7 +9,7 @@
  *   4. Device Information
  *   5. Additional Metadata
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import {
@@ -20,12 +20,14 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 import {
-  ChevronLeft, Camera, MapPin, Smartphone, FileText, AlertCircle, Clock,
+  ChevronLeft, Camera, MapPin, Smartphone, FileText, AlertCircle, Clock, Sun, Moon, Info, CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import attendanceService from '../services/attendanceService';
 import type { AttendanceRecord, AttendanceWindowStatus } from '../services/attendanceService';
 import { getFileUrl, apiClient } from '../services/api';
+import AttendanceSubmitFlow from '../components/attendance/AttendanceSubmitFlow';
+import { getGpsAccuracyInfo } from '../lib/gpsFormat';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,6 +49,69 @@ function formatTimeHM(time?: string): string {
   return time; // Already in HH:MM format
 }
 
+function getTodayDateStr(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseTimeMinutes(time?: string | null): number | null {
+  if (!time) return null;
+  const parts = time.split(':').map(Number);
+  if (parts.length < 2 || Number.isNaN(parts[0]) || Number.isNaN(parts[1])) return null;
+  return parts[0] * 60 + parts[1];
+}
+
+function formatMinutes12h(totalMinutes: number): string {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const h24 = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  const period = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function formatTime12h(time?: string | null): string {
+  const mins = parseTimeMinutes(time);
+  return mins === null ? '—' : formatMinutes12h(mins);
+}
+
+function formatLateCutoff12h(openTime?: string | null, thresholdMinutes?: number | null): string | null {
+  const openMins = parseTimeMinutes(openTime);
+  if (openMins === null || thresholdMinutes == null || thresholdMinutes <= 0) return null;
+  return formatMinutes12h(openMins + thresholdMinutes);
+}
+
+function formatCountdownShort(seconds?: number | null): string | null {
+  if (!seconds || seconds <= 0) return null;
+  const totalMins = Math.ceil(seconds / 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+function isPastLateCutoffNow(windowStatus: AttendanceWindowStatus | null): boolean {
+  if (!windowStatus?.isOpen || !windowStatus.session_label) return false;
+  const openTime =
+    windowStatus.session_label === 'morning'
+      ? windowStatus.morning_open ?? windowStatus.window_open
+      : windowStatus.afternoon_open ?? windowStatus.window_open;
+  const threshold =
+    windowStatus.session_label === 'morning'
+      ? windowStatus.morning_late_threshold
+      : windowStatus.afternoon_late_threshold;
+
+  const openMins = parseTimeMinutes(openTime);
+  if (openMins === null || threshold == null) return false;
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  return nowMins > openMins + threshold;
+}
+
 function formatDuration(morningIn?: string, afternoonOut?: string): string {
   if (!morningIn || !afternoonOut) return '—';
   const diff = new Date(afternoonOut).getTime() - new Date(morningIn).getTime();
@@ -64,13 +129,6 @@ const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
 };
 
-function gpsAccuracyColor(acc?: number): string {
-  if (!acc) return 'text-muted-foreground';
-  if (acc < 50)  return 'text-green-600 dark:text-green-400';
-  if (acc < 200) return 'text-yellow-600 dark:text-yellow-400';
-  return 'text-red-600 dark:text-red-400';
-}
-
 // ---------------------------------------------------------------------------
 // Selfie panel sub-component
 // ---------------------------------------------------------------------------
@@ -83,7 +141,15 @@ function SelfiePanel({
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!path) return;
+    if (!path) {
+      setImageUrl(null);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+
+    let active = true;
+    let objectUrl: string | null = null;
 
     const loadImage = async () => {
       setLoading(true);
@@ -94,25 +160,28 @@ function SelfiePanel({
         const response = await apiClient.get(fileUrl, {
           responseType: 'blob',
         });
+        if (!active) return;
         const blob = response.data as Blob;
-        const url = URL.createObjectURL(blob);
-        setImageUrl(url);
+        objectUrl = URL.createObjectURL(blob);
+        setImageUrl(objectUrl);
       } catch (err) {
+        if (!active) return;
         console.error(`[SelfiePanel] Failed to load ${label} image:`, err);
         setError(true);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     loadImage();
 
     return () => {
-      if (imageUrl) {
-        URL.revokeObjectURL(imageUrl);
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [path]);
+  }, [path, label]);
 
   if (!path) {
     return (
@@ -140,7 +209,6 @@ function SelfiePanel({
     );
   }
 
-  const fileUrl = getFileUrl(path);
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -152,7 +220,7 @@ function SelfiePanel({
         />
       </div>
       <a
-        href={fileUrl}
+        href={imageUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="text-xs text-primary underline underline-offset-2 block"
@@ -175,55 +243,64 @@ export default function AttendanceDetailsPage() {
   const [record,  setRecord]  = useState<AttendanceRecord | null>(null);
   const [windowStatus, setWindowStatus] = useState<AttendanceWindowStatus | null>(null);
 
-  useEffect(() => {
-    console.log('[AttendanceDetailsPage] Mounted with date:', date);
-    if (!date) {
-      console.log('[AttendanceDetailsPage] No date parameter, returning');
-      return;
-    }
-    
+  const loadAttendanceData = useCallback(() => {
+    if (!date) return;
+
     setLoading(true);
-    console.log('[AttendanceDetailsPage] Starting data fetch for:', date);
-    
+
     // Fetch attendance record (required)
     attendanceService.getMyAttendanceByDate(date)
       .then((res) => {
-        console.log('[AttendanceDetailsPage] Attendance data loaded:', res.data);
         const records = res.data ?? [];
         setRecord(records[0] ?? null);
-        if (!records[0]) {
-          console.log('[AttendanceDetailsPage] No attendance record found for date:', date);
-        } else {
-          console.log('[AttendanceDetailsPage] Attendance record found:', records[0]);
-        }
       })
-      .catch((error) => {
-        console.error('[AttendanceDetailsPage] Failed to load attendance:', error);
-        console.error('[AttendanceDetailsPage] Error details:', {
-          message: error?.message,
-          response: error?.response?.status,
-          responseData: error?.response?.data,
-        });
+      .catch(() => {
         toast.error('Failed to load attendance details');
         setRecord(null);
       })
       .finally(() => {
-        console.log('[AttendanceDetailsPage] Setting loading to false');
         setLoading(false);
       });
-    
+
     // Fetch window status separately (optional, don't block if it fails)
     attendanceService.getWindowStatus()
       .then((res) => {
-        console.log('[AttendanceDetailsPage] Window status loaded:', res.data);
         setWindowStatus(res.data ?? null);
       })
-      .catch((error) => {
-        // Window status is optional - if it fails, just don't show it
-        console.debug('[AttendanceDetailsPage] Window status fetch failed (optional):', error?.message);
+      .catch(() => {
         setWindowStatus(null);
       });
   }, [date]);
+
+  useEffect(() => {
+    loadAttendanceData();
+  }, [loadAttendanceData]);
+
+  const isToday = Boolean(date && date === getTodayDateStr());
+  const hasSchedule = Boolean(windowStatus?.morning_open || windowStatus?.afternoon_open);
+  const activeSessionName =
+    windowStatus?.session_label === 'afternoon' ? 'Afternoon' : 'Morning';
+  const activeCutoff12h =
+    windowStatus?.session_label === 'afternoon'
+      ? formatLateCutoff12h(
+          windowStatus.afternoon_open ?? windowStatus.window_open,
+          windowStatus.afternoon_late_threshold
+        )
+      : formatLateCutoff12h(
+          windowStatus?.morning_open ?? windowStatus?.window_open,
+          windowStatus?.morning_late_threshold
+        );
+  const isLateRightNow = isPastLateCutoffNow(windowStatus);
+  const morningCutoff12h = formatLateCutoff12h(
+    windowStatus?.morning_open,
+    windowStatus?.morning_late_threshold
+  );
+  const afternoonCutoff12h = formatLateCutoff12h(
+    windowStatus?.afternoon_open,
+    windowStatus?.afternoon_late_threshold
+  );
+  const nextOpenCountdown = formatCountdownShort(windowStatus?.seconds_until_open);
+  const closeCountdown = formatCountdownShort(windowStatus?.seconds_until_close);
 
   const hasGps = record?.gps_lat != null && record?.gps_lng != null;
 
@@ -244,56 +321,197 @@ export default function AttendanceDetailsPage() {
 
   return (
     <DashboardLayout title="Attendance Details">
-      <div className="max-w-2xl mx-auto space-y-4">
+      <AttendanceSubmitFlow windowStatus={windowStatus} onComplete={loadAttendanceData}>
+        {(triggerAttendance) => (
+          <div className="max-w-2xl mx-auto space-y-6">
 
-        {/* ── Back button + header ── */}
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost" size="icon"
-            onClick={() => navigate('/trainee/attendance')}
-            aria-label="Back to calendar"
-          >
-            <ChevronLeft className="size-5" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold">{date ? formatDate(date) : 'Attendance Details'}</h1>
-            {record && (
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${STATUS_BADGE[record.status] ?? STATUS_BADGE.pending}`}>
-                {record.status}
-              </span>
+            {/* ── Back button + header ── */}
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost" size="icon"
+                onClick={() => navigate('/trainee/attendance')}
+                aria-label="Back to calendar"
+              >
+                <ChevronLeft className="size-5" />
+              </Button>
+              <div>
+                <h1 className="text-xl font-bold">{date ? formatDate(date) : 'Attendance Details'}</h1>
+                {record && (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${STATUS_BADGE[record.status] ?? STATUS_BADGE.pending}`}>
+                    {record.status}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* ── No record state ── */}
+            {!record && isToday && (
+              <div className="space-y-4">
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center p-6 sm:p-8 text-center gap-3">
+                    {windowStatus?.isOpen ? (
+                      <>
+                        <div className={`flex size-12 items-center justify-center rounded-full ${isLateRightNow ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                          <Camera className="size-6" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            <h2 className="text-base sm:text-lg font-semibold">
+                              {activeSessionName} Attendance Window Open
+                            </h2>
+                            {isLateRightNow ? (
+                              <Badge className="py-0.5 px-2 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0">
+                                Late Check-In
+                              </Badge>
+                            ) : (
+                              <Badge className="py-0.5 px-2 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-0">
+                                <CheckCircle2 className="size-3 mr-1" />
+                                On Time
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                            {isLateRightNow && activeCutoff12h
+                              ? `You can still check in now — submissions after ${activeCutoff12h} are marked Late.`
+                              : activeCutoff12h
+                                ? `Check in by ${activeCutoff12h} to be marked Present.`
+                                : 'Submit your live selfie to record your attendance for this session.'}
+                          </p>
+                          {windowStatus.window_close && (
+                            <p className="text-xs text-muted-foreground">
+                              Window closes at {formatTime12h(windowStatus.window_close)}
+                              {closeCountdown ? ` (in ${closeCountdown})` : ''}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                          <Button
+                            onClick={triggerAttendance}
+                            className="py-2.5 px-4"
+                          >
+                            <Camera className="size-4 mr-2" />
+                            Punch In Now
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => navigate('/trainee/attendance')}
+                            className="py-2.5 px-4"
+                          >
+                            Back to Calendar
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <Clock className="size-6" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <h2 className="text-base sm:text-lg font-semibold">
+                            Attendance Window Currently Closed
+                          </h2>
+                          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                            {windowStatus?.window_open
+                              ? `${activeSessionName} session opens at ${formatTime12h(windowStatus.window_open)}${nextOpenCountdown ? ` (in ${nextOpenCountdown})` : ''}.`
+                              : 'Self-service check-in is currently closed for today. Review the schedule below for open hours.'}
+                          </p>
+                        </div>
+                        <div className="pt-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => navigate('/trainee/attendance')}
+                            className="py-2.5 px-4"
+                          >
+                            Back to Calendar
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* ── Attendance Schedule & Rules Card ── */}
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Info className="size-4 text-primary shrink-0" />
+                      <h3 className="text-sm font-semibold">Attendance Schedule &amp; Rules</h3>
+                    </div>
+
+                    {hasSchedule && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {windowStatus?.morning_open && windowStatus?.morning_close && (
+                          <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                              <Sun className="size-3.5 text-amber-500" />
+                              <span>Morning Session</span>
+                            </div>
+                            <p className="text-sm font-semibold tabular-nums">
+                              {formatTime12h(windowStatus.morning_open)} – {formatTime12h(windowStatus.morning_close)}
+                            </p>
+                            {morningCutoff12h && (
+                              <p className="text-xs text-muted-foreground">
+                                Present until {morningCutoff12h} · Late after {morningCutoff12h}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {windowStatus?.afternoon_open && windowStatus?.afternoon_close && (
+                          <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                              <Moon className="size-3.5 text-blue-500" />
+                              <span>Afternoon Session</span>
+                            </div>
+                            <p className="text-sm font-semibold tabular-nums">
+                              {formatTime12h(windowStatus.afternoon_open)} – {formatTime12h(windowStatus.afternoon_close)}
+                            </p>
+                            {afternoonCutoff12h && (
+                              <p className="text-xs text-muted-foreground">
+                                Present until {afternoonCutoff12h} · Late after {afternoonCutoff12h}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <ul className="space-y-2 border-t pt-4 text-xs text-muted-foreground list-disc pl-4">
+                      <li>
+                        <span className="font-medium text-foreground">On-Time vs. Late:</span>{' '}
+                        {windowStatus?.morning_late_threshold != null
+                          ? `Check in within ${windowStatus.morning_late_threshold} min of opening to be marked Present. Check-ins after the cutoff up until closing time are still accepted and marked Late.`
+                          : 'Check in within the grace period after opening to be marked Present; check-ins after the cutoff up until closing time are marked Late.'}
+                      </li>
+                      <li>
+                        <span className="font-medium text-foreground">Independent Half-Day Sessions:</span>{' '}
+                        Morning and Afternoon are tracked separately — missing Morning still lets you check in for Afternoon.
+                      </li>
+                      <li>
+                        <span className="font-medium text-foreground">Verification &amp; Window Cutoff:</span>{' '}
+                        A live selfie and GPS location are required while a window is open. Self-service check-in locks automatically once the closing time passes.
+                      </li>
+                    </ul>
+                  </CardContent>
+                </Card>
+              </div>
             )}
-          </div>
-        </div>
 
-        {/* ── No record state ── */}
-        {!record && (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-3">
-              {windowStatus?.isOpen ? (
-                <>
-                  <Camera className="size-10 text-blue-500" />
-                  <p className="text-muted-foreground">Attendance window is open!</p>
-                  <p className="text-xs text-muted-foreground">Go back to the calendar to take attendance.</p>
-                  <Button 
-                    variant="default" 
+            {!record && !isToday && (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-3">
+                  <AlertCircle className="size-10 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No attendance record for this date.</p>
+                  <Button
+                    variant="outline"
                     onClick={() => navigate('/trainee/attendance')}
-                    className="mt-2"
+                    className="py-2 px-3.5"
                   >
                     Back to Calendar
                   </Button>
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="size-10 text-muted-foreground/50" />
-                  <p className="text-muted-foreground">No attendance record for this date.</p>
-                  <Button variant="outline" onClick={() => navigate('/trainee/attendance')}>
-                    Back to Calendar
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                </CardContent>
+              </Card>
+            )}
 
         {/* ── Accordion sections ── */}
         {record && (
@@ -427,49 +645,52 @@ export default function AttendanceDetailsPage() {
                 <span className="flex items-center gap-2"><MapPin className="size-4" /> GPS Information</span>
               </AccordionTrigger>
               <AccordionContent>
-                {hasGps ? (
-                  <div className="space-y-3 pb-3">
-                    {/* Google Maps embed */}
-                    <iframe
-                      title="Attendance location"
-                      src={`https://maps.google.com/maps?q=${record.gps_lat},${record.gps_lng}&z=16&output=embed`}
-                      className="w-full h-48 rounded-lg border"
-                      loading="lazy"
-                    />
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Latitude</p>
-                        <p className="font-mono">{record.gps_lat?.toFixed(6)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Longitude</p>
-                        <p className="font-mono">{record.gps_lng?.toFixed(6)}</p>
-                      </div>
-                      {record.gps_address && (
-                        <div className="col-span-2">
-                          <p className="text-xs text-muted-foreground">Address</p>
-                          <p>{record.gps_address}</p>
-                        </div>
-                      )}
-                      {record.gps_accuracy != null && (
+                {hasGps ? (() => {
+                  const accInfo = getGpsAccuracyInfo(record.gps_accuracy);
+                  return (
+                    <div className="space-y-3 pb-3">
+                      {/* Google Maps embed */}
+                      <iframe
+                        title="Attendance location"
+                        src={`https://maps.google.com/maps?q=${record.gps_lat},${record.gps_lng}&z=${accInfo?.mapZoom ?? 16}&output=embed`}
+                        className="w-full h-48 rounded-lg border"
+                        loading="lazy"
+                      />
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                         <div>
-                          <p className="text-xs text-muted-foreground">Accuracy</p>
-                          <p className={gpsAccuracyColor(record.gps_accuracy)}>
-                            ±{record.gps_accuracy.toFixed(0)} m
-                          </p>
+                          <p className="text-xs text-muted-foreground">Latitude</p>
+                          <p className="font-mono">{record.gps_lat?.toFixed(6)}</p>
                         </div>
-                      )}
+                        <div>
+                          <p className="text-xs text-muted-foreground">Longitude</p>
+                          <p className="font-mono">{record.gps_lng?.toFixed(6)}</p>
+                        </div>
+                        {record.gps_address && (
+                          <div className="col-span-2">
+                            <p className="text-xs text-muted-foreground">Address</p>
+                            <p>{record.gps_address}</p>
+                          </div>
+                        )}
+                        {accInfo && (
+                          <div className="col-span-2">
+                            <p className="text-xs text-muted-foreground">Accuracy</p>
+                            <p className={`font-medium ${accInfo.textClass}`}>
+                              {accInfo.formatted} · {accInfo.quality}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <a
+                        href={`https://maps.google.com/maps?q=${record.gps_lat},${record.gps_lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary underline underline-offset-2"
+                      >
+                        View on Google Maps ↗
+                      </a>
                     </div>
-                    <a
-                      href={`https://maps.google.com/maps?q=${record.gps_lat},${record.gps_lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary underline underline-offset-2"
-                    >
-                      View on Google Maps ↗
-                    </a>
-                  </div>
-                ) : (
+                  );
+                })() : (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground pb-3">
                     <MapPin className="size-4" />
                     GPS data was not captured for this submission.
@@ -539,7 +760,9 @@ export default function AttendanceDetailsPage() {
 
           </Accordion>
         )}
-      </div>
+          </div>
+        )}
+      </AttendanceSubmitFlow>
     </DashboardLayout>
   );
 }

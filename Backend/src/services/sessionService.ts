@@ -31,29 +31,6 @@ export interface UpdateSessionData extends Partial<CreateSessionData> {
 }
 
 class SessionService {
-  private normalizeSessionTitle(title: string | undefined): string {
-    return (title || '').trim().toLowerCase();
-  }
-
-  private normalizeSessionTime(time: string | undefined): string {
-    if (!time) return '';
-    return time.length >= 5 ? time.slice(0, 5) : time;
-  }
-
-  private makeSessionSignature(session: {
-    session_date?: string;
-    start_time?: string;
-    end_time?: string;
-    title?: string;
-  }): string {
-    return [
-      session.session_date || '',
-      this.normalizeSessionTime(session.start_time),
-      this.normalizeSessionTime(session.end_time),
-      this.normalizeSessionTitle(session.title),
-    ].join('|');
-  }
-
   async getSessionsByProgram(programId: string) {
     const { data, error } = await supabaseAdmin
       .from('program_sessions')
@@ -147,35 +124,33 @@ class SessionService {
 
     const programId = sessions[0].program_id;
 
-    // Fetch existing sessions and build full signatures to avoid true duplicates.
-
-const { data: existing, error: fetchError } = await supabaseAdmin
+    // Dedupe by session_date: BMDC attendance maps 1 daily session per (program_id, session_date).
+    const { data: existing, error: fetchError } = await supabaseAdmin
       .from('program_sessions')
-      .select('session_date, start_time, end_time, title')
+      .select('session_date')
       .eq('program_id', programId);
 
     if (fetchError) throw fetchError;
 
-    const existingSignatures = new Set(
-      (existing ?? []).map((session: any) => this.makeSessionSignature(session))
+    const existingDates = new Set(
+      (existing ?? []).map((session: any) => session.session_date).filter(Boolean)
     );
 
-    // Also dedupe duplicates in the incoming payload itself.
-
-const payloadSignatures = new Set<string>();
+    // Also dedupe duplicate dates inside the incoming payload itself.
+    const payloadDates = new Set<string>();
     const newSessions = sessions.filter((session) => {
-      const signature = this.makeSessionSignature(session);
-      if (existingSignatures.has(signature)) return false;
-      if (payloadSignatures.has(signature)) return false;
-      payloadSignatures.add(signature);
+      const dateKey = session.session_date;
+      if (!dateKey) return false;
+      if (existingDates.has(dateKey)) return false;
+      if (payloadDates.has(dateKey)) return false;
+      payloadDates.add(dateKey);
       return true;
     });
 
     if (newSessions.length === 0) return [];
 
     // Inject tenant_id into every row when provided
-
-const rowsToInsert = tenantId
+    const rowsToInsert = tenantId
       ? newSessions.map(s => ({ ...s, tenant_id: tenantId }))
       : newSessions;
 

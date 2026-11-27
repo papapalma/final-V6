@@ -19,6 +19,9 @@ import {
   CheckCircle2, Clock, ChevronLeft, ChevronRight, Sun, Moon, Plus,
 } from 'lucide-react';
 import attendanceService from '../services/attendanceService';
+import traineeService from '../services/traineeService';
+import { showLocalAttendanceReminder } from '../utils/pushSubscription';
+import { ATTENDANCE_UPDATED_EVENT } from '../components/OverdueBellNotification';
 import type {
   CalendarDayData,
   AttendanceWindowStatus,
@@ -215,6 +218,8 @@ export default function TraineeAttendancePage() {
   }, [fetchCalendar]);
 
   const handleSubmitComplete = useCallback(() => {
+    traineeService.clearProfileCache();
+    window.dispatchEvent(new Event(ATTENDANCE_UPDATED_EVENT));
     setCalendarLoading(true);
     fetchCalendar(yearMonth.current);
     fetchWindow();
@@ -246,6 +251,22 @@ export default function TraineeAttendancePage() {
 
   const isMorningOpenNow = Boolean(windowStatus?.isOpen && windowStatus.session_label === 'morning');
   const isAfternoonOpenNow = Boolean(windowStatus?.isOpen && windowStatus.session_label === 'afternoon');
+
+  // Notify locally once per day+slot when the active attendance window opens and check-in is still pending
+  useEffect(() => {
+    if (!windowStatus?.isOpen || !windowStatus.session_label) return;
+    const isSlotDone = windowStatus.session_label === 'morning' ? morningDone : afternoonDone;
+    if (isSlotDone || !todayData || todayData.status === 'no_session' || todayData.status === 'holiday' || todayData.status === 'weekend') {
+      return;
+    }
+    const label = windowStatus.session_label === 'morning' ? 'Morning' : 'Afternoon';
+    void showLocalAttendanceReminder(
+      `${label} attendance window is open`,
+      `Submit your ${windowStatus.session_label} attendance selfie now before the window closes.`,
+      `attendance-${todayStr}-${windowStatus.session_label}`,
+      '/trainee/attendance'
+    );
+  }, [windowStatus?.isOpen, windowStatus?.session_label, morningDone, afternoonDone, todayData, todayStr]);
 
   const countdownLabel = (() => {
     if (!windowStatus || (!windowStatus.isOpen && !windowStatus.window_open)) {

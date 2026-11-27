@@ -52,6 +52,7 @@ import registrationService from '../services/registrationService';
 import api from '../services/api';
 import { TableSkeleton } from '../components/LoadingSkeletons';
 import { PaginationWrapper } from '../components/PaginationWrapper';
+import FilePreviewModal, { FilePreviewData } from '../components/FilePreviewModal';
 import logger from '../utils/logger';
 
 type ViewMode = 'card' | 'table';
@@ -106,6 +107,9 @@ export default function RegistrationsPage() {
   const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null);
   const [requirementFiles, setRequirementFiles] = useState<any[]>([]);
   const [loadingReqs, setLoadingReqs] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FilePreviewData | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
@@ -150,7 +154,9 @@ export default function RegistrationsPage() {
   const loadTraineeRequirements = async (traineeId: string) => {
     try {
       setLoadingReqs(true);
-      const res: any = await api.get(`/trainees/${traineeId}/requirements`);
+      const res: any = await api.get(`/trainees/${traineeId}/requirements`, undefined, {
+        headers: { 'X-Skip-Cache': 'true' },
+      });
       const files = res?.files || res?.data?.files || res?.data || [];
       setRequirementFiles(Array.isArray(files) ? files : []);
     } catch (err) {
@@ -158,6 +164,19 @@ export default function RegistrationsPage() {
       setRequirementFiles([]);
     } finally {
       setLoadingReqs(false);
+    }
+  };
+
+  const handleDownloadRequirement = async (traineeId: string, rf: any) => {
+    try {
+      setDownloadingFileId(rf.id);
+      const downloadUrl = `/trainees/${traineeId}/requirements/${rf.requirement_type}/download?file_id=${encodeURIComponent(rf.id)}`;
+      await api.downloadFile(downloadUrl, rf.file_name || `${rf.requirement_type || 'document'}`);
+    } catch (err: any) {
+      logger.error('Failed to download requirement file', { err, traineeId, fileId: rf.id });
+      toast.error(err?.message || 'Failed to download document');
+    } finally {
+      setDownloadingFileId(null);
     }
   };
 
@@ -640,9 +659,9 @@ export default function RegistrationsPage() {
                       <span>•</span>
                       <span className="flex items-center gap-1">
                         <Clock className="size-3" />
-                        {new Date(selectedRegistration.created_at).toLocaleDateString(undefined, { 
-                          month: 'short', 
-                          day: 'numeric', 
+                        {new Date(selectedRegistration.created_at).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
                           year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit'
@@ -661,7 +680,7 @@ export default function RegistrationsPage() {
                     <User className="size-3.5 text-primary" />
                     <span>Personal & Contact Info</span>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                     <div>
                       <p className="text-xs text-muted-foreground">Full Name</p>
@@ -677,7 +696,7 @@ export default function RegistrationsPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Email Address</p>
-                      <a 
+                      <a
                         href={`mailto:${selectedRegistration.email}`}
                         className="text-sm font-semibold text-primary hover:underline break-all mt-0.5 inline-flex items-center gap-1.5"
                       >
@@ -701,7 +720,7 @@ export default function RegistrationsPage() {
                     <GraduationCap className="size-4 text-primary" />
                     <span>Program Enrollment</span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-background/80">
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-muted-foreground">Applying for</p>
@@ -743,8 +762,8 @@ export default function RegistrationsPage() {
                   ) : (
                     <div className="space-y-2">
                       {requirementFiles.map((rf: any) => (
-                        <div 
-                          key={rf.id} 
+                        <div
+                          key={rf.id}
                           className="flex items-center justify-between p-3 rounded-lg border border-border/60 bg-background/80 hover:bg-background transition-colors text-xs"
                         >
                           <div className="min-w-0 flex-1 mr-3 flex items-center gap-2.5">
@@ -758,15 +777,35 @@ export default function RegistrationsPage() {
                               </p>
                             </div>
                           </div>
-                          <a
-                            href={`/api/trainees/${selectedRegistration.id}/requirements/${rf.requirement_type}/download?file_id=${rf.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-colors shrink-0 active:scale-95"
-                          >
-                            <Download className="size-3.5" />
-                            <span>Download</span>
-                          </a>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviewFile({
+                                  file_id: rf.id,
+                                  file_path: rf.file_path,
+                                  file_name: rf.file_name || rf.requirement_type,
+                                  requirement_type: rf.requirement_type,
+                                  uploaded_at: rf.uploaded_at,
+                                });
+                                setPreviewOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground font-semibold text-xs transition-colors active:scale-95"
+                              title="Preview document"
+                            >
+                              <Eye className="size-3.5" />
+                              <span>View</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={downloadingFileId === rf.id}
+                              onClick={() => handleDownloadRequirement(selectedRegistration.id, rf)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-colors active:scale-95 disabled:opacity-50"
+                            >
+                              <Download className="size-3.5" />
+                              <span>{downloadingFileId === rf.id ? 'Downloading...' : 'Download'}</span>
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -825,11 +864,10 @@ export default function RegistrationsPage() {
       <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
         <DialogContent className="w-[92vw] max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl sm:rounded-3xl">
           <DialogHeader className="text-center sm:text-center pb-1">
-            <div className={`mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl ${
-              actionType === 'approve' 
-                ? 'bg-primary/10 text-primary' 
+            <div className={`mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl ${actionType === 'approve'
+                ? 'bg-primary/10 text-primary'
                 : 'bg-red-500/10 text-red-600 dark:text-red-400'
-            }`}>
+              }`}>
               {actionType === 'approve' ? <Check className="size-6 stroke-[2.5]" /> : <X className="size-6 stroke-[2.5]" />}
             </div>
             <DialogTitle className="text-lg font-bold">
@@ -873,11 +911,10 @@ export default function RegistrationsPage() {
             <Button
               onClick={actionType === 'approve' ? handleApprove : handleReject}
               disabled={processing || (actionType === 'reject' && !rejectionReason.trim())}
-              className={`flex-1 h-10 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] order-1 sm:order-2 ${
-                actionType === 'approve' 
-                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground' 
+              className={`flex-1 h-10 rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-[0.98] order-1 sm:order-2 ${actionType === 'approve'
+                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
                   : 'bg-red-600 hover:bg-red-700 text-white'
-              }`}
+                }`}
             >
               {processing && <Loader className="size-4 mr-2 animate-spin" />}
               {actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
@@ -885,6 +922,16 @@ export default function RegistrationsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <FilePreviewModal
+        file={previewFile}
+        open={previewOpen}
+        onOpenChange={(open) => {
+          setPreviewOpen(open);
+          if (!open) setPreviewFile(null);
+        }}
+        traineeId={selectedRegistration?.id}
+      />
     </DashboardLayout>
   );
 }

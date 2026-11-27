@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Download, ZoomIn, ZoomOut, RotateCw } from 'lucide-react';
-import api, { getFileUrl } from '../services/api';
+import api, { apiClient, getFileUrl } from '../services/api';
 
 export interface FilePreviewData {
   file_id?: string;
@@ -19,12 +19,22 @@ interface FilePreviewModalProps {
   traineeId?: string;
 }
 
+function extractExtension(value?: string): string {
+  if (!value) return '';
+  const withoutQuery = value.split(/[?#]/)[0];
+  const parts = withoutQuery.toLowerCase().split('.');
+  return parts.length > 1 ? parts.pop() || '' : '';
+}
+
 export default function FilePreviewModal({ file, open, onOpenChange, traineeId }: FilePreviewModalProps) {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [isImage, setIsImage] = useState(false);
   const [isPdf, setIsPdf] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!file) {
@@ -32,17 +42,68 @@ export default function FilePreviewModal({ file, open, onOpenChange, traineeId }
       setRotation(0);
       setIsImage(false);
       setIsPdf(false);
+      setPreviewBlobUrl(null);
+      setPreviewError(null);
       return;
     }
 
-    const ext = file.file_path.toLowerCase().split('.').pop();
+    const ext = extractExtension(file.file_name) || extractExtension(file.file_path);
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
     
-    setIsImage(imageExtensions.includes(ext || ''));
+    setIsImage(imageExtensions.includes(ext));
     setIsPdf(ext === 'pdf');
     setScale(1);
     setRotation(0);
   }, [file]);
+
+  useEffect(() => {
+    if (!open || !file || !isImage) {
+      setPreviewBlobUrl(null);
+      setPreviewError(null);
+      setLoadingPreview(false);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    const loadAuthenticatedPreview = async () => {
+      try {
+        setLoadingPreview(true);
+        setPreviewError(null);
+        // Fetch via apiClient so Authorization header is included for tenant-private documents
+        const url = traineeId
+          ? `/trainees/${traineeId}/requirements/${file.requirement_type}/download${
+              file.file_id ? `?file_id=${encodeURIComponent(file.file_id)}` : ''
+            }`
+          : getFileUrl(file.file_path);
+        const response = await apiClient.get(url, { responseType: 'blob' });
+        if (cancelled) return;
+        const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+        objectUrl = window.URL.createObjectURL(blob);
+        setPreviewBlobUrl(objectUrl);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('[FilePreviewModal] Failed to load authenticated preview:', err);
+          setPreviewError('Preview could not be loaded. Use Download to view the file.');
+          setPreviewBlobUrl(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPreview(false);
+        }
+      }
+    };
+
+    loadAuthenticatedPreview();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        window.URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [open, file, isImage, traineeId]);
 
   const handleDownload = async () => {
     if (!file || !traineeId) return;
@@ -112,19 +173,30 @@ export default function FilePreviewModal({ file, open, onOpenChange, traineeId }
         {/* Preview Section */}
         <div className="flex-1 overflow-auto bg-muted/30 rounded-lg flex items-center justify-center min-h-96">
           {isImage ? (
-            <div 
-              style={{
-                transform: `scale(${scale}) rotate(${rotation}deg)`,
-                transformOrigin: 'center',
-                transition: 'transform 0.2s ease-out',
-              }}
-            >
-              <img 
-                src={getFileUrl(file.file_path)}
-                alt={file.file_name}
-                className="max-h-96 max-w-2xl object-contain rounded"
-              />
-            </div>
+            loadingPreview ? (
+              <div className="text-center space-y-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+                <p className="text-sm text-muted-foreground">Loading preview...</p>
+              </div>
+            ) : previewError ? (
+              <div className="text-center space-y-2 px-4">
+                <p className="text-sm text-muted-foreground">{previewError}</p>
+              </div>
+            ) : previewBlobUrl ? (
+              <div 
+                style={{
+                  transform: `scale(${scale}) rotate(${rotation}deg)`,
+                  transformOrigin: 'center',
+                  transition: 'transform 0.2s ease-out',
+                }}
+              >
+                <img 
+                  src={previewBlobUrl}
+                  alt={file.file_name}
+                  className="max-h-96 max-w-2xl object-contain rounded"
+                />
+              </div>
+            ) : null
           ) : isPdf ? (
             <div className="text-center space-y-4">
               <div className="text-6xl">📄</div>

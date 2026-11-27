@@ -14,6 +14,7 @@ import { withErrorHandler } from '@/middleware/errorHandler';
 import { handleOptionsRequest } from '@/middleware/cors';
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { fetchAllRows } from '@/lib/supabasePagination';
 
 // OPTIONS /api/reports/trainees - Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
@@ -52,40 +53,42 @@ const { searchParams } = new URL(request.url);
 
   // Query enrollments (not trainees) because that's where enrollment_date and program data live
   // in the normalized schema
-  let enrollmentsQuery = supabaseAdmin
-    .from('enrollments')
-    .select('id, trainee_id, program_id, status, enrollment_date, tenant_id')
-    .eq('tenant_id', targetTenantId);
+  const buildEnrollmentsQuery = () => {
+    let query = supabaseAdmin
+      .from('enrollments')
+      .select('id, trainee_id, program_id, status, enrollment_date, tenant_id')
+      .eq('tenant_id', targetTenantId);
 
-  if (programId) enrollmentsQuery = enrollmentsQuery.eq('program_id', programId);
-  if (status) enrollmentsQuery = enrollmentsQuery.eq('status', status);
+    if (programId) query = query.eq('program_id', programId);
+    if (status) query = query.eq('status', status);
+    return query.order('enrollment_date', { ascending: true });
+  };
 
-  let traineesQuery = supabaseAdmin
-    .from('trainees')
-    .select('id, first_name, last_name, employment_status, status')
-    .eq('tenant_id', targetTenantId)
-    .is('deleted_at', null);
+  const buildTraineesQuery = () => {
+    let query = supabaseAdmin
+      .from('trainees')
+      .select('id, first_name, last_name, employment_status, status')
+      .eq('tenant_id', targetTenantId)
+      .is('deleted_at', null);
 
-  if (employmentStatus) traineesQuery = traineesQuery.eq('employment_status', employmentStatus);
-  if (traineeStatus) traineesQuery = traineesQuery.eq('status', traineeStatus);
+    if (employmentStatus) query = query.eq('employment_status', employmentStatus);
+    if (traineeStatus) query = query.eq('status', traineeStatus);
+    return query.order('last_name', { ascending: true });
+  };
 
   const [
-    { data: enrollments, error: enrollmentsError },
+    enrollmentRows,
     { data: programs, error: programsError },
-    { data: trainees, error: traineesError },
+    traineeRows,
   ] = await Promise.all([
-    enrollmentsQuery.order('enrollment_date', { ascending: true }),
+    fetchAllRows<any>(buildEnrollmentsQuery),
     supabaseAdmin.from('programs').select('id, name').eq('tenant_id', targetTenantId).is('deleted_at', null),
-    traineesQuery.order('last_name', { ascending: true }),
+    fetchAllRows<any>(buildTraineesQuery),
   ]);
 
-  if (enrollmentsError) throw enrollmentsError;
   if (programsError) throw programsError;
-  if (traineesError) throw traineesError;
 
-  const enrollmentRows = enrollments || [];
   const programRows = programs || [];
-  const traineeRows = trainees || [];
 
   const programNameById = new Map(
     programRows.map((p) => [p.id as string, p.name as string])

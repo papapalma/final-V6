@@ -3,6 +3,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds, fetchAllRows } from '@/lib/supabasePagination';
 
 export interface SubmissionStats {
   total_trainees: number;
@@ -34,27 +35,28 @@ export async function calculateSubmissionStats(
     throw definitionError;
   }
 
-  const { data: enrollmentRequirements, error: enrollmentError } = await supabaseAdmin
-    .from('enrollment_requirements')
-    .select('submission_status,enrollment_id')
-    .eq('requirement_id', requirementId)
-    .eq('tenant_id', tenantId)
-    .eq('is_applicable', true);
+  const enrollmentRequirements = await fetchAllRows<{
+    submission_status: string;
+    enrollment_id?: string;
+  }>(() =>
+    supabaseAdmin
+      .from('enrollment_requirements')
+      .select('submission_status,enrollment_id')
+      .eq('requirement_id', requirementId)
+      .eq('tenant_id', tenantId)
+      .eq('is_applicable', true)
+  );
 
-  if (enrollmentError) {
-    throw enrollmentError;
-  }
-
-  const enrollmentIds = (enrollmentRequirements || [])
-    .map((item: { enrollment_id?: string }) => item.enrollment_id)
+  const enrollmentIds = enrollmentRequirements
+    .map((item) => item.enrollment_id)
     .filter((enrollmentId): enrollmentId is string => Boolean(enrollmentId));
 
   const traineeByEnrollment = new Map<string, string>();
-  if (enrollmentIds.length > 0) {
+  for (const idChunk of chunkIds(enrollmentIds, 150)) {
     const { data: enrollments, error: enrollmentsError } = await supabaseAdmin
       .from('enrollments')
       .select('id,trainee_id')
-      .in('id', enrollmentIds)
+      .in('id', idChunk)
       .eq('tenant_id', tenantId);
 
     if (enrollmentsError) {
@@ -67,29 +69,25 @@ export async function calculateSubmissionStats(
   }
 
   const statusByTrainee = new Map<string, string>();
-  (enrollmentRequirements || []).forEach(
-    (item: { submission_status: string; enrollment_id?: string }, index: number) => {
-      const traineeKey = item.enrollment_id
-        ? traineeByEnrollment.get(item.enrollment_id) || `enrollment:${item.enrollment_id}`
-        : `enrollment:${index}`;
-      statusByTrainee.set(traineeKey, item.submission_status);
-    }
+  enrollmentRequirements.forEach((item, index: number) => {
+    const traineeKey = item.enrollment_id
+      ? traineeByEnrollment.get(item.enrollment_id) || `enrollment:${item.enrollment_id}`
+      : `enrollment:${index}`;
+    statusByTrainee.set(traineeKey, item.submission_status);
+  });
+
+  const uploadedFiles = await fetchAllRows<{ trainee_id?: string }>(() =>
+    supabaseAdmin
+      .from('training_requirement_files')
+      .select('trainee_id')
+      .eq('tenant_id', tenantId)
+      .eq('requirement_type', definition.requirement_type)
+      .is('deleted_at', null)
   );
-
-  const { data: uploadedFiles, error: filesError } = await supabaseAdmin
-    .from('training_requirement_files')
-    .select('trainee_id')
-    .eq('tenant_id', tenantId)
-    .eq('requirement_type', definition.requirement_type)
-    .is('deleted_at', null);
-
-  if (filesError) {
-    throw filesError;
-  }
 
   // A real upload means the trainee has submitted the requirement. Preserve
   // verified, rejected, and waived decisions made by staff.
-  (uploadedFiles || []).forEach((file: { trainee_id?: string }) => {
+  uploadedFiles.forEach((file) => {
     if (!file.trainee_id) return;
     const currentStatus = statusByTrainee.get(file.trainee_id);
     if (!currentStatus || currentStatus === 'pending') {

@@ -18,12 +18,13 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import {
   ChevronLeft, ChevronRight, TrendingUp, CheckCircle2,
-  Calendar, Clock, X, Zap,
+  Calendar, Clock, X, Zap, BellRing, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import programService from '../services/programService';
 import sessionService, { ProgramSession } from '../services/sessionService';
 import attendanceService from '../services/attendanceService';
+import notificationService from '../services/notificationService';
 import { useAuth } from '../contexts/AuthContext';
 import AttendanceDetailModal from '../components/attendance/AttendanceDetailModal';
 import AttendanceSetupWizard from '../components/attendance/AttendanceSetupWizard';
@@ -102,6 +103,7 @@ export default function AttendancePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [dayModalOpen, setDayModalOpen] = useState(false);
   const [dayModalDate, setDayModalDate] = useState<string | null>(null);
+  const [sendingReminder, setSendingReminder] = useState(false);
 
   const canOverride = user?.role === 'local_admin' || user?.role === 'staff_training_coordinator';
   const isLocalAdmin = user?.role === 'local_admin';
@@ -253,6 +255,31 @@ export default function AttendancePage() {
 
   const summaryRate = dashboard?.summaryCards?.attendanceRate ?? 0;
   const presentToday = (dashboard?.summaryCards?.presentToday ?? 0) + (dashboard?.summaryCards?.lateToday ?? 0);
+  const todayDateKey = formatDateKey(today);
+  const hasSessionToday = sessionDateSet.has(todayDateKey);
+
+  const handleSendAttendanceReminder = async () => {
+    if (!programId) return;
+    setSendingReminder(true);
+    try {
+      const result = await notificationService.sendAttendanceReminders(programId);
+      if (result.pendingTrainees === 0) {
+        toast.info('All enrolled trainees have already recorded attendance for this session.');
+      } else if (result.pushSent > 0) {
+        toast.success(
+          `Sent ${result.pushSent} push reminder${result.pushSent === 1 ? '' : 's'} (${result.pendingTrainees} pending trainee${result.pendingTrainees === 1 ? '' : 's'}).`
+        );
+      } else {
+        toast.info(
+          `${result.pendingTrainees} trainee${result.pendingTrainees === 1 ? '' : 's'} still pending (in-app reminders active; 0 devices subscribed to Web Push yet).`
+        );
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to send attendance reminders');
+    } finally {
+      setSendingReminder(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -298,6 +325,23 @@ export default function AttendancePage() {
                   {summaryRate}% rate
                 </span>
               </div>
+              {canOverride && hasSessionToday && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSendAttendanceReminder}
+                  disabled={sendingReminder}
+                  className="gap-1.5 py-2 px-3.5 text-xs"
+                  title="Send push attendance reminder to trainees who have not checked in today"
+                >
+                  {sendingReminder ? (
+                    <Loader2 className="size-3.5 animate-spin text-primary" />
+                  ) : (
+                    <BellRing className="size-3.5 text-primary" />
+                  )}
+                  Send Reminder
+                </Button>
+              )}
               {isLocalAdmin && (
                 <Button
                   size="sm"

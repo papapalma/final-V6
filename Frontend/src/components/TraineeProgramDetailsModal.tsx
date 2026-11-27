@@ -23,6 +23,11 @@ import {
 import { getThumbnailUrl } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import {
+  ATTENDANCE_PIN_EVENT,
+  isProgramAttendancePinned,
+  setAttendancePinned,
+} from '../utils/attendancePin';
 
 interface Program {
   id: string;
@@ -63,32 +68,33 @@ export default function TraineeProgramDetailsModal({
   graduatedDate,
 }: TraineeProgramDetailsModalProps) {
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
-  const [pinToDashboard, setPinToDashboard] = useState(false);
+  const [pinToDashboard, setPinToDashboard] = useState(() =>
+    isProgramAttendancePinned(program?.id)
+  );
   const navigate = useNavigate();
 
-  // Load pin preference
+  // Load and stay synced with pin preference (pinned by default unless explicitly unpinned)
   useEffect(() => {
-    if (program?.id) {
-      const key = `pin_attendance_${program.id}`;
-      const isPinned = localStorage.getItem(key) === 'true';
-      setPinToDashboard(isPinned);
-    }
+    const syncPin = () => {
+      setPinToDashboard(isProgramAttendancePinned(program?.id));
+    };
+
+    syncPin();
+    window.addEventListener('storage', syncPin);
+    window.addEventListener(ATTENDANCE_PIN_EVENT, syncPin);
+    return () => {
+      window.removeEventListener('storage', syncPin);
+      window.removeEventListener(ATTENDANCE_PIN_EVENT, syncPin);
+    };
   }, [program?.id]);
 
-  const handlePinToggle = (checked: boolean) => {
-    setPinToDashboard(checked);
-    // Store preference in localStorage
-    const key = `pin_attendance_${program?.id}`;
-    if (checked) {
-      localStorage.setItem(key, 'true');
-      toast.success('Attendance pinned to dashboard');
-    } else {
-      localStorage.removeItem(key);
-      toast.success('Attendance unpinned from dashboard');
-    }
-    
-    // Dispatch custom event to update Quick Actions immediately
-    window.dispatchEvent(new Event('attendance-pin-changed'));
+  const handlePinToggle = (checked: boolean | 'indeterminate') => {
+    const nextPinned = checked === true;
+    setPinToDashboard(nextPinned);
+    setAttendancePinned(nextPinned, program?.id);
+    toast.success(
+      nextPinned ? 'Attendance pinned to dashboard' : 'Attendance unpinned from dashboard'
+    );
   };
 
   if (!program) return null;

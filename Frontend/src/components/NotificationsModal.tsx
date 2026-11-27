@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Bell, Clock, Package } from 'lucide-react';
+import { Bell, Calendar, Clock, Package } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
 import type { InAppNotification } from '../services/notificationService';
@@ -47,6 +47,7 @@ export default function NotificationsModal({
             {notifications.map((notification) => {
               const isNew = unreadIds?.has(notification.id) ?? false;
               const isOverdue = notification.type === 'overdue';
+              const isAttendance = notification.type === 'attendance';
 
               return (
                 <Link
@@ -54,17 +55,25 @@ export default function NotificationsModal({
                   to={notification.href}
                   onClick={() => onOpenChange(false)}
                   className={`flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted ${
-                    isNew ? 'border-l-2 border-l-red-600 bg-red-50/40 dark:bg-red-950/20' : ''
+                    isNew || isAttendance
+                      ? 'border-l-2 border-l-red-600 bg-red-50/40 dark:bg-red-950/20'
+                      : ''
                   }`}
                 >
                   <div
                     className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors ${
-                      isOverdue
+                      isOverdue || isAttendance
                         ? 'bg-red-600/15 text-red-600 dark:bg-red-500/20 dark:text-red-400'
                         : 'bg-primary/10 text-primary'
                     }`}
                   >
-                    {isOverdue ? <Package className="size-4" /> : <Bell className="size-4" />}
+                    {isOverdue ? (
+                      <Package className="size-4" />
+                    ) : isAttendance ? (
+                      <Calendar className="size-4" />
+                    ) : (
+                      <Bell className="size-4" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -80,6 +89,11 @@ export default function NotificationsModal({
                       {isOverdue && (
                         <Badge className="border-none bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-xs">
                           Overdue
+                        </Badge>
+                      )}
+                      {isAttendance && (
+                        <Badge className="border-none bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold shadow-xs">
+                          Attendance
                         </Badge>
                       )}
                     </div>

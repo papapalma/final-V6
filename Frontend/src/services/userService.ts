@@ -9,8 +9,8 @@ export interface User {
   id: string;
   email: string;
   username: string;
-  // Role values match the backend database CHECK constraint exactly
-  role: 'local_admin' | 'staff_training_coordinator' | 'staff_inventory_manager';
+  // Role values match the backend database CHECK constraint (excluding super_admin)
+  role: 'local_admin' | 'staff_training_coordinator' | 'staff_inventory_manager' | 'trainee';
   created_at: string;
   updated_at: string;
 }

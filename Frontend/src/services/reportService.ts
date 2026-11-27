@@ -124,10 +124,23 @@ export interface AttendanceReport {
 
 export interface InventoryReport {
   totalItems: number;
-  totalValue: number;
+  totalValue?: number;
+  totalQuantity?: number;
+  availableQuantity?: number;
+  borrowedQuantity?: number;
   byCategory: Record<string, number>;
-  utilizationRate: number;
-  lowStockItems: Array<{ id: string; name: string; quantity: number }>;
+  byStatus?: Record<string, number>;
+  utilizationRate?: number;
+  lowStockItems: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    available_quantity?: number;
+    minimum_quantity?: number;
+    category?: string;
+    status?: string;
+    unit?: string;
+  }>;
 }
 
 export interface LendingReport {

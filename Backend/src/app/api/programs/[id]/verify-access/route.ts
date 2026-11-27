@@ -26,6 +26,9 @@ import { successResponse, forbiddenResponse, errorResponse } from '@/utils/respo
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { programService } from '@/services/programService';
 import { activityLogService } from '@/services/activityLogService';
+import { resolveTraineeForUser } from '@/lib/resolveTraineeId';
+
+const SHAREABLE_PROGRAM_STATUSES = new Set(['active', 'upcoming']);
 
 /**
  * Validation schema for verify-access request body
@@ -138,8 +141,8 @@ export const POST = withErrorHandler(
         return errorResponse('Program not found', 404);
       }
 
-      // 2. Verify program is active
-      if (program.status !== 'active') {
+      // 2. Verify program is active or upcoming
+      if (!SHAREABLE_PROGRAM_STATUSES.has(program.status)) {
         // Log denied permission attempt
         await activityLogService.logAction(
           userId,
@@ -171,8 +174,8 @@ export const POST = withErrorHandler(
         return successResponse(result);
       }
 
-      // 3. Verify trainee exists (Req 10.1) - allow cross-tenant enrollment for shared programs
-      const { data: trainee, error: traineeError } = await supabaseAdmin
+      // 3. Verify trainee exists (Req 10.1) — accept trainees.id directly or resolve from authenticated userId
+      let { data: trainee, error: traineeError } = await supabaseAdmin
         .from('trainees')
         .select('id, tenant_id, status')
         .eq('id', trainee_id)
@@ -180,15 +183,21 @@ export const POST = withErrorHandler(
 
       if (traineeError) throw traineeError;
 
+      if (!trainee && role === 'trainee' && userId) {
+        trainee = await resolveTraineeForUser(userId, role);
+      }
+
       if (!trainee) {
         return errorResponse('Trainee not found in your tenant', 404);
       }
+
+      const resolvedTraineeId = trainee.id;
 
       // 4. Check for existing enrollment (Req 10.2 - prevent duplicates)
       const { data: existingEnrollment, error: enrollmentError } = await supabaseAdmin
         .from('enrollments')
         .select('id, status')
-        .eq('trainee_id', trainee_id)
+        .eq('trainee_id', resolvedTraineeId)
         .eq('program_id', programId)
         .maybeSingle();
 

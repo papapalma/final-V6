@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { POST } from '@/app/api/trainees/[id]/requirements/route';
-import { generateUploadToken, verifyUploadToken } from '@/lib/auth/jwt';
+import { POST, GET, OPTIONS } from '@/app/api/trainees/[id]/requirements/route';
+import { generateToken, generateUploadToken, verifyUploadToken } from '@/lib/auth/jwt';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import * as trainingRequirementService from '@/services/trainingRequirementService';
 import jwt from 'jsonwebtoken';
@@ -208,6 +208,128 @@ describe('Trainee Requirements Upload - Upload Token Verification & Security Har
       const json = await response.json();
       expect(json.success).toBe(true);
       expect(trainingRequirementService.uploadRequirementFile).toHaveBeenCalled();
+    });
+
+    it('should allow X-Upload-Token in CORS preflight OPTIONS response', async () => {
+      const request = new NextRequest(
+        new URL(`http://localhost:3003/api/trainees/${traineeId}/requirements`),
+        {
+          method: 'OPTIONS',
+          headers: {
+            origin: 'http://localhost:3001',
+            'access-control-request-method': 'POST',
+            'access-control-request-headers': 'x-upload-token',
+          },
+        }
+      );
+
+      const response = await OPTIONS(request);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:3001');
+      expect(response.headers.get('access-control-allow-headers')).toContain('X-Upload-Token');
+    });
+
+    it('should prioritize valid X-Upload-Token over an unrelated Authorization header and include CORS headers', async () => {
+      (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'trainees') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            single: jest.fn().mockResolvedValue({
+              data: { id: traineeId, tenant_id: tenantId, registration_status: 'pending', user_id: 'user-000', email: 't@example.com' },
+              error: null,
+            }),
+          };
+        }
+        if (table === 'requirement_definitions') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            is: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: { id: 'def-111' },
+              error: null,
+            }),
+          };
+        }
+        return { select: jest.fn().mockReturnThis() };
+      });
+
+      const validUploadToken = generateUploadToken(traineeId, tenantId);
+      const otherTenantAuthToken = generateToken({
+        userId: 'other-admin',
+        email: 'admin@other.test',
+        role: 'local_admin',
+        tenantId: 'other-tenant-uuid',
+      });
+
+      const request = createUploadRequest({
+        origin: 'http://localhost:3001',
+        authorization: `Bearer ${otherTenantAuthToken}`,
+        'X-Upload-Token': validUploadToken,
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ id: traineeId }) });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:3001');
+      expect(trainingRequirementService.uploadRequirementFile).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId, traineeId, userId: 'user-000' })
+      );
+    });
+
+    it('should load trainee requirements for super_admin using trainee tenant_id with CORS headers', async () => {
+      const mockFiles = [
+        {
+          id: 'file-1',
+          requirement_type: 'valid_id_copy',
+          file_path: `/uploads/${tenantId}/documents/trainees/${traineeId}/valid_id.pdf`,
+          file_name: 'valid_id.pdf',
+          file_size_bytes: 1234,
+          uploaded_at: '2026-11-27T00:00:00Z',
+          uploaded_by: 'user-000',
+        },
+      ];
+      (trainingRequirementService.getTraineeRequirementFiles as jest.Mock).mockResolvedValue(mockFiles);
+      (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'trainees') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            single: jest.fn().mockResolvedValue({
+              data: { id: traineeId, tenant_id: tenantId },
+              error: null,
+            }),
+          };
+        }
+        return { select: jest.fn().mockReturnThis() };
+      });
+
+      const superAdminToken = generateToken({
+        userId: 'super-admin-1',
+        email: 'super@bmdc.test',
+        role: 'super_admin',
+        tenantId: 'super-admin-home-tenant',
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost:3003/api/trainees/${traineeId}/requirements`),
+        {
+          method: 'GET',
+          headers: {
+            origin: 'http://localhost:3001',
+            authorization: `Bearer ${superAdminToken}`,
+          },
+        }
+      );
+
+      const response = await GET(request, { params: Promise.resolve({ id: traineeId }) });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:3001');
+      expect(trainingRequirementService.getTraineeRequirementFiles).toHaveBeenCalledWith(tenantId, traineeId);
+      const json = await response.json();
+      expect(json.success).toBe(true);
+      expect(json.files).toEqual(mockFiles);
+      expect(json.data).toEqual(mockFiles);
     });
   });
 });

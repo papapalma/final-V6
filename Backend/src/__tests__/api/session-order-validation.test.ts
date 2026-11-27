@@ -183,4 +183,74 @@ describe('AttendanceService Window & Late Cutoff Logic', () => {
       late_duration_minutes: 0,
     });
   });
+
+  it('preserves existing morning GPS coordinates when an afternoon upsert omits GPS', async () => {
+    jest.spyOn(attendanceService, 'getActiveSchedule').mockResolvedValue(BASE_WINDOW);
+    (timezone.getNowHHMMInPHT as jest.Mock).mockReturnValue('13:05');
+
+    let capturedUpsertPayload: Record<string, unknown> | null = null;
+
+    (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'program_sessions') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: { program_id: 'prog-1', session_date: '2026-11-24' }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'attendance') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    id: 'att-existing',
+                    attempt_number: 1,
+                    morning_status: 'present',
+                    afternoon_status: null,
+                    late_duration_minutes: 0,
+                    gps_lat: 12.7481,
+                    gps_lng: 121.4868,
+                    gps_accuracy: 18.5,
+                    gps_address: 'Poblacion, Bongabong, Oriental Mindoro',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+          upsert: (payload: Record<string, unknown>) => {
+            capturedUpsertPayload = payload;
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: { id: 'att-existing', ...payload, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+                  error: null,
+                }),
+              }),
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    await attendanceService.submitTraineeAttendance({
+      trainee_id: 'trainee-1',
+      session_id: 'sess-1',
+      session_label: 'afternoon',
+      selfie_path: '/uploads/t1/images/attendance/selfie_pm.jpg',
+      tenant_id: 'tenant-1',
+    });
+
+    expect(capturedUpsertPayload).toMatchObject({
+      gps_lat: 12.7481,
+      gps_lng: 121.4868,
+      gps_accuracy: 18.5,
+      gps_address: 'Poblacion, Bongabong, Oriental Mindoro',
+    });
+  });
 });

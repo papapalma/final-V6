@@ -44,13 +44,24 @@ export default function TraineePreviewModal({
   const loadRequirements = async (traineeId: string) => {
     try {
       setLoadingReqs(true);
-      const res = await api.get(`/trainees/${traineeId}/requirements`);
+      const res = await api.get(`/trainees/${traineeId}/requirements`, undefined, {
+        headers: { 'X-Skip-Cache': 'true' },
+      });
       const files = (res as any)?.files || res?.data?.files || res?.data || [];
       setRequirementFiles(Array.isArray(files) ? files : []);
     } catch {
       setRequirementFiles([]);
     } finally {
       setLoadingReqs(false);
+    }
+  };
+
+  const handleDownloadRequirement = async (traineeId: string, rf: any) => {
+    try {
+      const downloadUrl = `/trainees/${traineeId}/requirements/${rf.requirement_type}/download?file_id=${encodeURIComponent(rf.id)}`;
+      await api.downloadFile(downloadUrl, rf.file_name || rf.requirement_type || 'document');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to download document');
     }
   };
 
@@ -221,14 +232,13 @@ export default function TraineePreviewModal({
                           {rf.requirement_type?.replace(/_/g, ' ')}
                         </p>
                       </div>
-                      <a
-                        href={`/api/trainees/${trainee.id}/requirements/${rf.requirement_type}/download?file_id=${rf.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadRequirement(trainee.id, rf)}
                         className="inline-flex items-center gap-1 text-primary hover:underline font-medium text-xs shrink-0"
                       >
                         <Download className="size-3" /> Download
-                      </a>
+                      </button>
                     </div>
                   ))}
                 </div>

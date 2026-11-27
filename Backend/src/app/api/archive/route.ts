@@ -12,6 +12,7 @@ import { queryArchivedItems, ARCHIVE_TABLES, type ArchivedEntityType } from '@/u
 import { traineeService } from '@/services/traineeService';
 import { traineeStatusService } from '@/services/traineeStatusService';
 import { activityLogService } from '@/services/activityLogService';
+import { clearUserSoftDeleted } from '@/lib/userSoftDelete';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { handleOptionsRequest } from '@/middleware/cors';
 
@@ -206,6 +207,80 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
           );
           restored.push(id);
           break;
+
+        case 'user': {
+          const { data: userTenant } = await supabaseAdmin
+            .from('users_tenants')
+            .select('user_id')
+            .eq('tenant_id', tenantId)
+            .eq('user_id', id)
+            .maybeSingle();
+
+          if (!userTenant) {
+            failed.push({ id, error: 'User not found in this tenant' });
+            break;
+          }
+
+          const { data: archivedUser, error: userFetchError } = await supabaseAdmin
+            .from('users')
+            .select('id, email, username, role, deleted_at')
+            .eq('id', id)
+            .maybeSingle();
+
+          if (userFetchError || !archivedUser || !archivedUser.deleted_at) {
+            failed.push({ id, error: 'Archived user not found' });
+            break;
+          }
+
+          const [{ data: emailConflict }, { data: usernameConflict }] = await Promise.all([
+            supabaseAdmin
+              .from('users')
+              .select('id')
+              .ilike('email', archivedUser.email)
+              .neq('id', id)
+              .is('deleted_at', null)
+              .maybeSingle(),
+            supabaseAdmin
+              .from('users')
+              .select('id')
+              .eq('username', archivedUser.username)
+              .neq('id', id)
+              .is('deleted_at', null)
+              .maybeSingle(),
+          ]);
+
+          if (emailConflict || usernameConflict) {
+            failed.push({
+              id,
+              error: 'Cannot restore user: email or username is already in use by an active account',
+            });
+            break;
+          }
+
+          const { error: restoreErr } = await supabaseAdmin
+            .from('users')
+            .update({ deleted_at: null })
+            .eq('id', id)
+            .not('deleted_at', 'is', null);
+
+          if (restoreErr) {
+            failed.push({ id, error: restoreErr.message });
+            break;
+          }
+
+          clearUserSoftDeleted(id);
+          await activityLogService.logAction(
+            userId,
+            'restore',
+            'user',
+            id,
+            { entityType, email: archivedUser.email, username: archivedUser.username },
+            request,
+            tenantId
+          );
+          restored.push(id);
+          break;
+        }
 
         default:
           failed.push({

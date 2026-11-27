@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '../../contexts/AuthContext';
 import { ProgramsProvider } from '../../contexts/ProgramsContext';
@@ -139,8 +139,10 @@ describe('LinkHandlerPage', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('This program is no longer available');
       expect(localStorage.getItem('selected_program_id')).toBeNull();
-      expect(mockNavigate).toHaveBeenCalledWith('/programs', { replace: true });
+      expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
+      expect(screen.getByText('This program is no longer available')).toBeInTheDocument();
     });
+    expect(mockNavigate).not.toHaveBeenCalledWith('/programs', expect.anything());
   });
 
   /**
@@ -173,16 +175,17 @@ describe('LinkHandlerPage', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('This program is not available for public enrollment');
       expect(localStorage.getItem('selected_program_id')).toBeNull();
-      expect(mockNavigate).toHaveBeenCalledWith('/programs', { replace: true });
+      expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
     });
+    expect(mockNavigate).not.toHaveBeenCalledWith('/programs', expect.anything());
   });
 
   /**
-   * Test: URL query parameter is cleared after processing (replace history state)
+   * Test: Unauthenticated visitor sees Public Program Preview card with Register & Login CTAs
    * 
    * Validates: Requirements 2.1, 3.1
    */
-  it('should replace history state to clear query parameter', async () => {
+  it('should render public program preview card and pass program/tenant context on CTA click', async () => {
     const mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
     mockUseSearchParams.mockReturnValue([mockSearchParams as any, vi.fn()]);
 
@@ -190,7 +193,13 @@ describe('LinkHandlerPage', () => {
       isValid: true,
       isActive: true,
       isPublic: true,
-      program: { id: validProgramId, name: 'Test Program' },
+      program: {
+        id: validProgramId,
+        tenant_id: 'tenant-abc',
+        name: 'Shielded Metal Arc Welding NC II',
+        description: 'Hands-on TESDA welding training',
+        status: 'upcoming',
+      },
     });
 
     const Wrapper = ({ children }: any) => (
@@ -206,10 +215,28 @@ describe('LinkHandlerPage', () => {
     render(<LinkHandlerPage />, { wrapper: Wrapper });
 
     await waitFor(() => {
-      // Check that navigate was called with replace: true
-      // This ensures the history state is replaced, clearing the query parameter
-      const calls = mockNavigate.mock.calls.filter((call) => call[1]?.replace === true);
-      expect(calls.length).toBeGreaterThan(0);
+      expect(screen.getByText('Shielded Metal Arc Welding NC II')).toBeInTheDocument();
+      expect(screen.getByText('Upcoming Cohort')).toBeInTheDocument();
+      expect(localStorage.getItem('selected_program_id')).toBe(validProgramId);
+      expect(localStorage.getItem('selected_program_tenant_id')).toBe('tenant-abc');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Register & Apply/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/', {
+      state: {
+        openRegister: true,
+        programId: validProgramId,
+        tenantId: 'tenant-abc',
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Log In to Enroll/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/', {
+      state: {
+        openLogin: true,
+        programId: validProgramId,
+        tenantId: 'tenant-abc',
+      },
     });
   });
 
@@ -366,8 +393,11 @@ describe('LinkHandlerPage', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Unable to validate program. Please try again.');
       expect(localStorage.getItem('selected_program_id')).toBeNull();
-      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+      expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
     });
+
+    fireEvent.click(screen.getByRole('button', { name: /Back to Home/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
   });
 
   /**
@@ -480,9 +510,11 @@ describe('LinkHandlerPage', () => {
     render(<LinkHandlerPage />, { wrapper: Wrapper });
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('This program is no longer available');
+      expect(toast.error).toHaveBeenCalledWith('Program not found');
       expect(localStorage.getItem('selected_program_id')).toBeNull();
-      expect(mockNavigate).toHaveBeenCalledWith('/programs', { replace: true });
+      expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
+      expect(screen.getByText('Program not found')).toBeInTheDocument();
     });
+    expect(mockNavigate).not.toHaveBeenCalledWith('/programs', expect.anything());
   });
 });

@@ -38,6 +38,8 @@ interface RegistrationModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRegistrationComplete?: (username: string) => void;
+  initialTenantId?: string;
+  initialProgramId?: string;
 }
 
 const STEPS = [
@@ -72,7 +74,9 @@ const maskEmail = (email: string): string => {
 export default function RegistrationModal({ 
   open, 
   onOpenChange,
-  onRegistrationComplete
+  onRegistrationComplete,
+  initialTenantId,
+  initialProgramId,
 }: RegistrationModalProps) {
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
@@ -142,9 +146,22 @@ export default function RegistrationModal({
 
   useEffect(() => {
     if (open) {
-      loadPrograms();
+      const prefillTenantId =
+        initialTenantId || localStorage.getItem('selected_program_tenant_id') || '';
+      const prefillProgramId =
+        initialProgramId || localStorage.getItem('selected_program_id') || '';
+
+      if (prefillTenantId || prefillProgramId) {
+        setForm((prev) => ({
+          ...prev,
+          tenant_id: prev.tenant_id || prefillTenantId,
+          program_id: prev.program_id || prefillProgramId,
+        }));
+      }
+
+      loadPrograms(prefillTenantId || undefined);
     }
-  }, [open]);
+  }, [open, initialTenantId, initialProgramId]);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -165,6 +182,10 @@ export default function RegistrationModal({
       setIsVerified(false);
       setResendCountdown(0);
       setCanResend(true);
+      // Reset requirements state so stale uploads never carry over to a new registration
+      setRequirementFiles({});
+      setRequirementDefinitions([]);
+      setRequirementsError(null);
     }
   }, [open]);
 
@@ -205,12 +226,15 @@ export default function RegistrationModal({
 
   const loadPrograms = async (tenantId?: string) => {
     try {
-      const filters: any = { status: 'active' };
+      const filters: any = {};
       if (tenantId) {
         filters.tenant_id = tenantId;
       }
       const data = await programService.getPrograms(filters);
-      setPrograms(Array.isArray(data) ? data : (data as any)?.data || []);
+      const rawPrograms: Program[] = Array.isArray(data) ? data : (data as any)?.data || [];
+      setPrograms(
+        rawPrograms.filter((p) => p.status === 'active' || p.status === 'upcoming')
+      );
     } catch {
       toast.error('Failed to load programs');
     } finally {
@@ -389,9 +413,12 @@ export default function RegistrationModal({
   const set = (field: keyof FormData, value: string) => {
     setForm(prev => {
       const updated = { ...prev, [field]: value };
-      // When tenant is changed, clear program selection
+      // When tenant is changed, clear program selection and tenant-scoped requirement files
       if (field === 'tenant_id' && value !== prev.tenant_id) {
         updated.program_id = '';
+        setRequirementFiles({});
+        setRequirementDefinitions([]);
+        setRequirementsError(null);
       }
       return updated;
     });
@@ -446,6 +473,10 @@ export default function RegistrationModal({
     }
 
     if (s === 6) {
+      if (loadingRequirements) {
+        setRequirementsError('Please wait for requirements to finish loading');
+        return false;
+      }
       const requiredFiles = requirementDefinitions
         .filter((requirement) => requirement.is_mandatory)
         .map((requirement) => requirement.requirement_type);

@@ -38,6 +38,7 @@ import { toast } from 'sonner';
 import announcementService, { Announcement } from '../services/announcementService';
 import api, { getFileUrl } from '../services/api';
 import ImageUpload from '../components/ImageUpload';
+import { PaginationWrapper } from '../components/PaginationWrapper';
 
 type ViewMode = 'table' | 'card';
 
@@ -55,6 +56,8 @@ export default function AnnouncementsManagementPage() {
     return (localStorage.getItem('announcementsViewMode') as ViewMode) || 'table';
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Form State
   const [title, setTitle] = useState('');
@@ -208,6 +211,13 @@ export default function AnnouncementsManagementPage() {
     return item.title.toLowerCase().includes(q) || item.body.toLowerCase().includes(q);
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredAnnouncements.length / itemsPerPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedAnnouncements = filteredAnnouncements.slice(
+    (safeCurrentPage - 1) * itemsPerPage,
+    safeCurrentPage * itemsPerPage
+  );
+
   return (
     <DashboardLayout title="Announcements Management">
       <div className="space-y-6">
@@ -235,7 +245,10 @@ export default function AnnouncementsManagementPage() {
             <Input
               placeholder="Search announcements..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pl-10 h-9 text-xs rounded-xl"
             />
           </div>
@@ -301,7 +314,7 @@ export default function AnnouncementsManagementPage() {
             ) : viewMode === 'card' ? (
               /* Card View */
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 p-4 sm:p-6">
-                {filteredAnnouncements.map((item) => (
+                {paginatedAnnouncements.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => handleOpenEdit(item)}
@@ -434,7 +447,7 @@ export default function AnnouncementsManagementPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredAnnouncements.map((item) => (
+                    {paginatedAnnouncements.map((item) => (
                       <TableRow
                         key={item.id}
                         onClick={() => handleOpenEdit(item)}
@@ -519,6 +532,17 @@ export default function AnnouncementsManagementPage() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+            {!loading && filteredAnnouncements.length > itemsPerPage && (
+              <div className="border-t border-border/50 p-4 sm:p-6">
+                <PaginationWrapper
+                  currentPage={safeCurrentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  itemsCount={filteredAnnouncements.length}
+                  itemsPerPage={itemsPerPage}
+                />
               </div>
             )}
           </CardContent>

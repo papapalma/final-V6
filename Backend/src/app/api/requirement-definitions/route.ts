@@ -229,8 +229,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const { tenantId, role } = ctxResult.context;
 
-  // 2. Check if user has admin role
-  if (role !== 'local_admin' && role !== 'super_admin') {
+  // 2. Check if user has admin or training coordinator role
+  if (role !== 'local_admin' && role !== 'super_admin' && role !== 'staff_training_coordinator') {
     return forbiddenResponse('Only administrators can create requirement definitions');
   }
 

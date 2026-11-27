@@ -10,6 +10,7 @@ import {
   resolveAppUserFromSupabaseIdentity,
   verifySupabaseAccessToken,
 } from '@/lib/supabase-auth';
+import { isUserSoftDeleted } from '@/lib/userSoftDelete';
 
 export interface AuthenticatedRequest extends NextRequest {
   user?: JWTPayload;
@@ -138,6 +139,15 @@ if (payload.jti && await isTokenRevoked(payload.jti)) {
     logger.warn('[AUTH_OBSERVABILITY] Token revoked', {
       authPath: 'custom',
       jti: payload.jti,
+      userId: payload.userId,
+      url: request.url,
+    });
+    return null;
+  }
+
+  if (payload.userId && await isUserSoftDeleted(payload.userId)) {
+    logger.warn('[AUTH_OBSERVABILITY] Soft-deleted user token rejected', {
+      authPath: 'custom',
       userId: payload.userId,
       url: request.url,
     });

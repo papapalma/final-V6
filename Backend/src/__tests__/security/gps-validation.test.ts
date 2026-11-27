@@ -148,20 +148,26 @@ describe('GPS Data Validation', () => {
       expect(result.valid).toBe(true);
     });
 
+    it('should accept indoor/desktop accuracy up to 5000m (non-geofenced cap)', () => {
+      expect(validateGPS(40.7128, -74.0060, 150).valid).toBe(true);
+      expect(validateGPS(40.7128, -74.0060, 1000).valid).toBe(true);
+      expect(validateGPS(40.7128, -74.0060, 5000).valid).toBe(true);
+    });
+
     it('should reject negative accuracy', () => {
       const result = validateGPS(40.7128, -74.0060, -1);
       expect(result.valid).toBe(false);
       expect(result.reason).toContain('below minimum');
     });
 
-    it('should reject accuracy > 100', () => {
-      const result = validateGPS(40.7128, -74.0060, 150);
+    it('should reject accuracy > 5000', () => {
+      const result = validateGPS(40.7128, -74.0060, 5001);
       expect(result.valid).toBe(false);
       expect(result.reason).toContain('exceeds maximum');
     });
 
-    it('should reject accuracy of 1000', () => {
-      const result = validateGPS(40.7128, -74.0060, 1000);
+    it('should reject accuracy of 10000', () => {
+      const result = validateGPS(40.7128, -74.0060, 10000);
       expect(result.valid).toBe(false);
     });
 

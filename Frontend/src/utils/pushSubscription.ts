@@ -6,7 +6,7 @@
  */
 
 import logger from './logger';
-import axios from 'axios';
+import api from '../services/api';
 
 // ============================================================================
 // Types
@@ -93,30 +93,33 @@ export async function subscribeToPushNotifications(): Promise<string | null> {
     // Get service worker registration
     const registration = await navigator.serviceWorker.ready;
 
-    // Fetch VAPID public key from backend
-    const vapidResponse = await axios.get('/api/push-subscriptions/vapid');
-    const { vapidKey } = vapidResponse.data.data;
+    // Fetch VAPID public key from backend via authenticated API client
+    const vapidResponse = await api.get<{ vapidKey: string }>('/push-subscriptions/vapid');
+    const vapidKey = vapidResponse.data?.vapidKey;
 
     if (!vapidKey) {
       logger.error('[PUSH] VAPID key not available from server');
       return null;
     }
 
-    // Create push subscription
-    const pushSubscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidKey) as unknown as BufferSource,
-    });
+    // Reuse existing browser push subscription when available, otherwise subscribe
+    let pushSubscription = await registration.pushManager.getSubscription();
+    if (!pushSubscription) {
+      pushSubscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as unknown as BufferSource,
+      });
+    }
 
     // Extract subscription keys
     const subscription = pushSubscription.toJSON();
-    if (!subscription.endpoint || !subscription.keys) {
+    if (!subscription.endpoint || !subscription.keys?.auth || !subscription.keys?.p256dh) {
       logger.error('[PUSH] Invalid push subscription object');
       return null;
     }
 
-    // Send subscription to backend
-    const registerResponse = await axios.post('/api/push-subscriptions', {
+    // Register subscription with backend API (includes Bearer auth & tenant context)
+    const registerResponse = await api.post<PushSubscriptionData>('/push-subscriptions', {
       endpoint: subscription.endpoint,
       keys: {
         auth: subscription.keys.auth,
@@ -126,7 +129,11 @@ export async function subscribeToPushNotifications(): Promise<string | null> {
       userAgent: navigator.userAgent,
     });
 
-    const { id } = registerResponse.data.data;
+    const id = registerResponse.data?.id;
+    if (!id) {
+      logger.error('[PUSH] Backend did not return subscription ID');
+      return null;
+    }
 
     logger.info('[PUSH] Device subscribed to push notifications', {
       subscriptionId: id,
@@ -136,8 +143,8 @@ export async function subscribeToPushNotifications(): Promise<string | null> {
     return id;
   } catch (error: any) {
     logger.error('[PUSH] Error subscribing to push notifications', {
-      error: error.message,
-      status: error.response?.status,
+      error: error?.message,
+      status: error?.status ?? error?.response?.status,
     });
     return null;
   }
@@ -162,13 +169,13 @@ export async function unsubscribeFromPushNotifications(subscriptionId: string): 
     }
 
     // Notify backend
-    await axios.delete(`/api/push-subscriptions/${subscriptionId}`);
+    await api.delete(`/push-subscriptions/${subscriptionId}`);
 
     logger.info('[PUSH] Unsubscribed from push notifications', { subscriptionId });
     return true;
   } catch (error: any) {
     logger.error('[PUSH] Error unsubscribing from push notifications', {
-      error: error.message,
+      error: error?.message,
       subscriptionId,
     });
     return false;
@@ -180,12 +187,12 @@ export async function unsubscribeFromPushNotifications(subscriptionId: string): 
  */
 export async function getUserPushSubscriptions(): Promise<PushSubscriptionData[]> {
   try {
-    const response = await axios.get('/api/push-subscriptions');
-    return response.data.data || [];
+    const response = await api.get<PushSubscriptionData[]>('/push-subscriptions');
+    return Array.isArray(response.data) ? response.data : [];
   } catch (error: any) {
     logger.error('[PUSH] Error fetching push subscriptions', {
-      error: error.message,
-      status: error.response?.status,
+      error: error?.message,
+      status: error?.status ?? error?.response?.status,
     });
     return [];
   }
@@ -240,12 +247,15 @@ export async function syncPushSubscriptions(): Promise<void> {
     }
 
     if (Notification.permission === 'granted') {
-      // Check if we have an active subscription
-      const hasSubscription = await hasActivePushSubscription();
+      // Ensure the browser push subscription is registered in the backend DB
+      const [hasBrowserSub, serverSubs] = await Promise.all([
+        hasActivePushSubscription(),
+        getUserPushSubscriptions(),
+      ]);
+      const hasActiveServerSub = serverSubs.some((s) => s.isActive);
 
-      if (!hasSubscription) {
-        // Subscribe if permission was just granted
-        logger.info('[PUSH] Syncing: subscribing to push notifications');
+      if (!hasBrowserSub || !hasActiveServerSub) {
+        logger.info('[PUSH] Syncing: registering push subscription with backend');
         await subscribeToPushNotifications();
       }
     } else if (Notification.permission === 'denied') {
@@ -347,6 +357,63 @@ export async function requestNotificationPermission(): Promise<boolean> {
     return granted;
   } catch (error) {
     logger.error('[PUSH] Error requesting notification permission', { error });
+    return false;
+  }
+}
+
+/**
+ * Show a deduplicated local browser notification (via SW or Notification API)
+ * while the portal is open, without repeating the same tag twice.
+ */
+export async function showLocalAttendanceReminder(
+  title: string,
+  body: string,
+  tag: string,
+  url: string = '/trainee/attendance'
+): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+    return false;
+  }
+
+  const dedupeKey = `bmdc-local-notif:${tag}`;
+  try {
+    if (window.localStorage.getItem(dedupeKey)) {
+      return false;
+    }
+    window.localStorage.setItem(dedupeKey, new Date().toISOString());
+  } catch {
+    // Proceed even if storage is restricted
+  }
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration?.showNotification) {
+        await registration.showNotification(title, {
+          body,
+          icon: '/icons/bmdc-logo-192x192.png',
+          badge: '/icons/bmdc-logo-72x72.png',
+          tag,
+          data: { url },
+        });
+        return true;
+      }
+    }
+
+    const notif = new Notification(title, {
+      body,
+      icon: '/icons/bmdc-logo-192x192.png',
+      tag,
+    });
+    notif.onclick = () => {
+      window.focus();
+      if (url && window.location.pathname !== url) {
+        window.location.assign(url);
+      }
+    };
+    return true;
+  } catch (error) {
+    logger.warn('[PUSH] Failed showing local attendance reminder', { error, tag });
     return false;
   }
 }

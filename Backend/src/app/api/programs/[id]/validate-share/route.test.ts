@@ -233,7 +233,7 @@ describe('GET /api/programs/:id/validate-share', () => {
       expect(data.data.isPublic).toBe(false);
     });
 
-    it('should return isValid=false when program is upcoming', async () => {
+    it('should return isValid=true when program is upcoming', async () => {
       const upcomingProgram = { ...mockProgram, status: 'upcoming' };
       (programService.getProgramById as jest.Mock).mockResolvedValue(upcomingProgram);
 
@@ -243,8 +243,8 @@ describe('GET /api/programs/:id/validate-share', () => {
       );
 
       const data = await response.json();
-      expect(data.data.isValid).toBe(false);
-      expect(data.data.isActive).toBe(false);
+      expect(data.data.isValid).toBe(true);
+      expect(data.data.isActive).toBe(true);
     });
 
     it('should return isValid=false when program is cancelled', async () => {

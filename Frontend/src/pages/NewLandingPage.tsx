@@ -4,17 +4,15 @@ import { useBranding } from '../contexts/BrandingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePrograms } from '../contexts/ProgramsContext';
 import { BrandLogo } from '../components/BrandLogo';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
 import { motion, useScroll, useTransform } from 'motion/react';
 import LoginModal from '../components/LoginModal';
 import RegistrationModal from '../components/RegistrationModal';
 import ProgramDetailsModal from '../components/ProgramDetailsModal';
 import AnnouncementsSection from '../components/AnnouncementsSection';
-import ImageWithSkeleton from '../components/ui/ImageWithSkeleton';
+import LandingProgramsShowcase from '../components/LandingProgramsShowcase';
 import { getFileUrl, api } from '../services/api';
 import { type Program } from '../utils/programHelpers';
 import logger from '../utils/logger';
@@ -27,15 +25,11 @@ import {
   Mail,
   Sparkles,
   ArrowRight,
-  Eye,
   Building2,
-  Search,
   CheckCircle2,
-  BookOpen,
   Award,
   Users2,
   Wrench,
-  Clock,
   Compass,
   ChevronDown,
   Sun,
@@ -158,36 +152,12 @@ const getIconComponent = (iconName?: string) => {
   }
 };
 
-// Format date helper
-const formatDate = (dateString: string) => {
-  if (!dateString) return 'TBA';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-
 // Helper to extract value from either string or object with value property
 const getValue = (val: any): string => {
   if (!val) return '';
   if (typeof val === 'string') return val;
   if (typeof val === 'object' && val.value !== undefined) return val.value;
   return String(val);
-};
-
-// Determine if a program is upcoming (starts in the future)
-const isProgramUpcoming = (startDate: string): boolean => {
-  if (!startDate) return false;
-  const start = new Date(startDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return start > today;
-};
-
-// Days until a program starts
-const daysUntilStart = (startDate: string): number => {
-  const start = new Date(startDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.ceil((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 };
 
 // Animated Counter Component
@@ -237,6 +207,10 @@ export default function LandingPage() {
   const location = useLocation();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
+  const [sharedRegistrationContext, setSharedRegistrationContext] = useState<{
+    programId?: string;
+    tenantId?: string;
+  }>({});
   const [registeredUsername, setRegisteredUsername] = useState('');
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [heroImgLoaded, setHeroImgLoaded] = useState(false);
@@ -245,13 +219,27 @@ export default function LandingPage() {
   const [allTenants, setAllTenants] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [cmsSettings, setCmsSettings] = useState<CMSSettings>(defaultCmsSettings);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'upcoming' | 'active'>('all');
   const [hasHeroAnnouncements, setHasHeroAnnouncements] = useState(true);
 
-  // Parallax scroll effect for hero background
+  // Parallax scroll effect for hero background & scroll-fading cue
   const { scrollY } = useScroll();
   const heroParallax = useTransform(scrollY, [0, 600], [0, 90]);
+  const scrollCueOpacity = useTransform(scrollY, [0, 120], [1, 0]);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? Boolean(window.matchMedia('(prefers-reduced-motion: reduce)')?.matches)
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (!mq) return;
+    const onChange = () => setPrefersReducedMotion(Boolean(mq.matches));
+    onChange();
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
 
   // Fetch available tenants
   useEffect(() => {
@@ -334,8 +322,17 @@ export default function LandingPage() {
     loadCmsSettings();
   }, [selectedTenantId]);
 
-  // Auto-open login or registration modal when redirected
+  // Auto-open login or registration modal when redirected (including from /share)
   useEffect(() => {
+    if (location.state?.tenantId) {
+      setSelectedTenantId(location.state.tenantId);
+    }
+    if (location.state?.programId || location.state?.tenantId) {
+      setSharedRegistrationContext({
+        programId: location.state?.programId,
+        tenantId: location.state?.tenantId,
+      });
+    }
     if (location.state?.openLogin) {
       setIsLoginModalOpen(true);
       window.history.replaceState({}, '');
@@ -352,27 +349,6 @@ export default function LandingPage() {
       sessionStorage.setItem('selectedTenantId', selectedTenantId);
     }
   }, [selectedTenantId]);
-
-  // Filtered programs
-  const filteredPrograms = useMemo(() => {
-    return contextPrograms.filter((program) => {
-      const matchesSearch =
-        program.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (program.description && program.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (program.instructor && program.instructor.toLowerCase().includes(searchQuery.toLowerCase()));
-
-      if (!matchesSearch) return false;
-
-      if (selectedFilter === 'upcoming') {
-        return isProgramUpcoming(program.startDate);
-      }
-      if (selectedFilter === 'active') {
-        return program.status?.toLowerCase() === 'active' || program.status?.toLowerCase() === 'open';
-      }
-
-      return true;
-    });
-  }, [contextPrograms, searchQuery, selectedFilter]);
 
   /**
    * Handle registration completion callback
@@ -427,7 +403,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/20 selection:text-primary">
       {/* ─── STICKY HEADER ─── */}
-      <header className="sticky top-0 z-50 border-b border-border/80 bg-background/95 backdrop-blur-md transition-all shadow-sm">
+      <header className="sticky top-0 z-50 landing-glass-header shadow-xs">
         <div className="container mx-auto flex h-16 md:h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, x: -16 }}
@@ -664,9 +640,10 @@ export default function LandingPage() {
 
         {/* Scroll Indicator */}
         <motion.div
-          animate={{ y: [0, 12, 0] }}
-          transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-20"
+          style={{ opacity: scrollCueOpacity }}
+          animate={prefersReducedMotion ? undefined : { y: [0, 10, 0] }}
+          transition={prefersReducedMotion ? undefined : { repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-20 pointer-events-none"
         >
           <p className="text-xs text-white/70 font-semibold">SCROLL TO EXPLORE</p>
           <ChevronDown className="w-5 h-5 text-white/70" />
@@ -674,7 +651,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CORE PILLARS / WHY BMDC ─── */}
-      <section id="features" className="py-16 md:py-24 bg-background border-b border-border/60">
+      <section id="features" className="py-16 md:py-24 landing-band-features border-b border-border/50">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl mx-auto text-center space-y-3 mb-12 md:mb-16">
             <Badge variant="outline" className="px-3.5 py-1 text-xs font-semibold border-primary/30 text-primary bg-primary/5">
@@ -701,7 +678,7 @@ export default function LandingPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1, duration: 0.4 }}
-                  className="group relative rounded-2xl border border-border bg-card p-6 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
+                  className="group relative rounded-2xl border landing-glass-card landing-glass-card-interactive p-6"
                 >
                   <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <IconComponent className="size-6" />
@@ -716,187 +693,14 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PROGRAMS CATALOG SECTION ─── */}
-      <section id="programs" className="py-20 md:py-28 lg:py-32 bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          {/* Section Header */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 md:mb-16">
-            <div className="space-y-3 max-w-xl">
-              <Badge variant="outline" className="px-3.5 py-1 text-xs font-semibold border-primary/30 text-primary bg-primary/5">
-                Vocational Tracks
-              </Badge>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
-                Explore Available Programs
-              </h2>
-              <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-                Find the training course that matches your interests and career goals.
-              </p>
-            </div>
-
-            {/* Filter Pills & Search */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search courses..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 w-full sm:w-60 h-10 bg-background"
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5 p-1 bg-background rounded-lg border border-border">
-                <Button
-                  variant={selectedFilter === 'all' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setSelectedFilter('all')}
-                  className="h-8 text-xs font-medium"
-                >
-                  All ({contextPrograms.length})
-                </Button>
-                <Button
-                  variant={selectedFilter === 'upcoming' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setSelectedFilter('upcoming')}
-                  className="h-8 text-xs font-medium"
-                >
-                  Upcoming
-                </Button>
-                <Button
-                  variant={selectedFilter === 'active' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setSelectedFilter('active')}
-                  className="h-8 text-xs font-medium"
-                >
-                  Active
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Programs Grid */}
-          {filteredPrograms.length > 0 ? (
-            <div className="grid gap-6 sm:gap-8 lg:gap-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredPrograms.map((program, i) => {
-                const isUpcoming = isProgramUpcoming(program.startDate);
-                const days = isUpcoming ? daysUntilStart(program.startDate) : 0;
-
-                return (
-                  <motion.div
-                    key={program.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: (i % 6) * 0.06, duration: 0.4 }}
-                  >
-                    <Card
-                      interactive
-                      className="group flex flex-col h-full overflow-hidden border-border/80 bg-card rounded-2xl"
-                      onClick={() => setSelectedProgram(program)}
-                    >
-                      {/* Course Image: 16:9 Aspect Ratio with Shimmer Skeleton */}
-                      <div className="relative w-full aspect-video overflow-hidden border-b border-border/60 bg-muted/30">
-                        {program.photoUrl ? (
-                          <ImageWithSkeleton
-                            src={program.photoUrl}
-                            alt={program.name}
-                            className="group-hover:scale-105 transition-transform duration-300"
-                            fallbackIcon={<BookOpen className="size-8 stroke-1 text-primary/40 mb-1" />}
-                          />
-                        ) : (
-                          <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 text-primary p-4">
-                            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-1">
-                              <GraduationCap className="size-5" />
-                            </div>
-                            <span className="text-[11px] font-medium text-muted-foreground/80 text-center line-clamp-1 max-w-[85%]">
-                              {program.name}
-                            </span>
-                          </div>
-                        )}
-                        <div className="absolute top-2.5 right-2.5 z-10">
-                          <Badge className="bg-black/75 backdrop-blur-sm text-white text-[10px] font-semibold px-2 py-0.5 shadow-sm">
-                            {program.status || 'Active'}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <CardHeader className="px-6 pt-6 pb-2 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          {isUpcoming && (
-                            <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                              <Clock className="size-3.5" />
-                              Starts in {days} {days === 1 ? 'day' : 'days'}
-                            </span>
-                          )}
-                          {program.duration && (
-                            <span className="text-xs text-muted-foreground ml-auto font-medium">
-                              {program.duration}
-                            </span>
-                          )}
-                        </div>
-                        <CardTitle className="text-base sm:text-lg font-bold line-clamp-2 text-foreground group-hover:text-primary transition-colors leading-snug">
-                          {program.name}
-                        </CardTitle>
-                      </CardHeader>
-
-                      <CardContent className="px-6 pb-6 pt-0 flex flex-col flex-1 justify-between space-y-4">
-                        <CardDescription className="text-xs sm:text-sm line-clamp-2 text-muted-foreground font-normal leading-relaxed">
-                          {program.description || 'Comprehensive technical training program designed to prepare trainees for industry roles.'}
-                        </CardDescription>
-
-                        <div className="space-y-2 border-t border-border/60 pt-3.5 text-xs text-muted-foreground">
-                          {program.instructor && (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-semibold text-foreground/80">Instructor:</span>
-                              <span className="text-foreground truncate font-medium text-right max-w-[160px]">{program.instructor}</span>
-                            </div>
-                          )}
-                          {program.startDate && (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-semibold text-foreground/80">Start:</span>
-                              <span className="text-foreground font-medium">{formatDate(program.startDate)}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedProgram(program);
-                          }}
-                          className="w-full h-9 text-xs sm:text-sm font-semibold bg-background border border-border/80 hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-200 rounded-xl"
-                        >
-                          <Eye className="size-3.5 mr-1.5" />
-                          View Details
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : (
-            <Card className="border-dashed border-2 p-12 text-center">
-              <div className="flex size-14 items-center justify-center rounded-2xl bg-muted mx-auto mb-4 text-muted-foreground">
-                <GraduationCap className="size-7" />
-              </div>
-              <h3 className="text-lg font-semibold mb-1">No Programs Found</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-6">
-                {searchQuery ? `No courses matched "${searchQuery}". Try clearing your search.` : 'There are currently no training programs listed.'}
-              </p>
-              {searchQuery && (
-                <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
-                  Clear Search
-                </Button>
-              )}
-            </Card>
-          )}
-        </div>
-      </section>
+      <LandingProgramsShowcase
+        programs={contextPrograms}
+        isModalOpen={!!selectedProgram}
+        onSelectProgram={setSelectedProgram}
+      />
 
       {/* ─── ABOUT / MISSION & VISION ─── */}
-      <section id="about" className="py-16 md:py-24 bg-background border-b border-border/60">
+      <section id="about" className="py-16 md:py-24 landing-band-about border-b border-border/50">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl mx-auto text-center space-y-3 mb-12 md:mb-16">
             <Badge variant="outline" className="px-3.5 py-1 text-xs font-semibold border-primary/30 text-primary bg-primary/5">
@@ -917,7 +721,7 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4 }}
-              className="rounded-2xl border border-border bg-card p-8 shadow-sm hover:shadow-md hover:border-primary/40 transition-all flex flex-col justify-between"
+              className="rounded-2xl border landing-glass-card landing-glass-card-interactive p-8 flex flex-col justify-between"
             >
               <div>
                 <div className="flex size-12 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 mb-6">
@@ -928,7 +732,7 @@ export default function LandingPage() {
                   {getValue(cmsSettings?.mission)}
                 </p>
               </div>
-              <div className="mt-6 pt-6 border-t border-border flex items-center gap-2 text-xs font-semibold text-primary">
+              <div className="mt-6 pt-6 border-t border-border/70 flex items-center gap-2 text-xs font-semibold text-primary">
                 <CheckCircle2 className="size-4" />
                 <span>Dedicated to grassroots empowerment</span>
               </div>
@@ -940,7 +744,7 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.1, duration: 0.4 }}
-              className="rounded-2xl border border-border bg-card p-8 shadow-sm hover:shadow-md hover:border-primary/40 transition-all flex flex-col justify-between"
+              className="rounded-2xl border landing-glass-card landing-glass-card-interactive p-8 flex flex-col justify-between"
             >
               <div>
                 <div className="flex size-12 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 mb-6">
@@ -951,7 +755,7 @@ export default function LandingPage() {
                   {getValue(cmsSettings?.vision)}
                 </p>
               </div>
-              <div className="mt-6 pt-6 border-t border-border flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400">
+              <div className="mt-6 pt-6 border-t border-border/70 flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400">
                 <CheckCircle2 className="size-4" />
                 <span>Sustainable regional skill growth</span>
               </div>
@@ -961,10 +765,10 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CTA BANNER ─── */}
-      <section className="relative py-16 md:py-20 overflow-hidden border-y border-border bg-muted/40">
+      <section className="relative py-16 md:py-24 overflow-hidden border-y border-primary/15 landing-band-cta">
         <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 z-10">
           <div className="max-w-3xl mx-auto text-center space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-foreground shadow-xs">
+            <div className="inline-flex items-center gap-2 rounded-full border landing-glass-card px-4 py-1.5 text-xs font-semibold text-foreground">
               <Sparkles className="size-3.5 text-primary" />
               <span>{getValue(cmsSettings?.ctaBanner?.badge) || defaultCmsSettings.ctaBanner!.badge}</span>
             </div>
@@ -981,7 +785,7 @@ export default function LandingPage() {
               <Button
                 size="lg"
                 onClick={() => setIsRegistrationModalOpen(true)}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-8 h-12"
+                className="programs-tactile-btn bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-8 h-12 shadow-md shadow-primary/20"
               >
                 {getValue(cmsSettings?.ctaBanner?.ctaPrimaryText) || defaultCmsSettings.ctaBanner!.ctaPrimaryText}
                 <ArrowRight className="size-4 ml-2" />
@@ -990,7 +794,7 @@ export default function LandingPage() {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="border-2 border-border bg-card hover:bg-muted text-foreground font-bold px-6 h-12"
+                  className="programs-tactile-btn border landing-glass-card hover:bg-card text-foreground font-bold px-6 h-12"
                 >
                   {getValue(cmsSettings?.ctaBanner?.ctaSecondaryText) || defaultCmsSettings.ctaBanner!.ctaSecondaryText}
                 </Button>
@@ -1001,7 +805,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CONTACT SECTION ─── */}
-      <section id="contact" className="py-16 md:py-24 bg-muted/20">
+      <section id="contact" className="py-16 md:py-24 landing-band-contact">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl mx-auto text-center space-y-3 mb-12">
             <Badge variant="outline" className="px-3.5 py-1 text-xs font-semibold border-primary/30 text-primary bg-primary/5">
@@ -1016,7 +820,7 @@ export default function LandingPage() {
           </div>
 
           <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border landing-glass-card landing-glass-card-interactive p-6 text-center flex flex-col items-center space-y-2.5">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <MapPin className="size-5" />
               </div>
@@ -1027,7 +831,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border landing-glass-card landing-glass-card-interactive p-6 text-center flex flex-col items-center space-y-2.5">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Phone className="size-5" />
               </div>
@@ -1040,7 +844,7 @@ export default function LandingPage() {
               </a>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border landing-glass-card landing-glass-card-interactive p-6 text-center flex flex-col items-center space-y-2.5">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Mail className="size-5" />
               </div>
@@ -1053,7 +857,7 @@ export default function LandingPage() {
               </a>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-6 text-center flex flex-col items-center space-y-2.5 shadow-sm">
+            <div className="rounded-xl border landing-glass-card landing-glass-card-interactive p-6 text-center flex flex-col items-center space-y-2.5">
               <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Facebook className="size-5" />
               </div>
@@ -1116,6 +920,8 @@ export default function LandingPage() {
         open={isRegistrationModalOpen} 
         onOpenChange={setIsRegistrationModalOpen}
         onRegistrationComplete={handleRegistrationComplete}
+        initialTenantId={sharedRegistrationContext.tenantId}
+        initialProgramId={sharedRegistrationContext.programId}
       />
       <ProgramDetailsModal
         program={selectedProgram}

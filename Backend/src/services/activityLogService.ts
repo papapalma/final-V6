@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { fetchAllRows } from '@/lib/supabasePagination';
 import { db } from '@/lib/db';
 import { ActivityLog } from '@/types';
 
@@ -13,77 +14,70 @@ export class ActivityLogService {
     tenant_id?: string;
     is_super_admin?: boolean;
   }): Promise<ActivityLog[]> {
-    let query = supabaseAdmin
-      .from('activity_logs')
-      .select(`
-        *,
-        users:user_id (
-          id,
-          username,
-          email
-        ),
-        tenants:tenant_id (
-          id,
-          name
-        )
-      `);
-    
-    // Tenant filtering
+    const buildBaseQuery = () => {
+      let query = supabaseAdmin
+        .from('activity_logs')
+        .select(`
+          *,
+          users:user_id (
+            id,
+            username,
+            email
+          ),
+          tenants:tenant_id (
+            id,
+            name
+          )
+        `);
 
-if (filters?.is_super_admin) {
-      // Super Admin: optionally filter by specific tenant, otherwise see all
-
-if (filters.tenant_id) {
-        if (filters.tenant_id === 'platform') {
-          // Show only platform-level logs (tenant_id IS NULL)
-          query = query.is('tenant_id', null);
-        } else {
-          // Show specific tenant logs
-          query = query.eq('tenant_id', filters.tenant_id);
+      // Tenant filtering
+      if (filters?.is_super_admin) {
+        if (filters.tenant_id) {
+          if (filters.tenant_id === 'platform') {
+            query = query.is('tenant_id', null);
+          } else {
+            query = query.eq('tenant_id', filters.tenant_id);
+          }
         }
-      }
-      // If no tenant_id filter, super admin sees ALL logs (both platform and tenant-specific)
-    } else {
-      // Non-super admin: must have tenant_id filter (should be enforced by API route)
-
-if (filters?.tenant_id) {
+      } else if (filters?.tenant_id) {
         query = query.eq('tenant_id', filters.tenant_id);
       }
-    }
 
-if (filters?.user_id) {
-      query = query.eq('user_id', filters.user_id);
-    }
+      if (filters?.user_id) {
+        query = query.eq('user_id', filters.user_id);
+      }
 
-if (filters?.entity_type) {
-      query = query.eq('entity_type', filters.entity_type);
-    }
+      if (filters?.entity_type) {
+        query = query.eq('entity_type', filters.entity_type);
+      }
 
-if (filters?.action) {
-      query = query.eq('action', filters.action);
-    }
+      if (filters?.action) {
+        query = query.eq('action', filters.action);
+      }
 
-if (filters?.start_date) {
-      query = query.gte('created_at', filters.start_date);
-    }
+      if (filters?.start_date) {
+        query = query.gte('created_at', filters.start_date);
+      }
 
-if (filters?.end_date) {
-      query = query.lte('created_at', filters.end_date);
-    }
-    
-    query = query.order('created_at', { ascending: false });
-    
+      if (filters?.end_date) {
+        query = query.lte('created_at', filters.end_date);
+      }
+
+      return query.order('created_at', { ascending: false });
+    };
+
+    let data: any[];
     if (filters?.limit) {
-      query = query.limit(filters.limit);
+      const { data: limitedData, error } = await buildBaseQuery().limit(filters.limit);
+      if (error) throw error;
+      data = limitedData || [];
+    } else {
+      // Paginate past PostgREST's 1,000-row default cap (capped at 3,000 for safety)
+      data = await fetchAllRows(buildBaseQuery, 1000, 3000);
     }
 
-const { data, error } = await query;
-    
-    if (error) throw error;
-    
     // Transform data to match frontend expectations
-
-return (data || []).map(log => this.transformLog(log));
+    return data.map(log => this.transformLog(log));
   }
 
   private transformLog(log: any): ActivityLog {

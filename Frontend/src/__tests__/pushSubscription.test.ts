@@ -10,6 +10,7 @@ import {
   urlBase64ToUint8Array,
   getDeviceIdentifier,
   getBrowserName,
+  showLocalAttendanceReminder,
 } from '../utils/pushSubscription';
 
 /**
@@ -239,5 +240,35 @@ describe('Data Privacy', () => {
     const protocol = 'https';
     
     expect(protocol).toBe('https');
+  });
+});
+
+describe('Local Attendance Reminder Deduplication', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('deduplicates repeated local notifications for the same day+slot tag', async () => {
+    const notifSpy = vi.fn();
+    Object.defineProperty(window, 'Notification', {
+      configurable: true,
+      writable: true,
+      value: Object.assign(notifSpy, { permission: 'granted' }),
+    });
+
+    const first = await showLocalAttendanceReminder(
+      'Morning attendance window is open',
+      'Submit now',
+      'attendance-2026-11-27-morning'
+    );
+    const second = await showLocalAttendanceReminder(
+      'Morning attendance window is open',
+      'Submit now',
+      'attendance-2026-11-27-morning'
+    );
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    expect(notifSpy).toHaveBeenCalledTimes(1);
   });
 });

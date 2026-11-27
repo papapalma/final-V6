@@ -156,10 +156,38 @@ describe('OverdueBellNotification (Rules 1, 3, 6 & 7)', () => {
     expect(userBBell.querySelector('[data-slot="notification-badge"]')).toHaveTextContent('2');
   });
 
-  it('hides completely for trainee role', () => {
+  it('shows bell with attendance reminder for trainee role, links to /trainee/attendance, and clears on open', async () => {
     mockUser = { id: 'trainee-1', role: 'trainee', tenantId: 'tenant-a' };
-    const { container } = renderBell();
-    expect(container.firstChild).toBeNull();
-    expect(notificationService.getNotifications).not.toHaveBeenCalled();
+    vi.mocked(notificationService.getNotifications).mockResolvedValue({
+      notifications: [
+        {
+          id: 'attendance-2026-11-27-afternoon',
+          type: 'attendance',
+          title: 'Reminder: Take your afternoon attendance',
+          description: 'You haven\'t checked in for afternoon attendance for Barista NC II yet.',
+          createdAt: '2026-11-27T08:00:00.000Z',
+          href: '/trainee/attendance',
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    renderBell();
+
+    const bellButton = await screen.findByRole('button', {
+      name: 'Notifications, 1 unread notification',
+    });
+    expect(bellButton).toBeInTheDocument();
+    expect(bellButton.querySelector('[data-slot="notification-badge"]')).toHaveTextContent('1');
+
+    fireEvent.click(bellButton);
+
+    await waitFor(() => {
+      expect(bellButton).toHaveAttribute('aria-label', 'Notifications');
+    });
+
+    const reminderLink = (await screen.findByText('Reminder: Take your afternoon attendance')).closest('a');
+    expect(reminderLink).toHaveAttribute('href', '/trainee/attendance');
+    expect(screen.getByText('Attendance').className).toContain('bg-red-600');
   });
 });

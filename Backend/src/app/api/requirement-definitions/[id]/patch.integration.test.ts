@@ -214,6 +214,23 @@ describe('PATCH /api/requirement-definitions/{id} - Integration Tests', () => {
 
       expect(response.status).toBe(200);
     });
+
+    it('should allow staff_training_coordinator role to update', async () => {
+      (requireTenantContext as jest.Mock).mockReturnValue({
+        context: {
+          tenantId: 'tenant-001',
+          role: 'staff_training_coordinator',
+        },
+      });
+
+      (mockRequest.json as jest.Mock).mockResolvedValue({ display_name: 'Updated Name' });
+
+      const response = await PATCH(mockRequest as NextRequest, {
+        params: Promise.resolve({ id: 'req-001' }),
+      });
+
+      expect(response.status).toBe(200);
+    });
   });
 
   describe('404 Handling - Requirement not found', () => {

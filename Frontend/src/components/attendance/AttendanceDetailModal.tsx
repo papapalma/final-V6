@@ -10,12 +10,13 @@
 import { useState } from 'react';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
-import { MapPin, X, Loader2 } from 'lucide-react';
+import { MapPin, X, Loader2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { getFileUrl } from '../../services/api';
 import attendanceService from '../../services/attendanceService';
 import AuthenticatedImage from './AuthenticatedImage';
 import type { AttendanceRecord } from '../../services/attendanceService';
+import { getGpsAccuracyInfo } from '../../lib/gpsFormat';
 
 interface TraineeSummary {
   id: string;
@@ -210,15 +211,43 @@ export default function AttendanceDetailModal({
               </div>
 
               {/* GPS Info */}
-              {hasGps && (
-                <div className="bg-muted/30 rounded-lg p-3 flex items-center gap-2 border border-border/60">
-                  <MapPin className="size-4 text-primary shrink-0" />
-                  <span className="text-xs truncate">
-                    {record.gps_lat?.toFixed(4)}, {record.gps_lng?.toFixed(4)}
-                    {record.gps_accuracy ? ` (±${record.gps_accuracy.toFixed(0)}m)` : ''}
-                  </span>
+              {hasGps ? (() => {
+                const accInfo = getGpsAccuracyInfo(record.gps_accuracy);
+                return (
+                  <div className="bg-muted/30 rounded-lg p-3 flex items-start gap-2.5 border border-border/60">
+                    <MapPin className="size-4 text-primary shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      {record.gps_address && (
+                        <p className="text-xs font-medium text-foreground leading-snug">
+                          {record.gps_address}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground font-mono truncate">
+                        {record.gps_lat?.toFixed(5)}, {record.gps_lng?.toFixed(5)}
+                        {accInfo && (
+                          <span className={`font-sans font-medium ml-1.5 ${accInfo.textClass}`}>
+                            ({accInfo.formatted} · {accInfo.quality})
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <a
+                      href={`https://maps.google.com/maps?q=${record.gps_lat},${record.gps_lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 shrink-0 text-xs font-medium text-primary hover:underline underline-offset-2 mt-0.5"
+                    >
+                      Map
+                      <ExternalLink className="size-3" />
+                    </a>
+                  </div>
+                );
+              })() : record.submission_method === 'self_service' ? (
+                <div className="bg-muted/20 rounded-lg p-3 flex items-center gap-2 border border-dashed border-border/60 text-xs text-muted-foreground">
+                  <MapPin className="size-4 shrink-0 opacity-60" />
+                  <span>GPS location was not captured for this record.</span>
                 </div>
-              )}
+              ) : null}
 
               {/* Device Info Row */}
               {record.device_info && (

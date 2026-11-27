@@ -261,7 +261,7 @@ export default function ProgramDetailsModal({
             </div>
 
             {/* Share Link Section */}
-            {canManage && program.status === 'active' && (
+            {canManage && ((program.rawStatus || program.status) === 'active' || (program.rawStatus || program.status) === 'upcoming') && (
               <div className="rounded-lg border bg-blue-50/50 dark:bg-blue-900/20 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
@@ -320,6 +320,17 @@ export default function ProgramDetailsModal({
                             <span className="text-xs">Copy</span>
                           </>
                         )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5"
+                        aria-label="Open share link in new tab"
+                        onClick={() => window.open(shareLink, '_blank', 'noopener,noreferrer')}
+                      >
+                        <ExternalLink className="size-4" />
+                        <span className="text-xs">Open</span>
                       </Button>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-500">

@@ -103,9 +103,13 @@ export default function LoginModal({ open, onOpenChange, onSwitchToSignup, preFi
       console.log('[LoginModal] Authenticated, programId from localStorage:', programId);
 
       if (programId) {
-        // Redirect to program page with modal
-        console.log('[LoginModal] Redirecting to program page:', programId);
-        navigate(`/programs/${programId}/enroll`);
+        if (user.role === 'trainee') {
+          navigate(`/programs/${programId}/enroll`);
+        } else {
+          localStorage.removeItem('selected_program_id');
+          localStorage.removeItem('selected_program_tenant_id');
+          navigate(`/programs/${programId}`);
+        }
       } else {
         // Normal dashboard redirect
         navigate(getDashboardRoute(user.role));

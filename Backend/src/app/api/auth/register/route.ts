@@ -36,12 +36,13 @@ const authResult = await requireRoleAsync(request, ['local_admin', 'super_admin'
     return forbiddenResponse('You are not authorized to register users in other tenants');
   }
   
-  // Check if user already exists
+  // Check if an active user already exists
   const { data: existingUser } = await supabaseAdmin
     .from('users')
     .select('id')
     .eq('email', validatedData.email)
-    .single();
+    .is('deleted_at', null)
+    .maybeSingle();
   
   if (existingUser) {
     return errorResponse('User with this email already exists', 409);

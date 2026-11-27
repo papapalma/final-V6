@@ -18,10 +18,13 @@ import { successResponse, forbiddenResponse, errorResponse, notFoundResponse } f
 import { withErrorHandler } from '@/middleware/errorHandler';
 import { handleOptionsRequest } from '@/middleware/cors';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { resolveTraineeForUser } from '@/lib/resolveTraineeId';
 import { z } from 'zod';
 
+const SHAREABLE_PROGRAM_STATUSES = new Set(['active', 'upcoming']);
+
 const enrollSchema = z.object({
-  trainee_id: z.string().uuid('Invalid trainee ID format'),
+  trainee_id: z.string().uuid('Invalid trainee ID format').optional(),
 });
 
 /**
@@ -59,17 +62,20 @@ export const POST = withErrorHandler(
     const ctxResult = requireTenantContext(request);
     if (ctxResult.error) return ctxResult.error as NextResponse;
 
-    const { tenantId, userId } = ctxResult.context;
+    const { tenantId, userId, role } = ctxResult.context;
     const { id: programId } = await params;
 
     if (!programId) {
       return errorResponse('Program ID is required', 400);
     }
 
-    // Parse request body
-    let body;
+    // Parse optional request body (trainee_id is resolved from JWT for trainees)
+    let body: Record<string, unknown> = {};
     try {
-      body = await request.json();
+      const rawText = await request.text();
+      if (rawText.trim()) {
+        body = JSON.parse(rawText);
+      }
     } catch {
       return errorResponse('Invalid JSON in request body', 400);
     }
@@ -86,21 +92,30 @@ export const POST = withErrorHandler(
       return errorResponse('Validation failed', 400);
     }
 
-    const { trainee_id } = validatedData;
+    const resolvedTrainee = await resolveTraineeForUser(userId, role, validatedData.trainee_id);
+    if (!resolvedTrainee) {
+      return notFoundResponse('Trainee profile not found for this account');
+    }
+
+    const trainee_id = resolvedTrainee.id;
 
     try {
-      // 1. Verify program exists and is active
+      // 1. Verify program exists (not soft-deleted) and is active or upcoming
       const { data: program, error: programError } = await supabaseAdmin
         .from('programs')
-        .select('id, status, enrollment_limit, tenant_id')
+        .select('id, status, enrollment_limit, max_trainees, tenant_id')
         .eq('id', programId)
+        .is('deleted_at', null)
         .maybeSingle();
 
       if (programError) throw programError;
       if (!program) return notFoundResponse('Program not found');
-      if (program.status !== 'active') {
-        return forbiddenResponse('Can only enroll in active programs');
+      if (!SHAREABLE_PROGRAM_STATUSES.has(program.status)) {
+        return forbiddenResponse('Can only enroll in active or upcoming programs');
       }
+
+      const effectiveTenantId = program.tenant_id || resolvedTrainee.tenant_id || tenantId;
+      const enrollmentDate = new Date().toISOString().slice(0, 10);
 
       // 2. Check for existing enrollment
       const { data: existingEnrollment, error: enrollmentCheckError } = await supabaseAdmin
@@ -113,13 +128,14 @@ export const POST = withErrorHandler(
       if (enrollmentCheckError) throw enrollmentCheckError;
 
       if (existingEnrollment) {
-        if (existingEnrollment.status === 'dropped' || existingEnrollment.status === 'cancelled') {
-          // Re-enroll if previously dropped/cancelled
-          // Update existing enrollment record
+        if (existingEnrollment.status === 'dropped' || existingEnrollment.status === 'failed') {
+          // Re-enroll if previously dropped/failed
           const { data: updated, error: updateError } = await supabaseAdmin
             .from('enrollments')
             .update({
               status: 'enrolled',
+              enrollment_date: enrollmentDate,
+              source: 'social_share',
               updated_at: new Date().toISOString(),
             })
             .eq('id', existingEnrollment.id)
@@ -133,7 +149,7 @@ export const POST = withErrorHandler(
             program_id: programId,
             trainee_id,
             status: updated.status,
-            enrollment_date: updated.created_at,
+            enrollment_date: updated.enrollment_date || updated.created_at,
           });
         } else {
           // Already enrolled
@@ -141,30 +157,31 @@ export const POST = withErrorHandler(
         }
       }
 
-      // 3. Check program capacity
+      // 3. Check program capacity against active/enrolled trainees
+      const capacityLimit = program.enrollment_limit ?? program.max_trainees;
       const { count: currentEnrollment, error: countError } = await supabaseAdmin
         .from('enrollments')
         .select('id', { count: 'exact', head: true })
         .eq('program_id', programId)
-        .not('status', 'in', '(dropped,cancelled)');
+        .in('status', ['enrolled', 'active']);
 
       if (countError) throw countError;
 
       const enrollmentCount = currentEnrollment || 0;
-      if (program.enrollment_limit && enrollmentCount >= program.enrollment_limit) {
+      if (capacityLimit && capacityLimit > 0 && enrollmentCount >= capacityLimit) {
         return forbiddenResponse('Program is at full capacity');
       }
 
-      // 4. Create enrollment
+      // 4. Create enrollment using canonical normalized schema columns
       const { data: newEnrollment, error: enrollError } = await supabaseAdmin
         .from('enrollments')
         .insert({
+          tenant_id: effectiveTenantId,
           program_id: programId,
           trainee_id,
+          enrollment_date: enrollmentDate,
           status: 'enrolled',
-          enrollment_source: 'social_share', // Track that this came from social sharing
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          source: 'social_share',
         })
         .select()
         .single();
@@ -177,7 +194,7 @@ export const POST = withErrorHandler(
           program_id: programId,
           trainee_id,
           status: newEnrollment.status,
-          enrollment_date: newEnrollment.created_at,
+          enrollment_date: newEnrollment.enrollment_date || newEnrollment.created_at,
         },
         'Successfully enrolled in program',
         201

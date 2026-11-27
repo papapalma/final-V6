@@ -24,6 +24,10 @@ import {
 } from '@/services/notificationService';
 import { activityLogService } from '@/services/activityLogService';
 import { lendingService } from '@/services/lendingService';
+import {
+  getTraineeTodayAttendanceStatus,
+  formatHHMM12,
+} from '@/lib/traineeAttendanceStatus';
 import { z } from 'zod';
 
 // Validation schemas
@@ -106,6 +110,44 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         : log.entity_type === 'trainee' ? `/trainees/${log.entity_id}/edit`
         : '/dashboard',
     }));
+
+  if (context.role === 'trainee' && context.userId) {
+    const todayStatus = await getTraineeTodayAttendanceStatus({
+      userId: context.userId,
+      tenantId: context.tenantId,
+    });
+
+    if (todayStatus.needsAttendance) {
+      const slot = todayStatus.pendingSessionLabel;
+      const slotTitle = slot === 'morning' ? 'Morning' : slot === 'afternoon' ? 'Afternoon' : 'Daily';
+      const windowRange =
+        todayStatus.windowOpenTime && todayStatus.windowCloseTime
+          ? ` (${formatHHMM12(todayStatus.windowOpenTime)} – ${formatHHMM12(todayStatus.windowCloseTime)})`
+          : '';
+      const programSuffix = todayStatus.programName ? ` for ${todayStatus.programName}` : '';
+
+      const title = todayStatus.windowOpen
+        ? `${slotTitle} attendance window is open`
+        : slot
+          ? `Reminder: Take your ${slot} attendance`
+          : 'Attendance check-in needed today';
+
+      const description = todayStatus.windowOpen
+        ? `Submit your ${slot || 'daily'} attendance selfie${programSuffix} before the window closes${windowRange}.`
+        : slot
+          ? `You haven't checked in for ${slot} attendance${programSuffix} yet${windowRange}.`
+          : `You have not recorded today's attendance${programSuffix}. Open Attendance to review your schedule.`;
+
+      notifications.push({
+        id: `attendance-${todayStatus.date}-${slot || 'daily'}`,
+        type: 'attendance',
+        title,
+        description,
+        createdAt: new Date().toISOString(),
+        href: '/trainee/attendance',
+      });
+    }
+  }
 
   if (['super_admin', 'local_admin', 'staff_inventory_manager'].includes(context.role)) {
     const overdue = await lendingService.getOverdueLendings(context);

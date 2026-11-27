@@ -11,6 +11,7 @@ export interface Program {
   type_of_funding: string;
   icon: string;
   status: 'active' | 'inactive';
+  rawStatus?: 'active' | 'upcoming' | 'completed' | 'cancelled' | 'inactive';
   startDate: string;
   endDate: string;
   photoUrl: string;

@@ -22,6 +22,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { UPLOAD_BASE_DIR } from '@/lib/fileStorage';
+import { fetchAllRows } from '@/lib/supabasePagination';
 import { logger } from '@/utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -65,11 +66,20 @@ export interface CleanupReport {
 // Tables and columns that store file paths
 // ---------------------------------------------------------------------------
 
-const FILE_PATH_COLUMNS: Array<{ table: string; columns: string[] }> = [
-  { table: 'programs',      columns: ['image_path', 'thumbnail_path'] },
-  { table: 'trainees',      columns: ['photo_path', 'thumbnail_path'] },
-  { table: 'items',         columns: ['image_path', 'thumbnail_path', 'qr_code_path'] },
-  { table: 'certificates',  columns: ['file_path', 'qr_code_path'] },
+const FILE_PATH_COLUMNS: Array<{
+  table: string;
+  columns: string[];
+  tenantFilterMode?: 'column' | 'conversation_join';
+}> = [
+  { table: 'programs',                   columns: ['image_path', 'thumbnail_path'] },
+  { table: 'trainees',                   columns: ['photo_path', 'thumbnail_path'] },
+  { table: 'items',                      columns: ['image_path', 'thumbnail_path', 'qr_code_path'] },
+  { table: 'certificates',               columns: ['file_path', 'qr_code_path'] },
+  { table: 'attendance',                 columns: ['selfie_morning_path', 'selfie_afternoon_path'] },
+  { table: 'training_requirement_files', columns: ['file_path'] },
+  { table: 'enrollment_requirements',    columns: ['document_url'] },
+  { table: 'announcements',              columns: ['media_url'] },
+  { table: 'messages',                   columns: ['attachment_url'], tenantFilterMode: 'conversation_join' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -121,28 +131,39 @@ function toRelativePath(absolutePath: string): string {
 async function fetchAllDatabasePaths(tenantId?: string): Promise<Set<string>> {
   const allPaths = new Set<string>();
 
-  for (const { table, columns } of FILE_PATH_COLUMNS) {
+  for (const { table, columns, tenantFilterMode = 'column' } of FILE_PATH_COLUMNS) {
     for (const column of columns) {
       try {
-        let query = supabaseAdmin
-          .from(table)
-          .select(column)
-          .not(column, 'is', null);
+        const data = await fetchAllRows<Record<string, unknown>>(
+          () => {
+            const selectExpr =
+              tenantId && tenantFilterMode === 'conversation_join'
+                ? `${column}, conversation:conversations!inner(tenant_id)`
+                : column;
 
-        if (tenantId) {
-          query = query.eq('tenant_id', tenantId);
-        }
+            let query = supabaseAdmin
+              .from(table)
+              .select(selectExpr)
+              .not(column, 'is', null);
 
-const { data, error } = await query;
+            if (tenantId) {
+              query =
+                tenantFilterMode === 'conversation_join'
+                  ? query.eq('conversation.tenant_id', tenantId)
+                  : query.eq('tenant_id', tenantId);
+            }
 
-        if (error || !data) continue;
+            return query;
+          },
+          1000,
+          100000
+        );
 
         for (const row of data) {
           const value = row[column] as string | null;
           if (value) {
             // Normalise: ensure leading slash, forward slashes
-
-const normalised = ('/' + value.replace(/\\/g, '/').replace(/^\/+/, ''));
+            const normalised = ('/' + value.replace(/\\/g, '/').replace(/^\/+/, ''));
             allPaths.add(normalised);
           }
         }

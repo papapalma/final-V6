@@ -76,6 +76,39 @@
   --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Landing Page Atmospheric Light Gradients & Apple Glass Surfaces (Light Mode) */
+  --landing-glass-header-bg: rgba(248, 250, 252, 0.80);
+  --landing-glass-header-border: rgba(226, 232, 240, 0.82);
+  --landing-band-features:
+    radial-gradient(62% 58% at 12% 10%, rgba(219, 234, 254, 0.28) 0%, transparent 66%),
+    radial-gradient(56% 52% at 88% 18%, rgba(224, 242, 254, 0.22) 0%, transparent 64%),
+    linear-gradient(180deg, #f8fafc 0%, #ffffff 55%, #f8fafc 100%);
+  --landing-band-programs:
+    radial-gradient(58% 55% at 86% 16%, rgba(186, 230, 253, 0.14) 0%, transparent 65%),
+    radial-gradient(54% 52% at 10% 82%, rgba(224, 231, 255, 0.14) 0%, transparent 66%),
+    linear-gradient(180deg, #f8fafc 0%, #f5f9ff 50%, #f8fafc 100%);
+  --landing-band-about:
+    radial-gradient(48% 54% at 18% 48%, rgba(219, 234, 254, 0.20) 0%, transparent 66%),
+    radial-gradient(48% 54% at 82% 52%, rgba(224, 242, 254, 0.20) 0%, transparent 66%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --landing-band-cta:
+    radial-gradient(72% 80% at 50% 0%, rgba(255, 255, 255, 0.72) 0%, transparent 62%),
+    radial-gradient(58% 68% at 50% 100%, rgba(59, 130, 246, 0.06) 0%, transparent 68%),
+    linear-gradient(135deg, #f8fafc 0%, #f1f7fe 50%, #f5f7ff 100%);
+  --landing-band-contact:
+    radial-gradient(60% 56% at 50% 100%, rgba(186, 230, 253, 0.14) 0%, transparent 68%),
+    linear-gradient(180deg, #f8fafc 0%, #f4f8fe 100%);
+  --landing-glass-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.90) 0%, rgba(255, 255, 255, 0.78) 100%);
+  --landing-glass-card-border: rgba(226, 232, 240, 0.88);
+  --landing-glass-card-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -10px rgba(37, 99, 235, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --landing-glass-card-hover-shadow:
+    0 14px 32px -12px rgba(15, 23, 42, 0.12),
+    0 6px 18px -6px rgba(37, 99, 235, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .dark {
@@ -123,6 +156,39 @@
   --surface-raised: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
   --shadow-soft: 0 2px 6px rgba(0, 0, 0, 0.35), 0 10px 24px rgba(0, 0, 0, 0.28);
   --shadow-hover: 0 16px 36px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(59, 130, 246, 0.16);
+
+  /* Landing Page Atmospheric Twilight Gradients & Apple Glass Surfaces (Dark Mode) */
+  --landing-glass-header-bg: rgba(2, 6, 23, 0.78);
+  --landing-glass-header-border: rgba(30, 41, 59, 0.82);
+  --landing-band-features:
+    radial-gradient(62% 58% at 12% 10%, rgba(37, 99, 235, 0.07) 0%, transparent 66%),
+    radial-gradient(56% 52% at 88% 18%, rgba(14, 165, 233, 0.05) 0%, transparent 64%),
+    linear-gradient(180deg, #020617 0%, #040a18 55%, #020617 100%);
+  --landing-band-programs:
+    radial-gradient(58% 55% at 86% 16%, rgba(56, 189, 248, 0.05) 0%, transparent 65%),
+    radial-gradient(54% 52% at 10% 82%, rgba(99, 102, 241, 0.05) 0%, transparent 66%),
+    linear-gradient(180deg, #020617 0%, #060d1b 50%, #020617 100%);
+  --landing-band-about:
+    radial-gradient(48% 54% at 18% 48%, rgba(59, 130, 246, 0.06) 0%, transparent 66%),
+    radial-gradient(48% 54% at 82% 52%, rgba(14, 165, 233, 0.05) 0%, transparent 66%),
+    linear-gradient(180deg, #020617 0%, #040a17 100%);
+  --landing-band-cta:
+    radial-gradient(68% 76% at 50% 0%, rgba(59, 130, 246, 0.10) 0%, transparent 64%),
+    radial-gradient(54% 64% at 50% 100%, rgba(14, 165, 233, 0.06) 0%, transparent 68%),
+    linear-gradient(135deg, #060d1e 0%, #081329 50%, #091026 100%);
+  --landing-band-contact:
+    radial-gradient(60% 56% at 50% 100%, rgba(59, 130, 246, 0.06) 0%, transparent 68%),
+    linear-gradient(180deg, #020617 0%, #050b18 100%);
+  --landing-glass-card-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.84) 0%, rgba(15, 23, 42, 0.72) 100%);
+  --landing-glass-card-border: rgba(148, 163, 184, 0.16);
+  --landing-glass-card-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 10px 28px -10px rgba(37, 99, 235, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --landing-glass-card-hover-shadow:
+    0 18px 36px -12px rgba(0, 0, 0, 0.55),
+    0 6px 20px -6px rgba(59, 130, 246, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 @theme inline {
@@ -584,9 +650,142 @@
   will-change: transform;
 }
 
+/* Account soft-delete row exit & irreversible purge hold-to-confirm */
+.account-row-exiting {
+  opacity: 0;
+  transform: scale(0.985);
+  pointer-events: none;
+  transition: opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+
+.hold-confirm-fill {
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 200ms var(--ease-out);
+  will-change: clip-path;
+}
+
+[data-holding="true"] .hold-confirm-fill {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path var(--hold-duration, 1500ms) linear;
+}
+
+/* Landing Page Programs Carousel & View All Transitions (Emil Kowalski restrained motion) */
+.programs-carousel-track {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.programs-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes programs-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.programs-view-enter {
+  animation: programs-view-enter var(--duration-normal) var(--ease-out);
+}
+
+.programs-tactile-btn {
+  transition: transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.programs-tactile-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.programs-card-media {
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .group:hover .programs-card-media {
+    transform: scale(1.04);
+  }
+}
+
+/* Landing Page Light Gradients & Apple Translucent Materials */
+.landing-glass-header {
+  background: var(--landing-glass-header-bg);
+  border-bottom: 1px solid var(--landing-glass-header-border);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  transition: background-color var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.landing-band-features {
+  background: var(--landing-band-features);
+}
+
+.landing-band-programs {
+  background: var(--landing-band-programs);
+}
+
+.landing-band-about {
+  background: var(--landing-band-about);
+}
+
+.landing-band-cta {
+  background: var(--landing-band-cta);
+}
+
+.landing-band-contact {
+  background: var(--landing-band-contact);
+}
+
+.landing-glass-card {
+  background: var(--landing-glass-card-bg);
+  border-color: var(--landing-glass-card-border);
+  box-shadow: var(--landing-glass-card-shadow);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.landing-glass-card-interactive {
+  transition: transform var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .landing-glass-card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+    box-shadow: var(--landing-glass-card-hover-shadow);
+  }
+}
+
 @media (prefers-reduced-transparency: reduce) {
-  .att-modal-scrim {
+  .att-modal-scrim,
+  [data-slot="dialog-overlay"],
+  [data-slot="alert-dialog-overlay"] {
     background-color: rgba(2, 6, 23, 0.78);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .landing-glass-header {
+    background: var(--background);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .landing-glass-card {
+    background: var(--card);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -655,5 +854,42 @@
 
   .req-progress-fill {
     transition-duration: 0.01ms !important;
+  }
+
+  .account-row-exiting {
+    transform: none !important;
+    transition: opacity 120ms ease !important;
+  }
+
+  .hold-confirm-fill {
+    clip-path: none !important;
+    opacity: 0;
+    transition: opacity 140ms ease !important;
+  }
+
+  [data-holding="true"] .hold-confirm-fill {
+    clip-path: none !important;
+    opacity: 0.55;
+    transition: opacity 140ms ease !important;
+  }
+
+  .programs-view-enter {
+    animation: att-scrim-in 140ms ease !important;
+    transform: none !important;
+  }
+
+  .programs-tactile-btn {
+    transform: none !important;
+    transition: opacity 140ms ease, background-color 140ms ease, color 140ms ease !important;
+  }
+
+  .programs-card-media {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .landing-glass-card-interactive {
+    transform: none !important;
+    transition: border-color 140ms ease, opacity 140ms ease !important;
   }
 }

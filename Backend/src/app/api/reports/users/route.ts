@@ -24,7 +24,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   let usersQuery = supabaseAdmin
   .from('users')
-  .select('id, email, username, role, created_at');
+  .select('id, email, username, role, created_at')
+  .is('deleted_at', null);
 
   // Tenant isolation: non-super-admins can only see their own tenant's users
 

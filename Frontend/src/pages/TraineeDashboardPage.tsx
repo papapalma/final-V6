@@ -28,6 +28,13 @@ import {
 import { Link } from 'react-router-dom';
 import { Settings as SettingsIcon, Download as DownloadIcon } from 'lucide-react';
 import { isStandalone, canInstallPWA, promptPWAInstall, subscribeInstallPrompt } from '../utils/pwa';
+import {
+  isPushNotificationSupported,
+  requestNotificationPermission,
+  subscribeToPushNotifications,
+  syncPushSubscriptions,
+} from '../utils/pushSubscription';
+import { ATTENDANCE_UPDATED_EVENT } from '../components/OverdueBellNotification';
 import { getFileUrl } from '../services/api';
 import traineeService from '../services/traineeService';
 import programService from '../services/programService';
@@ -114,6 +121,26 @@ interface TraineeProfile {
   };
 }
 
+interface TodayAttendanceStatus {
+  date: string;
+  hasSession: boolean;
+  isExcludedDay: boolean;
+  sessionId: string | null;
+  sessionTitle: string | null;
+  programId: string | null;
+  programName: string | null;
+  morningDone: boolean;
+  afternoonDone: boolean;
+  needsAttendance: boolean;
+  pendingSessionLabel: 'morning' | 'afternoon' | null;
+  windowOpen: boolean;
+  windowSessionLabel: 'morning' | 'afternoon' | null;
+  windowOpenTime: string | null;
+  windowCloseTime: string | null;
+  secondsUntilOpen: number | null;
+  secondsUntilClose: number | null;
+}
+
 export default function TraineeDashboardPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -122,7 +149,9 @@ export default function TraineeDashboardPage() {
   const [_recentAttendance, setRecentAttendance] = useState<Attendance[]>([]);
   const [upcomingSessions, setUpcomingSessions] = useState<ProgramSession[]>([]);
   const [excludedDates, setExcludedDates] = useState<ExcludedDate[]>([]);
+  const [todayAttendance, setTodayAttendance] = useState<TodayAttendanceStatus | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [enablingPush, setEnablingPush] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isAppInstalled, setIsAppInstalled] = useState(isStandalone());
   const [canInstall, setCanInstall] = useState(canInstallPWA());
@@ -136,9 +165,13 @@ export default function TraineeDashboardPage() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Check if push notifications are already enabled
+    // Check if push notifications are already enabled & sync device subscription with backend
     if ('Notification' in window) {
-      setNotificationsEnabled(Notification.permission === 'granted');
+      const isGranted = Notification.permission === 'granted';
+      setNotificationsEnabled(isGranted);
+      if (isGranted && navigator.onLine) {
+        void syncPushSubscriptions();
+      }
     }
 
     // Load all dashboard data with a single optimized API call
@@ -204,6 +237,7 @@ export default function TraineeDashboardPage() {
         setRecentAttendance(dashboardData.recentAttendance);
         setUpcomingSessions(dashboardData.upcomingSessions || []);
         setExcludedDates(dashboardData.excludedDates || []);
+        setTodayAttendance(dashboardData.todayAttendance || null);
 
       } catch (error: any) {
         logger.error('Failed to load dashboard data', { error });
@@ -213,12 +247,19 @@ export default function TraineeDashboardPage() {
       }
     };
 
+    const handleAttendanceUpdated = () => {
+      traineeService.clearProfileCache();
+      void loadDashboardData();
+    };
+    window.addEventListener(ATTENDANCE_UPDATED_EVENT, handleAttendanceUpdated);
+
     loadDashboardData();
 
     return () => {
       unsub();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener(ATTENDANCE_UPDATED_EVENT, handleAttendanceUpdated);
     };
   }, [user]);
 
@@ -277,26 +318,55 @@ export default function TraineeDashboardPage() {
   };
 
   const handleEnableNotifications = async () => {
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    if (!isPushNotificationSupported()) {
       toast.error('Push notifications are not supported in this browser');
       return;
     }
+    setEnablingPush(true);
     try {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        setNotificationsEnabled(true);
-        toast.success('Notifications enabled', {
-          description: 'You will receive alerts for schedule changes and reminders',
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        toast.info('Notifications blocked', {
+          description: 'Enable notifications in your browser settings to receive attendance reminders',
+        });
+        return;
+      }
+
+      // Ensure device is subscribed and registered in backend push_subscriptions
+      const subscriptionId = await subscribeToPushNotifications();
+      setNotificationsEnabled(true);
+      if (subscriptionId) {
+        toast.success('Push notifications enabled', {
+          description: 'You will receive reminders for morning and afternoon attendance check-ins',
         });
       } else {
-        toast.info('Notifications blocked', {
-          description: 'Enable notifications in your browser settings to receive alerts',
+        toast.success('Browser alerts enabled', {
+          description: 'In-app attendance alerts are active; background push registration will retry automatically',
         });
       }
     } catch (error) {
-      logger.error('Failed to request notification permission', { error });
+      logger.error('Failed to enable push notifications', { error });
+      toast.error('Failed to enable notifications');
+    } finally {
+      setEnablingPush(false);
     }
   };
+
+  const attendanceReminderHint = (() => {
+    if (!todayAttendance?.needsAttendance) return null;
+    const slot = todayAttendance.pendingSessionLabel;
+    const timeRange =
+      todayAttendance.windowOpenTime && todayAttendance.windowCloseTime
+        ? `${_formatTime(todayAttendance.windowOpenTime)} – ${_formatTime(todayAttendance.windowCloseTime)}`
+        : null;
+    if (todayAttendance.windowOpen && slot) {
+      return `${slot === 'morning' ? 'Morning' : 'Afternoon'} attendance window is open${timeRange ? ` (${timeRange})` : ''}`;
+    }
+    if (slot) {
+      return `${slot === 'morning' ? 'Morning' : 'Afternoon'} attendance pending${timeRange ? ` (${timeRange})` : ''}`;
+    }
+    return 'Attendance check-in needed today';
+  })();
 
   if (loading) {
     return (
@@ -394,21 +464,49 @@ export default function TraineeDashboardPage() {
             </div>
           )}
 
+          {todayAttendance?.needsAttendance && !isOffline && (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-red-200 bg-red-50/70 dark:border-red-900/60 dark:bg-red-950/30">
+              <div className="flex items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-red-600/15 text-red-600 dark:bg-red-500/20 dark:text-red-400">
+                  <Calendar className="size-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-red-950 dark:text-red-100">
+                    {todayAttendance.windowOpen
+                      ? `${todayAttendance.pendingSessionLabel === 'afternoon' ? 'Afternoon' : 'Morning'} Attendance Window Is Open`
+                      : 'Attendance Reminder'}
+                  </p>
+                  <p className="text-xs text-red-800 dark:text-red-300 mt-0.5 leading-relaxed">
+                    {attendanceReminderHint || 'You have not submitted your attendance for today’s session yet.'}
+                  </p>
+                </div>
+              </div>
+              <Link to="/trainee/attendance" className="shrink-0">
+                <Button size="sm" className="w-full sm:w-auto gap-1.5 py-2 px-3.5 bg-red-600 hover:bg-red-700 text-white">
+                  <Calendar className="size-4" />
+                  Take Attendance
+                </Button>
+              </Link>
+            </div>
+          )}
+
           {'Notification' in window && !notificationsEnabled && !isOffline && (
-            <div className="flex items-start justify-between gap-4 p-3 sm:p-4 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700">
-              <div className="flex items-start gap-4 flex-1">
+            <div className="flex items-start justify-between gap-4 p-4 rounded-xl border border-blue-200 bg-blue-50/80 dark:bg-blue-950/30 dark:border-blue-800">
+              <div className="flex items-start gap-3 flex-1">
                 <Bell className="size-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-blue-900 dark:text-blue-100">Enable Notifications</p>
-                  <p className="text-sm text-blue-800 dark:text-blue-300">Get alerts for schedule changes and reminders.</p>
+                  <p className="font-semibold text-sm text-blue-900 dark:text-blue-100">Enable Push Notifications</p>
+                  <p className="text-xs text-blue-800 dark:text-blue-300 mt-0.5 leading-relaxed">Get reminders for morning &amp; afternoon attendance windows and schedule updates.</p>
                 </div>
               </div>
               <Button 
-                onClick={handleEnableNotifications} 
-                className="shrink-0 gap-2"
+                onClick={handleEnableNotifications}
+                disabled={enablingPush}
+                size="sm"
+                className="shrink-0 gap-2 py-2 px-3.5"
               >
                 <Bell className="size-4" />
-                Enable
+                {enablingPush ? 'Enabling...' : 'Enable'}
               </Button>
             </div>
           )}
@@ -416,7 +514,11 @@ export default function TraineeDashboardPage() {
           {/* MAIN CONTENT - Grid Layout */}
           <div className="space-y-4 sm:space-y-6">
             {/* Quick Actions */}
-            <QuickActionsCard traineeProfile={traineeProfile} />
+            <QuickActionsCard
+              traineeProfile={traineeProfile}
+              attendanceNeedsAction={Boolean(todayAttendance?.needsAttendance)}
+              attendanceReminderHint={attendanceReminderHint}
+            />
 
             {/* Programs and Progress */}
             <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">

@@ -13,6 +13,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds } from '@/lib/supabasePagination';
 import { logger } from '@/utils/logger';
 import { writeAuditLog } from '@/lib/auditLog';
 import { sendEmail, renderTemplate } from './emailService';
@@ -240,12 +241,18 @@ let tenantName = 'LGU Training Center';
 if (report.affectedTraineeIds && report.affectedTraineeIds.length > 0) {
     try {
       // ponytail: Add tenant_id filter to prevent cross-tenant data breach notifications
-      const { data: trainees } = await supabaseAdmin
-        .from('trainees')
-        .select('id, first_name, last_name, email')
-        .eq('tenant_id', report.tenantId) // RLS: Filter by tenant to prevent cross-tenant notification
-        .in('id', report.affectedTraineeIds)
-        .not('email', 'like', '%@deleted.invalid'); // Skip anonymized records
+      const traineeBatches = await Promise.all(
+        chunkIds(report.affectedTraineeIds, 150).map(async (idChunk) => {
+          const { data } = await supabaseAdmin
+            .from('trainees')
+            .select('id, first_name, last_name, email')
+            .eq('tenant_id', report.tenantId) // RLS: Filter by tenant to prevent cross-tenant notification
+            .in('id', idChunk)
+            .not('email', 'like', '%@deleted.invalid'); // Skip anonymized records
+          return data ?? [];
+        })
+      );
+      const trainees = traineeBatches.flat();
 
       for (const trainee of trainees ?? []) {
         try {

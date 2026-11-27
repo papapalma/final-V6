@@ -55,6 +55,14 @@ vi.mock('../components/DashboardLayout', () => ({
   ),
 }));
 
+vi.mock('../components/dashboard/TrainingStaffWorkspace', () => ({
+  default: () => <div data-testid="training-staff-workspace">Training Workspace</div>,
+}));
+
+vi.mock('../components/dashboard/InventoryStaffWorkspace', () => ({
+  default: () => <div data-testid="inventory-staff-workspace">Inventory Workspace</div>,
+}));
+
 const mockStatsPayload = {
   trainees: { active: 1250, total: 2000, completed: 500, inactive: 250 },
   programs: { total: 6, ongoing: 3, upcoming: 1, completed: 2 },
@@ -122,9 +130,13 @@ describe('DashboardPage — Hero KPI Numbers, Zero-CLS Skeletons & Role Quick Ac
     expect(screen.getByText('Borrowing').closest('a')).toHaveAttribute('href', '/lendings');
     expect(screen.getByText('Registrations').closest('a')).toHaveAttribute('href', '/registrations');
     expect(screen.getByText('Scan QR').closest('a')).toHaveAttribute('href', '/scan');
+
+    expect(screen.queryByTestId('training-staff-workspace')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-staff-workspace')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Recent Activity').length).toBeGreaterThan(0);
   });
 
-  it('renders inventory-only KPI links and 3 Quick Actions for staff_inventory_manager', async () => {
+  it('renders 5 inventory KPI links, 3 Quick Actions, and InventoryStaffWorkspace without empty Recent Activity for staff_inventory_manager', async () => {
     authMockState.role = 'staff_inventory_manager';
 
     render(
@@ -139,15 +151,24 @@ describe('DashboardPage — Hero KPI Numbers, Zero-CLS Skeletons & Role Quick Ac
 
     expect(screen.getByText('Available Items').closest('a')).toHaveAttribute('href', '/items?stock=good');
     expect(screen.getByText('Active Borrowings').closest('a')).toHaveAttribute('href', '/lendings');
+    expect(screen.getByText('Overdue Returns').closest('a')).toHaveAttribute('href', '/lendings');
+    expect(screen.getByText('Low Stock Alerts').closest('a')).toHaveAttribute('href', '/items?stock=low');
     expect(screen.getByText('Total Inventory Items').closest('a')).toHaveAttribute('href', '/items');
+
+    expect(screen.getByTestId('kpi-value-Overdue Returns')).toHaveTextContent('1');
+    expect(screen.getByTestId('kpi-value-Low Stock Alerts')).toHaveTextContent('2');
 
     expect(screen.queryByText('Add Trainee')).not.toBeInTheDocument();
     expect(screen.getByText('Add Item').closest('a')).toHaveAttribute('href', '/items/new');
     expect(screen.getByText('Borrowing').closest('a')).toHaveAttribute('href', '/lendings');
     expect(screen.getByText('Scan QR').closest('a')).toHaveAttribute('href', '/scan');
+
+    expect(screen.getByTestId('inventory-staff-workspace')).toBeInTheDocument();
+    expect(screen.queryByTestId('training-staff-workspace')).not.toBeInTheDocument();
+    expect(screen.queryByText('No recent activity')).not.toBeInTheDocument();
   });
 
-  it('renders training-only pre-filtered KPI links and 4 Quick Actions for staff_training_coordinator', async () => {
+  it('renders training-only pre-filtered KPI links, 4 Quick Actions, and TrainingStaffWorkspace for staff_training_coordinator', async () => {
     authMockState.role = 'staff_training_coordinator';
 
     render(
@@ -169,5 +190,8 @@ describe('DashboardPage — Hero KPI Numbers, Zero-CLS Skeletons & Role Quick Ac
     expect(screen.getByText('Registrations').closest('a')).toHaveAttribute('href', '/registrations');
     expect(screen.getByText('Scan QR').closest('a')).toHaveAttribute('href', '/scan');
     expect(screen.queryByText('Add Item')).not.toBeInTheDocument();
+
+    expect(screen.getByTestId('training-staff-workspace')).toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-staff-workspace')).not.toBeInTheDocument();
   });
 });

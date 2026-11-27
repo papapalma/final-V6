@@ -32,8 +32,23 @@ import registrationService, { PendingRegistration } from '../services/registrati
 import { useAuth } from '../contexts/AuthContext';
 import { ListSkeleton, TableSkeleton } from '../components/LoadingSkeletons';
 import TraineePreviewModal from '../components/TraineePreviewModal';
+import DeleteUserDialog from '../components/DeleteUserDialog';
 
 interface User extends ApiUser {}
+
+type AccountRoleFilter =
+  | 'all'
+  | 'staff'
+  | 'local_admin'
+  | 'staff_training_coordinator'
+  | 'staff_inventory_manager'
+  | 'trainee';
+
+const STAFF_ROLES = new Set<string>([
+  'local_admin',
+  'staff_training_coordinator',
+  'staff_inventory_manager',
+]);
 
 export default function AccountManagementPage() {
   const { user: currentUser, hasPermission } = useAuth();
@@ -57,9 +72,14 @@ export default function AccountManagementPage() {
   // ── Accounts state ──────────────────────────────────────────────
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<AccountRoleFilter>('all');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedUserForDeletion, setSelectedUserForDeletion] = useState<User | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [exitingUserId, setExitingUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -96,7 +116,7 @@ export default function AccountManagementPage() {
 
   useEffect(() => {
     setAccountsPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, roleFilter]);
 
   // Refetch registrations when filters change
   useEffect(() => {
@@ -245,18 +265,65 @@ export default function AccountManagementPage() {
     }
   };
 
-  const handleDeleteUser = async (user: User) => {
-    if (user.email === 'admin@bmdc.edu.ph') { toast.error('Cannot delete the main admin account'); return; }
-    if (confirm(`Are you sure you want to delete ${user.username}?`)) {
-      try {
-        await userService.deleteUser(user.id);
-        await fetchUsers();
-        toast.success('User deleted successfully');
-      } catch (error: any) {
-        if (error?.status === 404) { toast.warning('User was already deleted. Refreshing list...'); await fetchUsers(); }
-        else toast.error(error?.message || 'Failed to delete user');
-      }
+  const isProtectedUser = (user: User) =>
+    user.email === 'admin@bmdc.edu.ph' || user.id === currentUser?.id;
+
+  const handleDeleteUserClick = (user: User) => {
+    if (user.email === 'admin@bmdc.edu.ph') {
+      toast.error('Cannot archive the main admin account');
+      return;
     }
+    if (user.id === currentUser?.id) {
+      toast.error('Cannot archive your own account');
+      return;
+    }
+    setSelectedUserForDeletion(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!selectedUserForDeletion) return;
+    const targetUser = selectedUserForDeletion;
+    setIsDeletingUser(true);
+    try {
+      await userService.deleteUser(targetUser.id);
+      setDeleteDialogOpen(false);
+      setSelectedUserForDeletion(null);
+
+      // Brief, reduced-motion-safe row exit cue before refreshing the list
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      if (!prefersReducedMotion) {
+        setExitingUserId(targetUser.id);
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+
+      setUsers((prev) => prev.filter((u) => u.id !== targetUser.id));
+      setExitingUserId(null);
+      await fetchUsers();
+      toast.success(`Account "${targetUser.username}" archived. You can restore it within 30 days in Archive.`);
+    } catch (error: any) {
+      setExitingUserId(null);
+      if (error?.status === 404) {
+        toast.warning('Account was already archived. Refreshing list...');
+        setDeleteDialogOpen(false);
+        setSelectedUserForDeletion(null);
+        await fetchUsers();
+      } else {
+        toast.error(error?.message || 'Failed to archive user account');
+      }
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+  const handleCancelDeleteUser = () => {
+    if (isDeletingUser) return;
+    setDeleteDialogOpen(false);
+    setSelectedUserForDeletion(null);
   };
 
   const openEditModal = (user: User) => {
@@ -271,11 +338,22 @@ export default function AccountManagementPage() {
     setFormErrors({});
   };
 
-  const filteredUsers = users.filter(u =>
-    u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.role.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter((u) => {
+    const matchesRole =
+      roleFilter === 'all'
+        ? true
+        : roleFilter === 'staff'
+          ? STAFF_ROLES.has(u.role)
+          : u.role === roleFilter;
+    if (!matchesRole) return false;
+
+    const query = searchQuery.toLowerCase();
+    return (
+      u.username.toLowerCase().includes(query) ||
+      u.email.toLowerCase().includes(query) ||
+      u.role.toLowerCase().includes(query)
+    );
+  });
 
   const usersTotalPages = Math.ceil(filteredUsers.length / rowsPerPage);
   const usersStartIndex = (accountsPage - 1) * rowsPerPage;
@@ -340,9 +418,24 @@ export default function AccountManagementPage() {
           <TabsContent value="accounts" className="space-y-3 md:space-y-4 mt-4">
             <Card>
               <CardContent className="p-3 sm:p-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input placeholder="Search users..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10 text-sm" />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input placeholder="Search users..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10 text-sm" />
+                  </div>
+                  <Select value={roleFilter} onValueChange={(v: string) => setRoleFilter(v as AccountRoleFilter)}>
+                    <SelectTrigger aria-label="Filter by role" className="w-full sm:w-56 py-2 px-3.5 text-sm">
+                      <SelectValue placeholder="All Roles" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      <SelectItem value="staff">Admin &amp; Staff</SelectItem>
+                      <SelectItem value="local_admin">Local Admin</SelectItem>
+                      <SelectItem value="staff_training_coordinator">Staff (Trainees)</SelectItem>
+                      <SelectItem value="staff_inventory_manager">Staff (Inventory)</SelectItem>
+                      <SelectItem value="trainee">Trainees</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
@@ -370,7 +463,10 @@ export default function AccountManagementPage() {
                     </TableHeader>
                     <TableBody>
                       {paginatedUsers.map(user => (
-                        <TableRow key={user.id}>
+                        <TableRow
+                          key={user.id}
+                          className={exitingUserId === user.id ? 'account-row-exiting' : undefined}
+                        >
                           <TableCell className="py-2 sm:py-4">
                             <div className="flex items-center gap-2">
                               <Avatar className="size-8"><AvatarFallback className="bg-primary text-primary-foreground text-xs">{user.username.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
@@ -385,8 +481,30 @@ export default function AccountManagementPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1">
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEditModal(user)}><Edit className="size-3" /></Button>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleDeleteUser(user)} disabled={user.email === 'admin@bmdc.edu.ph'}><Trash2 className="size-3" /></Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={`Edit ${user.username}`} onClick={() => openEditModal(user)}><Edit className="size-3" /></Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                aria-label={
+                                  user.id === currentUser?.id
+                                    ? `Cannot archive your own account (${user.username})`
+                                    : user.email === 'admin@bmdc.edu.ph'
+                                      ? 'Cannot archive main admin account'
+                                      : `Archive ${user.username}`
+                                }
+                                title={
+                                  user.id === currentUser?.id
+                                    ? 'You cannot archive your own account'
+                                    : user.email === 'admin@bmdc.edu.ph'
+                                      ? 'Main admin account cannot be archived'
+                                      : `Archive ${user.username}`
+                                }
+                                onClick={() => handleDeleteUserClick(user)}
+                                disabled={isProtectedUser(user)}
+                              >
+                                <Trash2 className="size-3" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -400,7 +518,10 @@ export default function AccountManagementPage() {
             {!loading && (
               <div className="sm:hidden space-y-2">
                 {paginatedUsers.map(user => (
-                  <Card key={user.id} className="p-0">
+                  <Card
+                    key={user.id}
+                    className={`p-0 ${exitingUserId === user.id ? 'account-row-exiting' : ''}`}
+                  >
                     <CardContent className="p-3">
                       <div className="flex gap-3">
                         <Avatar className="size-10 shrink-0"><AvatarFallback className="bg-primary text-primary-foreground text-xs">{user.username.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
@@ -416,7 +537,22 @@ export default function AccountManagementPage() {
                           </div>
                           <div className="flex gap-2">
                             <Button variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => openEditModal(user)}><Edit className="mr-1 size-3" />Edit</Button>
-                            <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => handleDeleteUser(user)} disabled={user.email === 'admin@bmdc.edu.ph'}><Trash2 className="size-3" /></Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              aria-label={
+                                user.id === currentUser?.id
+                                  ? `Cannot archive your own account (${user.username})`
+                                  : user.email === 'admin@bmdc.edu.ph'
+                                    ? 'Cannot archive main admin account'
+                                    : `Archive ${user.username}`
+                              }
+                              onClick={() => handleDeleteUserClick(user)}
+                              disabled={isProtectedUser(user)}
+                            >
+                              <Trash2 className="size-3" />
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -855,6 +991,15 @@ export default function AccountManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Archive User Confirmation Modal ── */}
+      <DeleteUserDialog
+        open={deleteDialogOpen}
+        user={selectedUserForDeletion}
+        isDeleting={isDeletingUser}
+        onConfirm={handleConfirmDeleteUser}
+        onCancel={handleCancelDeleteUser}
+      />
 
       {/* ── Trainee Preview Modal ── */}
       <TraineePreviewModal

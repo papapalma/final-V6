@@ -4,8 +4,11 @@ import { NotificationBadge, formatBadgeAriaLabel } from './ui/notification-badge
 import { Bell } from 'lucide-react';
 import notificationService, { type InAppNotification } from '../services/notificationService';
 import NotificationsModal from './NotificationsModal';
+import { showLocalAttendanceReminder } from '../utils/pushSubscription';
 import logger from '../utils/logger';
 import { useAuth } from '../contexts/AuthContext';
+
+export const ATTENDANCE_UPDATED_EVENT = 'bmdc-attendance-updated';
 
 const SEEN_STORAGE_PREFIX = 'bmdc-seen-notifications';
 const MAX_STORED_SEEN_IDS = 200;
@@ -43,11 +46,11 @@ export default function OverdueBellNotification() {
   const [sessionUnreadIds, setSessionUnreadIds] = useState<ReadonlySet<string>>(() => new Set());
   const [modalOpen, setModalOpen] = useState(false);
 
-  // The backend applies the same role filter to the notification feed.
+  // The backend applies the same role filter to the notification feed (including trainee attendance reminders).
   const shouldShow =
     isAuthenticated &&
     Boolean(user) &&
-    ['super_admin', 'local_admin', 'staff_inventory_manager', 'staff_training_coordinator'].includes(user!.role);
+    ['super_admin', 'local_admin', 'staff_inventory_manager', 'staff_training_coordinator', 'trainee'].includes(user!.role);
 
   const storageKey = user?.id ? getSeenStorageKey(user.tenantId, user.id) : null;
 
@@ -62,14 +65,30 @@ export default function OverdueBellNotification() {
   const fetchNotifications = useCallback(async () => {
     try {
       const response = await notificationService.getNotifications();
-      setNotifications(response.notifications || []);
+      const nextList = response.notifications || [];
+      setNotifications(nextList);
+
+      // Fire a deduplicated browser alert while the portal is open when a trainee's attendance window is open
+      if (user?.role === 'trainee') {
+        const openAttendanceReminder = nextList.find(
+          (n) => n.type === 'attendance' && /window is open/i.test(n.title)
+        );
+        if (openAttendanceReminder) {
+          void showLocalAttendanceReminder(
+            openAttendanceReminder.title,
+            openAttendanceReminder.description,
+            openAttendanceReminder.id,
+            openAttendanceReminder.href
+          );
+        }
+      }
     } catch (error) {
       const status = (error as any)?.status ?? (error as any)?.response?.status;
       if (status !== 403 && status !== 404) {
-        logger.error('Failed to fetch overdue items for bell notification', { error });
+        logger.error('Failed to fetch notifications for bell', { error });
       }
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     if (!isAuthReady || !shouldShow) {
@@ -78,13 +97,22 @@ export default function OverdueBellNotification() {
 
     fetchNotifications();
 
-    // Check for new notifications every 5 minutes
+    const handleAttendanceUpdated = () => {
+      fetchNotifications();
+    };
+    window.addEventListener(ATTENDANCE_UPDATED_EVENT, handleAttendanceUpdated);
+
+    // Check for new notifications every 5 minutes (2 minutes for trainees during active windows)
+    const pollMs = user?.role === 'trainee' ? 2 * 60 * 1000 : 5 * 60 * 1000;
     const interval = window.setInterval(() => {
       fetchNotifications();
-    }, 5 * 60 * 1000);
+    }, pollMs);
 
-    return () => window.clearInterval(interval);
-  }, [shouldShow, isAuthReady, fetchNotifications]);
+    return () => {
+      window.removeEventListener(ATTENDANCE_UPDATED_EVENT, handleAttendanceUpdated);
+      window.clearInterval(interval);
+    };
+  }, [shouldShow, isAuthReady, fetchNotifications, user?.role]);
 
   const unreadIds = useMemo(() => {
     const next = new Set<string>();

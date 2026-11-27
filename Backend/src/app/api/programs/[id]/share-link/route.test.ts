@@ -159,7 +159,7 @@ describe('GET /api/programs/:id/share-link', () => {
       expect(data.error).toContain('Program not found');
     });
 
-    it('should return 403 when program is not active', async () => {
+    it('should return 403 when program is completed', async () => {
       const inactiveProgram = { ...mockProgram, status: 'completed' };
       (programService.getProgramById as jest.Mock).mockResolvedValue(inactiveProgram);
 
@@ -170,10 +170,10 @@ describe('GET /api/programs/:id/share-link', () => {
 
       expect(response.status).toBe(403);
       const data = await response.json();
-      expect(data.error).toContain('active programs');
+      expect(data.error).toContain('active or upcoming programs');
     });
 
-    it('should return 403 when program status is upcoming', async () => {
+    it('should allow share link generation when program status is upcoming', async () => {
       const upcomingProgram = { ...mockProgram, status: 'upcoming' };
       (programService.getProgramById as jest.Mock).mockResolvedValue(upcomingProgram);
 
@@ -182,9 +182,23 @@ describe('GET /api/programs/:id/share-link', () => {
         { params: Promise.resolve({ id: 'prog-uuid-1234' }) }
       );
 
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.data.url).toContain('/share?program_id=prog-uuid-1234');
+    });
+
+    it('should return 403 when program status is cancelled', async () => {
+      const cancelledProgram = { ...mockProgram, status: 'cancelled' };
+      (programService.getProgramById as jest.Mock).mockResolvedValue(cancelledProgram);
+
+      const response = await GET(
+        mockRequest as NextRequest,
+        { params: Promise.resolve({ id: 'prog-uuid-1234' }) }
+      );
+
       expect(response.status).toBe(403);
       const data = await response.json();
-      expect(data.error).toContain('active programs');
+      expect(data.error).toContain('active or upcoming programs');
     });
 
     it('should respect tenant isolation (non-super-admin)', async () => {
@@ -247,14 +261,72 @@ describe('GET /api/programs/:id/share-link', () => {
       expect(data.data.url).toContain('/share?program_id=prog-uuid-1234');
     });
 
-    it('should use application base domain in link', async () => {
+    it('should use frontend base domain in link instead of backend API port', async () => {
       const response = await GET(
         mockRequest as NextRequest,
         { params: Promise.resolve({ id: 'prog-uuid-1234' }) }
       );
 
       const data = await response.json();
-      expect(data.data.url).toContain('http://localhost:3003');
+      expect(data.data.url).toContain('http://localhost:3001/share?program_id=prog-uuid-1234');
+    });
+
+    it('should derive share link origin from trusted bmdc.site Origin header', async () => {
+      const headersMap = new Map([
+        ['host', 'bmdc.online'],
+        ['x-forwarded-proto', 'https'],
+        ['origin', 'https://bmdc.site'],
+      ]);
+      const prodReq = {
+        headers: { get: (key: string) => headersMap.get(key) ?? null },
+        url: 'https://bmdc.online/api/programs/prog-uuid-1234/share-link',
+      } as any;
+
+      const response = await GET(
+        prodReq as NextRequest,
+        { params: Promise.resolve({ id: 'prog-uuid-1234' }) }
+      );
+
+      const data = await response.json();
+      expect(data.data.url).toBe('https://bmdc.site/share?program_id=prog-uuid-1234');
+    });
+
+    it('should ignore untrusted Origin header and never reflect attacker domain', async () => {
+      const headersMap = new Map([
+        ['host', 'bmdc.online'],
+        ['x-forwarded-proto', 'https'],
+        ['origin', 'https://evil.example'],
+      ]);
+      const spoofedReq = {
+        headers: { get: (key: string) => headersMap.get(key) ?? null },
+        url: 'https://bmdc.online/api/programs/prog-uuid-1234/share-link',
+      } as any;
+
+      const response = await GET(
+        spoofedReq as NextRequest,
+        { params: Promise.resolve({ id: 'prog-uuid-1234' }) }
+      );
+
+      const data = await response.json();
+      expect(data.data.url).not.toContain('evil.example');
+      expect(data.data.url).toBe('https://bmdc.online/share?program_id=prog-uuid-1234');
+    });
+
+    it('should map tenant-scoped uploads image_path to public /api/files URL without double /uploads/', async () => {
+      const tenantUuid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+      (programService.getProgramById as jest.Mock).mockResolvedValue({
+        ...mockProgram,
+        image_path: `/uploads/${tenantUuid}/images/programs/prog.jpg`,
+      });
+
+      const response = await GET(
+        mockRequest as NextRequest,
+        { params: Promise.resolve({ id: 'prog-uuid-1234' }) }
+      );
+
+      const data = await response.json();
+      expect(data.data.og.image).toContain(`/api/files/${tenantUuid}/images/programs/prog.jpg`);
+      expect(data.data.og.image).not.toContain('/uploads//uploads/');
     });
 
     it('should include UTM parameters when provided', async () => {

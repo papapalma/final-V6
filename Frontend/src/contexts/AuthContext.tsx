@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authLogger.login(userData.name, userData.id, userData.role);
 
       // Handle post-auth routing based on program context (Requirements 4.1, 4.2, 5.1)
-      const postAuthResult = await handlePostAuth(userData.id, 'login');
+      const postAuthResult = await handlePostAuth(userData.id, 'login', userData.role);
       setPostAuthRedirectPath(postAuthResult.targetPath);
 
       // Login successful - component handles navigation using getPostAuthRedirectPath()
@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authLogger.login(userData.name, userData.id, userData.role);
 
       // Handle post-auth routing based on program context (Requirements 4.1, 4.2, 5.1)
-      const postAuthResult = await handlePostAuth(userData.id, 'login');
+      const postAuthResult = await handlePostAuth(userData.id, 'login', userData.role);
       setPostAuthRedirectPath(postAuthResult.targetPath);
 
       return true;

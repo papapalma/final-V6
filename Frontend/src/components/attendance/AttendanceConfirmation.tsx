@@ -13,6 +13,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import AuthenticatedImage from './AuthenticatedImage';
 import type { AttendanceRecord } from '../../services/attendanceService';
+import { getGpsAccuracyInfo } from '../../lib/gpsFormat';
 
 interface AttendanceConfirmationProps {
   record: AttendanceRecord;
@@ -104,24 +105,34 @@ export default function AttendanceConfirmation({
           <span>{formatDateTime(submittedAt)}</span>
         </div>
 
-        {hasGps && (
-          <div className="flex items-center gap-2">
-            <MapPin className="size-4 shrink-0 text-primary" />
-            <span className="truncate flex-1">
-              {record.gps_address
-                ? record.gps_address
-                : `${record.gps_lat?.toFixed(5)}, ${record.gps_lng?.toFixed(5)}`}
-            </span>
-            <a
-              href={`https://maps.google.com/maps?q=${record.gps_lat},${record.gps_lng}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 text-primary underline underline-offset-2 text-xs"
-            >
-              Map
-            </a>
-          </div>
-        )}
+        {hasGps && (() => {
+          const accInfo = getGpsAccuracyInfo(record.gps_accuracy);
+          return (
+            <div className="flex items-start gap-2">
+              <MapPin className="size-4 shrink-0 text-primary mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-foreground">
+                  {record.gps_address
+                    ? record.gps_address
+                    : `${record.gps_lat?.toFixed(5)}, ${record.gps_lng?.toFixed(5)}`}
+                </p>
+                {accInfo && (
+                  <p className={`text-xs ${accInfo.textClass}`}>
+                    {accInfo.formatted} · {accInfo.quality}
+                  </p>
+                )}
+              </div>
+              <a
+                href={`https://maps.google.com/maps?q=${record.gps_lat},${record.gps_lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-primary underline underline-offset-2 text-xs mt-0.5"
+              >
+                Map
+              </a>
+            </div>
+          );
+        })()}
 
         {record.attempt_number && record.attempt_number > 1 && (
           <div className="flex items-center gap-2">

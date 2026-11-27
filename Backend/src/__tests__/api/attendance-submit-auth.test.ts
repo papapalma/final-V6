@@ -594,4 +594,65 @@ describe('POST /api/attendance/submit - File & Input Validation', () => {
     const body = await response.json();
     expect(body).toHaveProperty('error');
   });
+
+  // =========================================================================
+  // Test 11: Missing GPS coordinates → 400 Bad Request (GPS required)
+  // =========================================================================
+
+  it('Test 11: should return 400 when GPS coordinates are missing', async () => {
+    const { attendanceService } = require('@/services/attendanceService');
+    const GPS_TEST_TRAINEE_ID = '770e8400-e29b-41d4-a716-446655440099';
+    const traineeJWT = {
+      userId: USER_ID,
+      role: 'trainee',
+      tenantId: TENANT_ID,
+    };
+
+    requireRoleAsync.mockResolvedValue({ user: traineeJWT });
+    mockSuccessfulTraineeResolution(supabaseAdmin);
+    const origImpl = supabaseAdmin.from.getMockImplementation();
+    supabaseAdmin.from.mockImplementation((table: string) => {
+      if (table === 'trainee_accounts') {
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          maybeSingle: jest.fn().mockResolvedValue({
+            data: { trainee_id: GPS_TEST_TRAINEE_ID, tenant_id: TENANT_ID },
+          }),
+        };
+      }
+      if (table === 'trainees') {
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({
+            data: { id: GPS_TEST_TRAINEE_ID, first_name: 'GPS', last_name: 'Tester' },
+          }),
+        };
+      }
+      return origImpl(table);
+    });
+
+    attendanceService.getActiveSchedule.mockResolvedValue({
+      id: 'schedule-1',
+      program_id: PROGRAM_ID,
+    });
+    attendanceService.getCurrentWindowStatus.mockResolvedValue({
+      isOpen: true,
+      session_label: 'morning',
+    });
+
+    const request = createMockRequest('trainee-jwt-token');
+    const formDataNoGps = createMockFormData({
+      gps_lat: null,
+      gps_lng: null,
+    });
+    request.formData = jest.fn().mockResolvedValue(formDataNoGps);
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toMatch(/Location \(GPS\) is required/i);
+  });
 });

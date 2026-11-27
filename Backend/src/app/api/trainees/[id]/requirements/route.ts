@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext } from '@/middleware/tenantContext';
-import { handleOptionsRequest } from '@/middleware/cors';
+import { handleOptionsRequest, corsResponse } from '@/middleware/cors';
 import { logger } from '@/utils/logger';
 import { uploadRequirementFile, getTraineeRequirementFiles } from '@/services/trainingRequirementService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -21,54 +21,90 @@ export async function POST(
     const requirementType = formData.get('requirement_type') as string;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return corsResponse({ error: 'No file provided' }, request, { status: 400 });
     }
 
     if (!requirementType) {
-      return NextResponse.json({ error: 'Invalid requirement type' }, { status: 400 });
+      return corsResponse({ error: 'Invalid requirement type' }, request, { status: 400 });
     }
 
     const { data: trainee, error: traineeError } = await supabaseAdmin
       .from('trainees')
-      .select('id, tenant_id, registration_status, user_id')
+      .select('id, tenant_id, registration_status, user_id, email')
       .eq('id', traineeId)
       .single();
 
     if (traineeError || !trainee) {
-      return NextResponse.json({ error: 'Trainee not found' }, { status: 404 });
+      return corsResponse({ error: 'Trainee not found' }, request, { status: 404 });
     }
 
     let tenantId = trainee.tenant_id;
     let userId: string | undefined = trainee.user_id || undefined;
 
-    const ctxResult = requireTenantContext(request);
-    if (!ctxResult.error && ctxResult.context) {
-      if (trainee.tenant_id !== ctxResult.context.tenantId) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-      }
-      tenantId = ctxResult.context.tenantId;
-      userId = ctxResult.context.userId;
-    } else {
-      // Require valid cryptographic upload token for unauthenticated registration upload
-      const uploadToken =
-        request.headers.get('x-upload-token') ||
-        request.headers.get('X-Upload-Token') ||
-        request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-      const verified = uploadToken ? verifyUploadToken(uploadToken) : null;
+    // Check explicit X-Upload-Token first so an unrelated/stale session cookie or Bearer token
+    // never blocks self-registration uploads with a cross-tenant 403.
+    const explicitUploadToken =
+      request.headers.get('x-upload-token') ||
+      request.headers.get('X-Upload-Token');
 
+    if (explicitUploadToken) {
+      const verified = verifyUploadToken(explicitUploadToken);
       if (
         !verified ||
         verified.traineeId !== traineeId ||
         verified.tenantId !== trainee.tenant_id ||
         trainee.registration_status !== 'pending'
       ) {
-        return NextResponse.json(
+        return corsResponse(
           { error: 'Unauthorized: Valid upload token required' },
+          request,
           { status: 401 }
         );
       }
       tenantId = verified.tenantId;
       userId = trainee.user_id || undefined;
+    } else {
+      const ctxResult = requireTenantContext(request);
+      if (!ctxResult.error && ctxResult.context) {
+        if (trainee.tenant_id !== ctxResult.context.tenantId && !ctxResult.context.isSuperAdmin) {
+          return corsResponse({ error: 'Unauthorized' }, request, { status: 403 });
+        }
+        tenantId = trainee.tenant_id;
+        userId = ctxResult.context.userId;
+      } else {
+        const bearerUploadToken = request.headers
+          .get('authorization')
+          ?.replace(/^Bearer\s+/i, '');
+        const verified = bearerUploadToken ? verifyUploadToken(bearerUploadToken) : null;
+
+        if (
+          !verified ||
+          verified.traineeId !== traineeId ||
+          verified.tenantId !== trainee.tenant_id ||
+          trainee.registration_status !== 'pending'
+        ) {
+          return corsResponse(
+            { error: 'Unauthorized: Valid upload token required' },
+            request,
+            { status: 401 }
+          );
+        }
+        tenantId = verified.tenantId;
+        userId = trainee.user_id || undefined;
+      }
+    }
+
+    // Resolve user_id by trainee email if missing on the trainee row to satisfy uploaded_by FK
+    if (!userId && trainee.email) {
+      const { data: traineeUser } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('email', String(trainee.email).toLowerCase())
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (traineeUser?.id) {
+        userId = traineeUser.id;
+      }
     }
 
     const { data: requirementDefinition } = await supabaseAdmin
@@ -81,7 +117,7 @@ export async function POST(
       .maybeSingle();
 
     if (!requirementDefinition) {
-      return NextResponse.json({ error: 'Requirement definition not found' }, { status: 404 });
+      return corsResponse({ error: 'Requirement definition not found' }, request, { status: 404 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -96,10 +132,10 @@ export async function POST(
     });
 
     logger.info('Requirement file uploaded', { traineeId, requirementType, userId });
-    return NextResponse.json({ success: true, data: uploadedFile, file: uploadedFile });
+    return corsResponse({ success: true, data: uploadedFile, file: uploadedFile }, request);
   } catch (error: any) {
     logger.error('Failed to upload requirement file', { error: error?.message });
-    return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
+    return corsResponse({ error: 'Failed to upload file' }, request, { status: 500 });
   }
 }
 
@@ -109,7 +145,7 @@ export async function GET(
 ) {
   try {
     const ctxResult = requireTenantContext(request);
-    if (ctxResult.error) return ctxResult.error as NextResponse;
+    if (ctxResult.error) return corsResponse(ctxResult.error as NextResponse, request);
     const context = ctxResult.context!;
 
     const { id: traineeId } = await params;
@@ -120,18 +156,18 @@ export async function GET(
       .single();
 
     if (traineeError || !trainee) {
-      return NextResponse.json({ error: 'Trainee not found' }, { status: 404 });
+      return corsResponse({ error: 'Trainee not found' }, request, { status: 404 });
     }
 
     if (trainee.tenant_id !== context.tenantId && !context.isSuperAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      return corsResponse({ error: 'Unauthorized' }, request, { status: 403 });
     }
 
-    const files = await getTraineeRequirementFiles(context.tenantId, traineeId);
+    const files = await getTraineeRequirementFiles(trainee.tenant_id, traineeId);
     logger.info('Requirement files retrieved', { traineeId, fileCount: files.length, userId: context.userId });
-    return NextResponse.json({ success: true, files, data: files });
+    return corsResponse({ success: true, files, data: files }, request);
   } catch (error: any) {
     logger.error('Failed to retrieve requirement files', { error: error?.message });
-    return NextResponse.json({ error: 'Failed to retrieve files' }, { status: 500 });
+    return corsResponse({ error: 'Failed to retrieve files' }, request, { status: 500 });
   }
 }

@@ -57,6 +57,7 @@ export const ProgramsProvider: React.FC<{ children: ReactNode }> = ({ children }
           type_of_funding: p.type_of_funding || '',
           icon: 'GraduationCap',
           status: p.status === 'active' ? 'active' : 'inactive',
+          rawStatus: p.status,
           startDate: p.start_date || '',
           endDate: p.end_date || '',
           photoUrl: photoUrl,

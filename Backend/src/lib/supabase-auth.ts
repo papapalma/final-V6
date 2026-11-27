@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { User } from '@/types';
 import { logger } from '@/utils/logger';
+import { isMissingDeletedAtColumnError } from '@/lib/userSoftDelete';
 
 export interface SupabaseIdentity {
   authUserId: string;
@@ -29,11 +30,22 @@ export const resolveAppUserFromSupabaseIdentity = async (
 ): Promise<AppUserAuthInfo | null> => {
   // Primary lookup: explicit auth identity mapping.
 
-const { data: mappedUser, error: mappedUserError } = await supabaseAdmin
+let { data: mappedUser, error: mappedUserError } = await supabaseAdmin
     .from('users')
     .select('id, email, role')
     .eq('auth_user_id', identity.authUserId)
+    .is('deleted_at', null)
     .maybeSingle();
+
+  if (mappedUserError && isMissingDeletedAtColumnError(mappedUserError)) {
+    const fallback = await supabaseAdmin
+      .from('users')
+      .select('id, email, role')
+      .eq('auth_user_id', identity.authUserId)
+      .maybeSingle();
+    mappedUser = fallback.data;
+    mappedUserError = fallback.error;
+  }
 
   if (mappedUserError) {
     logger.error('[SUPABASE_AUTH] Failed auth_user_id lookup', mappedUserError);
@@ -51,11 +63,22 @@ if (!identity.email) {
       return null;
     }
 
-const { data: emailUser, error: emailUserError } = await supabaseAdmin
+let { data: emailUser, error: emailUserError } = await supabaseAdmin
       .from('users')
       .select('id, email, role')
       .eq('email', identity.email.toLowerCase())
+      .is('deleted_at', null)
       .maybeSingle();
+
+    if (emailUserError && isMissingDeletedAtColumnError(emailUserError)) {
+      const fallback = await supabaseAdmin
+        .from('users')
+        .select('id, email, role')
+        .eq('email', identity.email.toLowerCase())
+        .maybeSingle();
+      emailUser = fallback.data;
+      emailUserError = fallback.error;
+    }
 
     if (emailUserError) {
       logger.error('[SUPABASE_AUTH] Failed email fallback lookup', emailUserError);

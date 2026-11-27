@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds } from '@/lib/supabasePagination';
 import { requireTenantContext } from '@/middleware/tenantContext';
 import { handleOptionsRequest } from '@/middleware/cors';
 import { withErrorHandler } from '@/middleware/errorHandler';
@@ -47,19 +48,25 @@ export const GET = withErrorHandler(
     }
 
     const creatorIds = [...new Set((remarks || []).map((remark: any) => remark.created_by).filter(Boolean))];
-    const { data: creators, error: creatorsError } = creatorIds.length > 0
-      ? await supabaseAdmin
-          .from('users')
-          .select('id, username, email')
-          .in('id', creatorIds)
-      : { data: [], error: null };
-
-    if (creatorsError) {
-      logger.error('[TRAINEE_REMARKS] Failed to fetch remark creators', {
-        traineeId,
-        error: creatorsError.message,
-      });
-      throw creatorsError;
+    let creators: any[] = [];
+    if (creatorIds.length > 0) {
+      const creatorBatches = await Promise.all(
+        chunkIds(creatorIds, 150).map(async (idChunk) => {
+          const { data, error: creatorsError } = await supabaseAdmin
+            .from('users')
+            .select('id, username, email')
+            .in('id', idChunk);
+          if (creatorsError) {
+            logger.error('[TRAINEE_REMARKS] Failed to fetch remark creators', {
+              traineeId,
+              error: creatorsError.message,
+            });
+            throw creatorsError;
+          }
+          return data || [];
+        })
+      );
+      creators = creatorBatches.flat();
     }
 
     const creatorById = new Map<string, any>(

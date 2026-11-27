@@ -311,6 +311,43 @@ describe('postAuthHandler', () => {
       expect(result.targetPath).toBe('/dashboard');
       expect(logger.error).toHaveBeenCalled();
     });
+
+    it('should route logged-in trainee to enrollment page when access is granted', async () => {
+      setProgramContext(mockProgramId);
+      vi.mocked(programSharingService.verifyProgramAccess).mockResolvedValue({
+        canAccess: true,
+        hasEnrolled: false,
+      });
+
+      const result = await handlePostAuth(mockUserId, 'login', 'trainee');
+
+      expect(result.targetPath).toBe(`/programs/${mockProgramId}/enroll`);
+      expect(result.permissionDenied).toBe(false);
+    });
+
+    it('should route already-enrolled trainee to enrollment page even when canAccess is false', async () => {
+      setProgramContext(mockProgramId);
+      vi.mocked(programSharingService.verifyProgramAccess).mockResolvedValue({
+        canAccess: false,
+        hasEnrolled: true,
+        reason: 'Trainee is already enrolled',
+      });
+
+      const result = await handlePostAuth(mockUserId, 'login', 'trainee');
+
+      expect(result.targetPath).toBe(`/programs/${mockProgramId}/enroll`);
+      expect(result.permissionDenied).toBe(false);
+    });
+
+    it('should skip trainee access verification for staff/admin roles and route directly to program details', async () => {
+      setProgramContext(mockProgramId);
+
+      const result = await handlePostAuth(mockUserId, 'login', 'local_admin');
+
+      expect(result.targetPath).toBe(`/programs/${mockProgramId}`);
+      expect(result.permissionDenied).toBe(false);
+      expect(programSharingService.verifyProgramAccess).not.toHaveBeenCalled();
+    });
   });
 
   /**

@@ -1,9 +1,10 @@
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useMemo, useEffect, memo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { HoldToConfirmButton } from '../components/ui/hold-to-confirm-button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -24,6 +25,7 @@ import { TableSkeleton } from '../components/LoadingSkeletons';
 import { toast } from 'sonner';
 import api from '../services/api';
 import logger from '../utils/logger';
+import { getRoleDisplayName, type UserRole } from '../utils/roles';
 import { formatDistanceToNow } from 'date-fns';
 import { MoreVertical, Trash2, RotateCcw } from 'lucide-react';
 import {
@@ -42,12 +44,13 @@ import {
   PaginationPrevious,
 } from '../components/ui/pagination';
 
-const ENTITY_TYPES = [
-  { value: 'trainee', label: 'Trainees', color: 'bg-blue-500/10 text-blue-700' },
-  { value: 'program', label: 'Programs', color: 'bg-green-500/10 text-green-700' },
-  { value: 'item', label: 'Inventory', color: 'bg-yellow-500/10 text-yellow-700' },
-  { value: 'trainee_status', label: 'Trainee Status', color: 'bg-purple-500/10 text-purple-700' },
-  { value: 'training_requirement_file', label: 'Training Requirement Files', color: 'bg-orange-500/10 text-orange-700' },
+export const ENTITY_TYPES = [
+  { value: 'trainee', label: 'Trainees', singularLabel: 'Trainee', color: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' },
+  { value: 'user', label: 'User Accounts', singularLabel: 'User Account', color: 'bg-rose-500/10 text-rose-700 dark:text-rose-300' },
+  { value: 'program', label: 'Programs', singularLabel: 'Program', color: 'bg-green-500/10 text-green-700 dark:text-green-300' },
+  { value: 'item', label: 'Inventory', singularLabel: 'Inventory', color: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300' },
+  { value: 'trainee_status', label: 'Trainee Status', singularLabel: 'Trainee Status', color: 'bg-purple-500/10 text-purple-700 dark:text-purple-300' },
+  { value: 'training_requirement_file', label: 'Training Requirement Files', singularLabel: 'Requirement File', color: 'bg-orange-500/10 text-orange-700 dark:text-orange-300' },
 ];
 
 function getDaysRemainingColor(daysRemaining: number): string {
@@ -61,9 +64,27 @@ function getEntityTypeBadgeColor(entityType: string): string {
   return entity?.color || 'bg-gray-500/10 text-gray-700';
 }
 
+function getEntityTypeLabel(entityType: string): string {
+  const entity = ENTITY_TYPES.find((e) => e.value === entityType);
+  return entity?.singularLabel || entityType;
+}
+
+function getArchivedItemDisplayName(item: ArchivedItem): string {
+  return (
+    [item.first_name, item.last_name].filter(Boolean).join(' ') ||
+    item.username ||
+    item.name ||
+    item.email ||
+    item.file_name ||
+    'Unknown'
+  );
+}
+
 interface ArchivedItemRowProps {
   item: ArchivedItem;
+  entityType: string;
   isSelected: boolean;
+  isExiting: boolean;
   onSelect: (id: string, selected: boolean) => void;
   onRestore: (item: ArchivedItem) => void;
   onPurge: (item: ArchivedItem) => void;
@@ -71,13 +92,17 @@ interface ArchivedItemRowProps {
 
 const ArchivedItemRow = memo(function ArchivedItemRow({
   item,
+  entityType,
   isSelected,
+  isExiting,
   onSelect,
   onRestore,
   onPurge,
 }: ArchivedItemRowProps) {
+  const displayName = getArchivedItemDisplayName(item);
+
   return (
-    <TableRow>
+    <TableRow className={isExiting ? 'account-row-exiting' : undefined}>
       <TableCell className="w-12">
         <Checkbox
           checked={isSelected}
@@ -85,12 +110,24 @@ const ArchivedItemRow = memo(function ArchivedItemRow({
         />
       </TableCell>
       <TableCell>
-        <Badge className={getEntityTypeBadgeColor('trainee')} variant="outline">
-          Trainee
+        <Badge className={getEntityTypeBadgeColor(entityType)} variant="outline">
+          {getEntityTypeLabel(entityType)}
         </Badge>
       </TableCell>
       <TableCell className="font-medium">
-        {[item.first_name, item.last_name].filter(Boolean).join(' ') || item.email || item.name || item.file_name || 'Unknown'}
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span>{displayName}</span>
+            {entityType === 'user' && item.role && (
+              <Badge variant="secondary" className="py-0.5 px-2 text-[11px] font-normal">
+                {getRoleDisplayName(item.role as UserRole)}
+              </Badge>
+            )}
+          </div>
+          {entityType === 'user' && item.email && item.email !== displayName && (
+            <p className="text-xs font-normal text-muted-foreground">{item.email}</p>
+          )}
+        </div>
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
         {formatDistanceToNow(new Date(item.deleted_at), { addSuffix: true })}
@@ -146,7 +183,13 @@ export default function ArchivePage() {
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ArchivedItem | null>(null);
+  const [exitingItemId, setExitingItemId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Clear selections whenever the entity type changes
+  useEffect(() => {
+    setSelectedItems(new Map());
+  }, [filters.entityType]);
 
   const handleSelectItem = useCallback((id: string, selected: boolean) => {
     setSelectedItems((prev) => {
@@ -190,50 +233,85 @@ export default function ArchivePage() {
 
   const handleConfirmRestore = useCallback(async () => {
     if (!selectedItem) return;
+    const targetItem = selectedItem;
+    const activeEntityType = filters.entityType || 'trainee';
 
     try {
       setIsProcessing(true);
-      await api.patch('/archive', {
-        entityType: 'trainee',
-        ids: [selectedItem.id],
+      const response = await api.patch('/archive', {
+        entityType: activeEntityType,
+        ids: [targetItem.id],
       });
 
-      toast.success('Item restored successfully');
+      const payload = (response as any)?.data;
+      const failedList: Array<{ id: string; error: string }> = payload?.failed || [];
+      if (failedList.length > 0 && (payload?.restoredCount ?? 0) === 0) {
+        toast.error(failedList[0]?.error || 'Failed to restore item');
+        return;
+      }
+
       setRestoreDialogOpen(false);
       setSelectedItem(null);
       setSelectedItems(new Map());
+
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!prefersReducedMotion) {
+        setExitingItemId(targetItem.id);
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+      setExitingItemId(null);
+
+      toast.success('Item restored successfully');
       await refetch();
     } catch (err) {
+      setExitingItemId(null);
       const message = err instanceof Error ? err.message : 'Failed to restore item';
       logger.error('Restore failed', { error: message });
       toast.error(message);
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedItem, refetch]);
+  }, [selectedItem, filters.entityType, refetch]);
 
   const handleConfirmPurge = useCallback(async () => {
     if (!selectedItem) return;
+    const targetItem = selectedItem;
+    const activeEntityType = filters.entityType || 'trainee';
 
     try {
       setIsProcessing(true);
-      await api.delete(`/archive/${selectedItem.id}`, {
-        params: { entityType: 'trainee' },
+      await api.delete(`/archive/${targetItem.id}`, {
+        params: { entityType: activeEntityType },
       });
 
-      toast.success('Item permanently deleted');
       setPurgeDialogOpen(false);
       setSelectedItem(null);
       setSelectedItems(new Map());
+
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!prefersReducedMotion) {
+        setExitingItemId(targetItem.id);
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+      setExitingItemId(null);
+
+      toast.success('Item permanently deleted');
       await refetch();
     } catch (err) {
+      setExitingItemId(null);
       const message = err instanceof Error ? err.message : 'Failed to purge item';
       logger.error('Purge failed', { error: message });
       toast.error(message);
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedItem, refetch]);
+  }, [selectedItem, filters.entityType, refetch]);
 
   const handleRestoreSelected = useCallback(async () => {
     if (selectedItems.size === 0) {
@@ -245,12 +323,25 @@ export default function ArchivePage() {
       setIsProcessing(true);
       const ids = Array.from(selectedItems.keys());
 
-      await api.patch('/archive', {
-        entityType: filters.entityType || 'all',
+      const response = await api.patch('/archive', {
+        entityType: filters.entityType || 'trainee',
         ids,
       });
 
-      toast.success(`${ids.length} item(s) restored successfully`);
+      const payload = (response as any)?.data;
+      const restoredCount: number = payload?.restoredCount ?? ids.length;
+      const failedList: Array<{ id: string; error: string }> = payload?.failed || [];
+
+      if (failedList.length > 0 && restoredCount === 0) {
+        toast.error(failedList[0]?.error || 'Failed to restore selected items');
+      } else if (failedList.length > 0) {
+        toast.warning(
+          `Restored ${restoredCount} item(s); ${failedList.length} could not be restored (${failedList[0]?.error}).`
+        );
+      } else {
+        toast.success(`${restoredCount} item(s) restored successfully`);
+      }
+
       setSelectedItems(new Map());
       await refetch();
     } catch (err) {
@@ -370,7 +461,7 @@ export default function ArchivePage() {
 
         {/* Bulk Actions */}
         {selectedItems.size > 0 && (
-          <Card className="bg-blue-50 border-blue-200">
+          <Card className="settings-disclosure-in bg-blue-50/90 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
             <CardContent className="pt-6 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <p className="text-sm font-medium text-blue-900">
                 {selectedItems.size} item(s) selected
@@ -451,7 +542,9 @@ export default function ArchivePage() {
                         <ArchivedItemRow
                           key={item.id}
                           item={item}
+                          entityType={filters.entityType}
                           isSelected={selectedItems.has(item.id)}
+                          isExiting={exitingItemId === item.id}
                           onSelect={handleSelectItem}
                           onRestore={handleRestoreSingle}
                           onPurge={handlePurgeSingle}
@@ -537,12 +630,12 @@ export default function ArchivePage() {
         </Card>
       </div>
 
-      <AlertDialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
-        <AlertDialogContent>
+      <AlertDialog open={restoreDialogOpen} onOpenChange={(open) => { if (!isProcessing) setRestoreDialogOpen(open); }}>
+        <AlertDialogContent className="att-modal-panel p-6 gap-4">
           <AlertDialogHeader>
-            <AlertDialogTitle>Restore Item</AlertDialogTitle>
+            <AlertDialogTitle>Restore {getEntityTypeLabel(filters.entityType)}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to restore "{selectedItem ? ([selectedItem.first_name, selectedItem.last_name].filter(Boolean).join(' ') || selectedItem.email || selectedItem.name || 'this item') : 'this item'}"? This action cannot be undone.
+              Are you sure you want to restore &ldquo;{selectedItem ? getArchivedItemDisplayName(selectedItem) : 'this item'}&rdquo;? It will immediately return to the active list.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex gap-2 justify-end">
@@ -554,24 +647,24 @@ export default function ArchivePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Purge Dialog */}
-      <AlertDialog open={purgeDialogOpen} onOpenChange={setPurgeDialogOpen}>
-        <AlertDialogContent>
+      {/* Purge Dialog — irreversible hard-delete guarded by HoldToConfirmButton */}
+      <AlertDialog open={purgeDialogOpen} onOpenChange={(open) => { if (!isProcessing) setPurgeDialogOpen(open); }}>
+        <AlertDialogContent className="att-modal-panel p-6 gap-4">
           <AlertDialogHeader>
-            <AlertDialogTitle>Permanently Delete Item</AlertDialogTitle>
+            <AlertDialogTitle className="text-destructive">Permanently Delete {getEntityTypeLabel(filters.entityType)}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{selectedItem ? ([selectedItem.first_name, selectedItem.last_name].filter(Boolean).join(' ') || selectedItem.email || selectedItem.name || 'this item') : 'this item'}". This action cannot be undone.
+              This will permanently delete &ldquo;{selectedItem ? getArchivedItemDisplayName(selectedItem) : 'this item'}&rdquo;. This action cannot be undone. Press and hold the button below to confirm.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex gap-2 justify-end">
             <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmPurge}
-              disabled={isProcessing}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {isProcessing ? 'Deleting...' : 'Delete'}
-            </AlertDialogAction>
+            <HoldToConfirmButton
+              onConfirm={handleConfirmPurge}
+              isProcessing={isProcessing}
+              label="Hold to Delete Permanently"
+              holdingLabel="Keep holding..."
+              processingLabel="Deleting..."
+            />
           </div>
         </AlertDialogContent>
       </AlertDialog>

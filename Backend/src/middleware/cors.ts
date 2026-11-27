@@ -18,6 +18,8 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:3002',
   'http://127.0.0.1:3003',
   'http://127.0.0.1:5173',
+  'https://bmdc.site',
+  'https://www.bmdc.site',
   'https://bmdc.online',
   'https://www.bmdc.online',
   process.env.FRONTEND_URL,
@@ -35,6 +37,7 @@ const ALLOWED_HEADERS = [
   'Date',
   'X-Api-Version',
   'Authorization',
+  'X-Upload-Token',
 ];
 
 const MAX_AGE = '86400'; // 24 hours
@@ -49,22 +52,27 @@ const MAX_AGE = '86400'; // 24 hours
  * @param origin - Request origin header
  * @returns true if origin is allowed, false otherwise
  */
-function isOriginAllowed(origin: string | null): boolean {
+export function isOriginAllowed(origin: string | null): boolean {
   if (!origin) {
     return false;
   }
 
+  const normalizedOrigin = origin.replace(/\/+$/, '');
+
   // Development: allow any localhost or 127.0.0.1 origin
-  if (process.env.NODE_ENV === 'development' && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))) {
+  if (process.env.NODE_ENV === 'development' && (normalizedOrigin.startsWith('http://localhost') || normalizedOrigin.startsWith('http://127.0.0.1'))) {
     return true;
   }
 
-  // Production: strict allowlist
-  const isAllowed = ALLOWED_ORIGINS.includes(origin);
+  // Production: strict allowlist (also respect dynamically updated FRONTEND_URL)
+  const envFrontendOrigin = process.env.FRONTEND_URL?.replace(/\/+$/, '');
+  const isAllowed =
+    ALLOWED_ORIGINS.includes(normalizedOrigin) ||
+    (Boolean(envFrontendOrigin) && normalizedOrigin === envFrontendOrigin);
 
   if (!isAllowed) {
     logger.warn('[CORS] Rejected request from unauthorized origin', {
-      origin,
+      origin: normalizedOrigin,
       allowedOrigins: ALLOWED_ORIGINS,
     });
   }

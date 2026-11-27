@@ -12,6 +12,7 @@ import { requireTenantContext } from '@/middleware/tenantContext';
 import { withErrorHandler } from '@/middleware/errorHandler';
 import { successResponse, forbiddenResponse, errorResponse, notFoundResponse } from '@/utils/responses';
 import { ARCHIVE_TABLES, type ArchivedEntityType } from '@/utils/archiveQuery';
+import { clearUserSoftDeleted } from '@/lib/userSoftDelete';
 import { activityLogService } from '@/services/activityLogService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { handleOptionsRequest } from '@/middleware/cors';
@@ -53,25 +54,63 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
   const tableName = ARCHIVE_TABLES[entityType];
 
   // Fetch the item to check if it exists and is soft-deleted
-  const { data: items, error: fetchError } = await supabaseAdmin
-    .from(tableName)
-    .select('id, deleted_at')
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .limit(1);
+  let item: { id: string; deleted_at: string | null; email?: string; role?: string } | null = null;
+  if (entityType === 'user') {
+    const { data: userTenant, error: tenantCheckError } = await supabaseAdmin
+      .from('users_tenants')
+      .select('user_id')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', id)
+      .maybeSingle();
 
-  if (fetchError) {
-    return errorResponse(`Failed to fetch item: ${fetchError.message}`, 500);
+    if (tenantCheckError) {
+      return errorResponse(`Failed to fetch item: ${tenantCheckError.message}`, 500);
+    }
+
+    if (!userTenant) {
+      return notFoundResponse('Item not found or already purged');
+    }
+
+    const { data: userRow, error: userFetchError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, role, deleted_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (userFetchError) {
+      return errorResponse(`Failed to fetch item: ${userFetchError.message}`, 500);
+    }
+
+    if (!userRow) {
+      return notFoundResponse('Item not found or already purged');
+    }
+
+    if (userRow.email === 'admin@bmdc.edu.ph' || userRow.role === 'super_admin') {
+      return forbiddenResponse('Cannot purge a protected admin account');
+    }
+
+    item = userRow;
+  } else {
+    const { data: items, error: fetchError } = await supabaseAdmin
+      .from(tableName)
+      .select('id, deleted_at')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .limit(1);
+
+    if (fetchError) {
+      return errorResponse(`Failed to fetch item: ${fetchError.message}`, 500);
+    }
+
+    if (!items || items.length === 0) {
+      return notFoundResponse('Item not found or already purged');
+    }
+
+    item = items[0];
   }
-
-  if (!items || items.length === 0) {
-    return notFoundResponse('Item not found or already purged');
-  }
-
-  const item = items[0];
 
   // Verify item is soft-deleted
-  if (!item.deleted_at) {
+  if (!item || !item.deleted_at) {
     return errorResponse('Item is not archived (not soft-deleted)', 400);
   }
 
@@ -91,14 +130,49 @@ export const DELETE = withErrorHandler(async (request: NextRequest, { params }: 
 
   // Hard-delete the item
   try {
-    const { error: deleteError } = await supabaseAdmin
-      .from(tableName)
-      .delete()
-      .eq('id', id)
-      .eq('tenant_id', tenantId);
+    if (entityType === 'user') {
+      const { data: tenantLinks, error: linksError } = await supabaseAdmin
+        .from('users_tenants')
+        .select('tenant_id')
+        .eq('user_id', id);
 
-    if (deleteError) {
-      return errorResponse(`Failed to purge item: ${deleteError.message}`, 500);
+      if (linksError) {
+        return errorResponse(`Failed to purge item: ${linksError.message}`, 500);
+      }
+
+      if ((tenantLinks?.length ?? 0) > 1) {
+        // Multi-tenant safety: unlink only from this tenant rather than deleting another tenant's account
+        const { error: unlinkError } = await supabaseAdmin
+          .from('users_tenants')
+          .delete()
+          .eq('user_id', id)
+          .eq('tenant_id', tenantId);
+
+        if (unlinkError) {
+          return errorResponse(`Failed to purge item: ${unlinkError.message}`, 500);
+        }
+      } else {
+        const { error: deleteError } = await supabaseAdmin
+          .from('users')
+          .delete()
+          .eq('id', id);
+
+        if (deleteError) {
+          return errorResponse(`Failed to purge item: ${deleteError.message}`, 500);
+        }
+      }
+
+      clearUserSoftDeleted(id);
+    } else {
+      const { error: deleteError } = await supabaseAdmin
+        .from(tableName)
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', tenantId);
+
+      if (deleteError) {
+        return errorResponse(`Failed to purge item: ${deleteError.message}`, 500);
+      }
     }
 
     // Log the purge action

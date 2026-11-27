@@ -632,11 +632,16 @@ export class MessengerService {
             );
 
             if (programIds.length > 0) {
-              const { data: programs } = await supabaseAdmin
-                .from('programs')
-                .select('id, name, tenant_id')
-                .in('id', programIds);
-              targetPrograms = (programs || []) as Array<{ id: string; name: string; tenant_id: string }>;
+              const progBatches = await Promise.all(
+                chunkArray(programIds).map(async (progChunk) => {
+                  const { data: programs } = await supabaseAdmin
+                    .from('programs')
+                    .select('id, name, tenant_id')
+                    .in('id', progChunk);
+                  return (programs || []) as Array<{ id: string; name: string; tenant_id: string }>;
+                })
+              );
+              targetPrograms = progBatches.flat();
             }
           }
         } else if (role === 'super_admin') {
@@ -679,11 +684,16 @@ export class MessengerService {
               return [tid, staffIds] as const;
             })
           ),
-          supabaseAdmin
-            .from('conversations')
-            .select('id, program_id, tenant_id, title')
-            .eq('type', 'program_group')
-            .in('program_id', programIds),
+          Promise.all(
+            chunkArray(programIds).map(async (progChunk) => {
+              const { data } = await supabaseAdmin
+                .from('conversations')
+                .select('id, program_id, tenant_id, title')
+                .eq('type', 'program_group')
+                .in('program_id', progChunk);
+              return data || [];
+            })
+          ).then((batches) => ({ data: batches.flat() })),
           fetchEnrolledTraineeUserIdsByProgram(targetPrograms),
         ]);
 
@@ -761,14 +771,22 @@ export class MessengerService {
           return;
         }
 
-        // Batch-fetch existing participants across all resolved Program GCs in one query
+        // Batch-fetch existing participants across all resolved Program GCs in chunked queries
         const allConvIds = resolvedConvs.map((c) => c.convId);
-        const { data: allExistingParts, error: existingPartsErr } = await supabaseAdmin
-          .from('conversation_participants')
-          .select('conversation_id, user_id')
-          .in('conversation_id', allConvIds);
+        let existingPartsErr: any = null;
+        const existingPartBatches = await Promise.all(
+          chunkArray(allConvIds).map(async (convChunk) => {
+            const { data, error } = await supabaseAdmin
+              .from('conversation_participants')
+              .select('conversation_id, user_id')
+              .in('conversation_id', convChunk);
+            if (error) existingPartsErr = error;
+            return (data || []) as Array<{ conversation_id: string; user_id: string }>;
+          })
+        );
 
         if (existingPartsErr) return;
+        const allExistingParts = existingPartBatches.flat();
 
         const existingByConv = new Map<string, Set<string>>();
         for (const p of (allExistingParts || []) as Array<{ conversation_id: string; user_id: string }>) {
@@ -873,32 +891,49 @@ export class MessengerService {
     const conversationIds = participations.map((p) => p.conversation_id);
     const readMap = new Map(participations.map((p) => [p.conversation_id, p.last_read_at]));
 
-    // Fetch conversation metadata and all participants in parallel
-    const [convResult, allPartResult] = await Promise.all([
-      supabaseAdmin
-        .from('conversations')
-        .select(`
-          id,
-          type,
-          program_id,
-          title,
-          last_message_at,
-          created_at
-        `)
-        .in('id', conversationIds)
-        .order('last_message_at', { ascending: false }),
-      supabaseAdmin
-        .from('conversation_participants')
-        .select('conversation_id, user_id')
-        .in('conversation_id', conversationIds),
+    // Fetch conversation metadata and all participants in parallel (chunked to avoid URL overflow)
+    const convChunks = chunkArray(conversationIds);
+    const [convBatches, allPartBatches] = await Promise.all([
+      Promise.all(
+        convChunks.map(async (convChunk) => {
+          const { data, error } = await supabaseAdmin
+            .from('conversations')
+            .select(`
+              id,
+              type,
+              program_id,
+              title,
+              last_message_at,
+              created_at
+            `)
+            .in('id', convChunk)
+            .order('last_message_at', { ascending: false });
+          return { data: data || [], error };
+        })
+      ),
+      Promise.all(
+        convChunks.map(async (convChunk) => {
+          const { data } = await supabaseAdmin
+            .from('conversation_participants')
+            .select('conversation_id, user_id')
+            .in('conversation_id', convChunk);
+          return data || [];
+        })
+      ),
     ]);
 
-    const conversations = convResult.data;
-    if (convResult.error || !conversations) {
+    if (convBatches.some((b) => b.error)) {
       return [];
     }
 
-    const allParticipants = allPartResult.data || [];
+    const conversations = convBatches
+      .flatMap((b) => b.data)
+      .sort((a: any, b: any) => {
+        const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+        const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+        return bTime - aTime;
+      });
+    const allParticipants = allPartBatches.flat();
     const allUserIds = Array.from<string>(new Set(allParticipants.map((p: any) => p.user_id)));
     const userDetailsMap = await resolveUserDetails(allUserIds, {
       bypassCache: options?.forceSync,
@@ -1457,26 +1492,43 @@ export class MessengerService {
       }
     }
 
-    // Check ALL shared conversations for an existing 'direct' conversation (not just commonPart[0])
+    // Check ALL shared conversations for an existing 'direct' conversation (chunked for 500+ thread safety)
     const convsA = convsARes.data;
     if (convsA && convsA.length > 0) {
       const convIdsA = convsA.map((c) => c.conversation_id);
-      const { data: commonParts } = await supabaseAdmin
-        .from('conversation_participants')
-        .select('conversation_id')
-        .eq('user_id', userBId)
-        .in('conversation_id', convIdsA);
+      const commonPartBatches = await Promise.all(
+        chunkArray(convIdsA).map(async (convChunk) => {
+          const { data } = await supabaseAdmin
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', userBId)
+            .in('conversation_id', convChunk);
+          return data || [];
+        })
+      );
+      const commonParts = commonPartBatches.flat();
 
-      if (commonParts && commonParts.length > 0) {
+      if (commonParts.length > 0) {
         const commonConvIds = commonParts.map((p) => p.conversation_id);
-        const { data: existingConv } = await supabaseAdmin
-          .from('conversations')
-          .select('id')
-          .in('id', commonConvIds)
-          .eq('type', 'direct')
-          .order('last_message_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const existingConvBatches = await Promise.all(
+          chunkArray(commonConvIds).map(async (convChunk) => {
+            const { data } = await supabaseAdmin
+              .from('conversations')
+              .select('id, last_message_at')
+              .in('id', convChunk)
+              .eq('type', 'direct')
+              .order('last_message_at', { ascending: false })
+              .limit(1);
+            return data || [];
+          })
+        );
+        const existingConv = existingConvBatches
+          .flat()
+          .sort((a: any, b: any) => {
+            const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+            const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+            return bTime - aTime;
+          })[0];
 
         if (existingConv) {
           return existingConv.id;

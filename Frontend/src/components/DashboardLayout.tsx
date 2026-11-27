@@ -11,6 +11,7 @@ import { useMessenger } from '../contexts/MessengerContext';
 import { BrandLogo } from './BrandLogo';
 import { TraineeMessengerDrawer } from './messenger/TraineeMessengerDrawer';
 import { getRoleDisplayName, getRoleBadgeColor } from '../utils/roles';
+import { ATTENDANCE_PIN_EVENT, isDashboardAttendancePinned } from '../utils/attendancePin';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Badge } from './ui/badge';
@@ -318,6 +319,21 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [traineeAttendancePinned, setTraineeAttendancePinned] = useState<boolean>(() =>
+    isDashboardAttendancePinned()
+  );
+
+  useEffect(() => {
+    if (user?.role !== 'trainee') return;
+    const syncAttendancePin = () => setTraineeAttendancePinned(isDashboardAttendancePinned());
+    syncAttendancePin();
+    window.addEventListener('storage', syncAttendancePin);
+    window.addEventListener(ATTENDANCE_PIN_EVENT, syncAttendancePin);
+    return () => {
+      window.removeEventListener('storage', syncAttendancePin);
+      window.removeEventListener(ATTENDANCE_PIN_EVENT, syncAttendancePin);
+    };
+  }, [user?.role]);
   const [pendingRegistrationCount, setPendingRegistrationCount] = useState<number>(() => {
     try {
       const cached = sessionStorage.getItem('bmdc-pending-registrations');
@@ -465,13 +481,20 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
   // Memoize filtered navigation to prevent recalculation on every render
   const filteredNavigation = useMemo(() => {
     if (user?.role === 'trainee') {
-      return NAVIGATION_ARRAYS.trainee;
+      if (!traineeAttendancePinned) {
+        return NAVIGATION_ARRAYS.trainee;
+      }
+      return [
+        NAVIGATION_ARRAYS.trainee[0],
+        { name: 'Attendance', href: '/trainee/attendance', icon: Calendar },
+        ...NAVIGATION_ARRAYS.trainee.slice(1),
+      ];
     } else if (user?.role === 'super_admin') {
       return NAVIGATION_ARRAYS.superAdmin;
     } else {
       return filterNavigation(NAVIGATION_ARRAYS.desktop, (perm) => hasPermission(perm));
     }
-  }, [user?.role, hasPermission]);
+  }, [user?.role, hasPermission, traineeAttendancePinned]);
 
   const mobileNavigation = useMemo(() => {
     return filteredNavigation;

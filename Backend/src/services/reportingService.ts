@@ -22,6 +22,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds, fetchAllRows } from '@/lib/supabasePagination';
 import { logger } from '@/utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -231,18 +232,32 @@ let programsQuery = supabaseAdmin
   const programIds = programRows.map((p) => p.id);
 
   // Enrollments
-
-let enrollmentsQuery = supabaseAdmin
-    .from('enrollments')
-    .select('id, program_id, status, enrollment_date, completion_date')
-    .eq('tenant_id', tenantId);
-  if (programIds.length > 0) enrollmentsQuery = enrollmentsQuery.in('program_id', programIds);
-  if (filter.startDate) enrollmentsQuery = enrollmentsQuery.gte('enrollment_date', filter.startDate);
-  if (filter.endDate)   enrollmentsQuery = enrollmentsQuery.lte('enrollment_date', filter.endDate);
-  const { data: enrollments, error: eErr } = await enrollmentsQuery;
-  if (eErr) throw eErr;
-
-  const enrollmentRows = enrollments ?? [];
+  const enrollmentRows = programIds.length > 0
+    ? (
+        await Promise.all(
+          chunkIds(programIds, 150).map((progChunk) =>
+            fetchAllRows<any>(() => {
+              let q = supabaseAdmin
+                .from('enrollments')
+                .select('id, program_id, status, enrollment_date, completion_date')
+                .eq('tenant_id', tenantId)
+                .in('program_id', progChunk);
+              if (filter.startDate) q = q.gte('enrollment_date', filter.startDate);
+              if (filter.endDate) q = q.lte('enrollment_date', filter.endDate);
+              return q;
+            })
+          )
+        )
+      ).flat()
+    : await fetchAllRows<any>(() => {
+        let q = supabaseAdmin
+          .from('enrollments')
+          .select('id, program_id, status, enrollment_date, completion_date')
+          .eq('tenant_id', tenantId);
+        if (filter.startDate) q = q.gte('enrollment_date', filter.startDate);
+        if (filter.endDate) q = q.lte('enrollment_date', filter.endDate);
+        return q;
+      });
 
   // Certificates
 

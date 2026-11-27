@@ -4,6 +4,7 @@ import { withErrorHandler } from '@/middleware/errorHandler';
 import { handleOptionsRequest } from '@/middleware/cors';
 import { successResponse } from '@/utils/responses';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds, fetchAllRows } from '@/lib/supabasePagination';
 
 type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
@@ -89,51 +90,43 @@ if (sessionId) sessionsQuery = sessionsQuery.eq('id', sessionId);
 
 const programIds = [...new Set(sessions.map((session) => session.program_id))];
 
-  const [programsResult, datesResult] = await Promise.all([
-  supabaseAdmin
-  .from('programs')
-  .select('id, name')
-  .in('id', programIds)
-  .is('deleted_at', null)
-  .then(result => {
-  // Apply tenant isolation for non-super-admins if needed
-
-if (user.role !== 'super_admin' && result.data) {
-  // Filter results to only include programs from user's tenant
-  // Note: RLS policy should handle this, but adding explicit check as defense in depth
-
-return result;
-  }
-  return result;
-  }),
-  // FIX: Query attendance_exceptions instead of non_attendance_dates table (removed in schema normalization)
-  (() => {
-  let query = supabaseAdmin
-  .from('attendance_exceptions')
-  .select('exception_date as date, program_id')
-  .eq('exception_type', 'non_attendance_date');  // Filter by type
-  if (startDate) query = query.gte('exception_date', startDate);
-  if (endDate) query = query.lte('exception_date', endDate);
-  // Tenant isolation for non-super-admins
-
-if (user.role !== 'super_admin') {
-  query = query.eq('tenant_id', user.tenantId);
-  }
-  return query;
-  })(),
+  const [programBatches, datesResult] = await Promise.all([
+    Promise.all(
+      chunkIds(programIds, 150).map(async (progChunk) => {
+        const { data, error } = await supabaseAdmin
+          .from('programs')
+          .select('id, name')
+          .in('id', progChunk)
+          .is('deleted_at', null);
+        if (error) throw error;
+        return data || [];
+      })
+    ),
+    // FIX: Query attendance_exceptions instead of non_attendance_dates table (removed in schema normalization)
+    (() => {
+      let query = supabaseAdmin
+        .from('attendance_exceptions')
+        .select('exception_date, program_id')
+        .in('exception_type', ['no_attendance_day', 'holiday']);
+      if (startDate) query = query.gte('exception_date', startDate);
+      if (endDate) query = query.lte('exception_date', endDate);
+      // Tenant isolation for non-super-admins
+      if (user.role !== 'super_admin') {
+        query = query.eq('tenant_id', user.tenantId);
+      }
+      return query;
+    })(),
   ]);
 
-  if (programsResult.error) throw programsResult.error;
   if (datesResult.error) throw datesResult.error;
 
-  const programNameById = new Map((programsResult.data || []).map((program) => [program.id as string, (program.name as unknown) as string]));
+  const programNameById = new Map(programBatches.flat().map((program) => [program.id as string, (program.name as unknown) as string]));
 
   const globalExcludedDates = new Set<string>();
   const excludedByProgram = new Map<string, Set<string>>();
 
-  // FIX: Maps column alias (exception_date as date) to match original logic
   for (const row of datesResult.data || []) {
-  const date = row.date as string;
+  const date = row.exception_date as string;
   const rowProgramId = row.program_id as string | null;
 
   if (!rowProgramId) {
@@ -158,35 +151,43 @@ const validSessions = sessions.filter((session) => {
 
   const validSessionIds = validSessions.map((session) => session.id);
 
-  const [attendanceResult, traineesResult] = await Promise.all([
-  validSessionIds.length > 0
-  ? supabaseAdmin
-  .from('attendance')
-  .select('session_id, trainee_id, status')
-  .in('session_id', validSessionIds)
-  : Promise.resolve({ data: [], error: null }),
-  supabaseAdmin
-  .from('trainees')
-  .select('id, program_id')
-  .in('program_id', programIds)
-  .eq('status', 'active')
-  .then(result => {
-  // Apply tenant isolation for non-super-admins
-
-if (user.role !== 'super_admin' && result.data) {
-  return result;
-  }
-  return result;
-  }),
+  const [attendanceChunks, enrollmentChunks] = await Promise.all([
+    Promise.all(
+      chunkIds(validSessionIds, 100).map((sessionChunk) =>
+        fetchAllRows<AttendanceRow>(() => {
+          let q = supabaseAdmin
+            .from('attendance')
+            .select('session_id, trainee_id, status')
+            .in('session_id', sessionChunk);
+          if (user.role !== 'super_admin') {
+            q = q.eq('tenant_id', user.tenantId);
+          }
+          return q;
+        })
+      )
+    ),
+    Promise.all(
+      chunkIds(programIds, 150).map((progChunk) =>
+        fetchAllRows<{ trainee_id: string; program_id: string }>(() => {
+          let q = supabaseAdmin
+            .from('enrollments')
+            .select('trainee_id, program_id')
+            .in('program_id', progChunk)
+            .in('status', ['enrolled', 'active', 'completed']);
+          if (user.role !== 'super_admin') {
+            q = q.eq('tenant_id', user.tenantId);
+          }
+          return q;
+        })
+      )
+    ),
   ]);
 
-  if (attendanceResult.error) throw attendanceResult.error;
-  if (traineesResult.error) throw traineesResult.error;
+  const attendanceRows = attendanceChunks.flat();
+  const enrollmentRows = enrollmentChunks.flat();
 
-  const attendanceRows = (attendanceResult.data || []) as AttendanceRow[];
-
-  const activeTraineesByProgram = (traineesResult.data || []).reduce((acc, trainee) => {
-  acc[trainee.program_id] = (acc[trainee.program_id] || 0) + 1;
+  const activeTraineesByProgram = enrollmentRows.reduce((acc, enrollment) => {
+  acc[enrollment.program_id] = (acc[enrollment.program_id] || 0) + 1;
   return acc;
   }, {} as Record<string, number>);
 

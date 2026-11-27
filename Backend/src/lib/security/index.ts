@@ -103,8 +103,12 @@ export const GPS_BOUNDS = {
   LNG_MIN: -180,
   LNG_MAX: 180,
 
-  /** Maximum allowed accuracy in meters (30m typical for GPS) */
-  MAX_ACCURACY_M: 100,
+  /**
+   * Maximum allowed accuracy radius in meters for non-geofenced capture.
+   * Indoor smartphones commonly report 100–400m and desktop Wi-Fi 500–5,000m.
+   * Geofenced programs enforce stricter `distance + accuracy <= radius_meters` in validateGeofence().
+   */
+  MAX_ACCURACY_M: 5000,
 
   /** Minimum allowed accuracy in meters (0m) */
   MIN_ACCURACY_M: 0,
@@ -124,7 +128,7 @@ export const GPS_BOUNDS = {
  * - Latitude within [-90, 90]
  * - Longitude within [-180, 180]
  * - Not exactly (0, 0) — common spoofing
- * - Accuracy reasonable (0.1m to 100m)
+ * - Accuracy reasonable (0m to 5,000m)
  * - Values are numbers (not NaN)
  *
  * @param lat - Latitude in decimal degrees
@@ -136,7 +140,7 @@ export const GPS_BOUNDS = {
  *   validateGPS(40.7128, -74.0060, 10) → { valid: true }
  *   validateGPS(0, 0, 5) → { valid: false, reason: 'Coordinates (0,0) are not permitted' }
  *   validateGPS(91, -74.0060, 10) → { valid: false, reason: 'Latitude out of range' }
- *   validateGPS(40.7128, -74.0060, 150) → { valid: false, reason: 'Accuracy exceeds maximum (100m)' }
+ *   validateGPS(40.7128, -74.0060, 6000) → { valid: false, reason: 'Accuracy exceeds maximum (5000m)' }
  */
 export function validateGPS(
   lat?: number,

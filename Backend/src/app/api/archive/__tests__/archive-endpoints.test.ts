@@ -83,6 +83,11 @@ describe('Archive API Endpoints (Task 2 & Task 6)', () => {
       expect(ARCHIVE_TABLES[entityType]).toBe('training_requirement_files');
     });
 
+    it('should recognize user entity type', () => {
+      const entityType: ArchivedEntityType = 'user';
+      expect(ARCHIVE_TABLES[entityType]).toBe('users');
+    });
+
     it('should have all entity types mapped', () => {
       const entityTypes = Object.keys(ARCHIVE_TABLES);
       expect(entityTypes).toContain('trainee');
@@ -90,7 +95,8 @@ describe('Archive API Endpoints (Task 2 & Task 6)', () => {
       expect(entityTypes).toContain('item');
       expect(entityTypes).toContain('trainee_status');
       expect(entityTypes).toContain('training_requirement_file');
-      expect(entityTypes.length).toBe(5);
+      expect(entityTypes).toContain('user');
+      expect(entityTypes.length).toBe(6);
     });
   });
 

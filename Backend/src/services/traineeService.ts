@@ -5,6 +5,7 @@ import { CreateTraineeInput, UpdateTraineeInput } from '@/utils/validators';
 import { hashPassword } from '@/lib/auth';
 import { deleteImageWithThumbnail, ensureThumbnailForImagePath } from '@/utils/fileUpload';
 import { TenantContext } from '@/middleware/tenantContext';
+import { chunkIds } from '@/lib/supabasePagination';
 
 export class TraineeService {
   private normalizeEmail(email: string): string {
@@ -98,20 +99,28 @@ if (filters?.search) {
     if (canIncludeRemarks && trainees.length > 0) {
       try {
         const traineeIds = trainees.map((t: any) => t.id).filter(Boolean);
-        let remarksQuery = supabaseAdmin
-          .from('trainee_remarks')
-          .select('trainee_id, remark, created_at')
-          .in('trainee_id', traineeIds)
-          .order('created_at', { ascending: false });
+        // Chunk `.in()` to avoid PostgREST URL length errors when >500 trainees exist
+        const remarkChunks = await Promise.all(
+          chunkIds(traineeIds, 150).map(async (idChunk) => {
+            let remarksQuery = supabaseAdmin
+              .from('trainee_remarks')
+              .select('trainee_id, remark, created_at')
+              .in('trainee_id', idChunk)
+              .order('created_at', { ascending: false });
 
-        if (!context!.isSuperAdmin) {
-          remarksQuery = remarksQuery.eq('tenant_id', context!.tenantId);
-        }
+            if (!context!.isSuperAdmin) {
+              remarksQuery = remarksQuery.eq('tenant_id', context!.tenantId);
+            }
 
-        const { data: remarksData, error: remarksError } = await remarksQuery;
-        if (!remarksError && Array.isArray(remarksData)) {
-          latestRemarkByTrainee = new Map<string, string>();
-          for (const entry of remarksData as Array<{ trainee_id: string; remark?: string | null }>) {
+            const { data: remarksData, error: remarksError } = await remarksQuery;
+            if (remarksError) throw remarksError;
+            return (remarksData || []) as Array<{ trainee_id: string; remark?: string | null }>;
+          })
+        );
+
+        latestRemarkByTrainee = new Map<string, string>();
+        for (const chunk of remarkChunks) {
+          for (const entry of chunk) {
             if (entry.trainee_id && !latestRemarkByTrainee.has(entry.trainee_id)) {
               latestRemarkByTrainee.set(entry.trainee_id, entry.remark || '');
             }
@@ -210,6 +219,7 @@ const { data, error } = await query.single();
       .from('users')
       .select('id')
       .eq('email', normalizedEmail)
+      .is('deleted_at', null)
       .maybeSingle();
 
     if (existingUserError && existingUserError.code !== 'PGRST116') {
@@ -353,12 +363,13 @@ const { data, error } = await supabaseAdmin
 
     linkedUserId = accountLink?.user_id ?? null;
 
-    // If no trainee_accounts record, check if a user exists with existing trainee email
+    // If no trainee_accounts record, check if an active user exists with existing trainee email
     if (!linkedUserId) {
       const { data: userByEmail } = await supabaseAdmin
         .from('users')
         .select('id')
         .eq('email', this.normalizeEmail(existingTrainee.email))
+        .is('deleted_at', null)
         .maybeSingle();
 
       if (userByEmail) {
@@ -387,7 +398,8 @@ const { data, error } = await supabaseAdmin
       let duplicateUserQuery = supabaseAdmin
         .from('users')
         .select('id')
-        .eq('email', nextEmail);
+        .eq('email', nextEmail)
+        .is('deleted_at', null);
 
       if (linkedUserId) {
         duplicateUserQuery = duplicateUserQuery.neq('id', linkedUserId);
@@ -571,6 +583,7 @@ const { data, error } = await supabaseAdmin
         .from('users')
         .select('id')
         .eq('email', normalizedEmail)
+        .is('deleted_at', null)
         .maybeSingle();
       if (userByEmail?.id) {
         userId = userByEmail.id;

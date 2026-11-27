@@ -236,6 +236,47 @@ describe('POST /api/requirement-definitions', () => {
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
     });
+
+    it('should allow staff_training_coordinator role to create requirement', async () => {
+      const trainingStaffContext = {
+        tenantId: 'tenant-001',
+        userId: 'staff-training-001',
+        role: 'staff_training_coordinator',
+        isSuperAdmin: false,
+      };
+
+      (requireTenantContext as jest.Mock).mockReturnValue({
+        context: trainingStaffContext,
+      });
+
+      const createdRequirement = {
+        id: 'req-001',
+        tenant_id: 'tenant-001',
+        display_name: 'Test Requirement',
+        description: 'Test description',
+        is_mandatory: true,
+        is_active: true,
+        applicability_rules: null,
+        display_order: 0,
+      };
+
+      mockSingle.mockResolvedValue({
+        data: createdRequirement,
+        error: null,
+      });
+
+      (mockRequest.json as jest.Mock).mockResolvedValue({
+        display_name: 'Test Requirement',
+        description: 'Test description',
+        is_mandatory: true,
+      });
+
+      const response = await POST(mockRequest as NextRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+    });
   });
 
   describe('Input Validation Tests', () => {

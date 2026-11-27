@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { DatabaseError } from '@/lib/db';
 import { logger } from '@/utils/logger';
-import { errorResponse, serverErrorResponse, validationErrorResponse } from '@/utils/responses';
+import { errorResponse, serverErrorResponse, unauthorizedResponse, validationErrorResponse } from '@/utils/responses';
+import { extractTokenFromCookie, extractTokenFromHeader, verifyToken } from '@/lib/auth/jwt';
+import { isUserSoftDeleted } from '@/lib/userSoftDelete';
 import { addCorsHeaders } from './cors';
 
 export const handleError = (error: unknown, request: NextRequest) => {
@@ -91,6 +93,17 @@ export const withErrorHandler = <T>(
     const startTime = Date.now();
     
     try {
+      // Enforce immediate JWT cutoff for soft-deleted users across both async and sync tenant-context routes
+      const rawToken =
+        extractTokenFromHeader(request?.headers?.get?.('authorization') || '') ??
+        extractTokenFromCookie(request?.headers?.get?.('cookie') || null);
+      if (rawToken) {
+        const tokenPayload = verifyToken(rawToken);
+        if (tokenPayload?.userId && (await isUserSoftDeleted(tokenPayload.userId))) {
+          return addCorsHeaders(unauthorizedResponse('Account has been deactivated'), origin);
+        }
+      }
+
       const result = await handler(request, context);
       
       // Log successful request

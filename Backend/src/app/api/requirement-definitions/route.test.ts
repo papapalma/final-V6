@@ -950,6 +950,44 @@ describe('POST /api/requirement-definitions', () => {
 
       expect(response.status).toBe(201);
     });
+
+    it('should allow staff_training_coordinator role', async () => {
+      (requireTenantContext as jest.Mock).mockReturnValue({
+        context: {
+          tenantId: 'tenant-uuid-001',
+          userId: 'user-uuid-001',
+          role: 'staff_training_coordinator',
+          isSuperAdmin: false,
+        },
+      });
+
+      (supabaseAdmin.from as jest.Mock).mockReturnValue({
+        insert: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            single: jest.fn().mockResolvedValue({
+              data: {
+                id: 'req-uuid-001',
+                tenant_id: 'tenant-uuid-001',
+                display_name: 'Test Requirement',
+                description: 'This is a test requirement',
+                is_mandatory: true,
+                is_active: true,
+                applicability_rules: null,
+                display_order: 0,
+                created_at: '2024-01-01T00:00:00Z',
+                updated_at: '2024-01-01T00:00:00Z',
+                deleted_at: null,
+              },
+              error: null,
+            }),
+          }),
+        }),
+      });
+
+      const response = await POST(mockRequest as NextRequest);
+
+      expect(response.status).toBe(201);
+    });
   });
 
   describe('Request Body Validation', () => {

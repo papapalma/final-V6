@@ -36,7 +36,8 @@ interface PostAuthHandlerResult {
  */
 export async function handlePostAuth(
   userId: string,
-  context: 'login' | 'signup'
+  context: 'login' | 'signup',
+  userRole?: string
 ): Promise<PostAuthHandlerResult> {
   try {
     // Step 1: Check LocalStorage for stored program_id
@@ -55,9 +56,18 @@ export async function handlePostAuth(
       programId: storedProgramId,
     });
 
+    // Staff/admin accounts skip trainee-only access checks and go straight to program details
+    if (userRole && userRole !== 'trainee') {
+      return {
+        targetPath: `/programs/${storedProgramId}`,
+        programId: storedProgramId,
+        permissionDenied: false,
+      };
+    }
+
     try {
       const accessResult = await programSharingService.verifyProgramAccess(storedProgramId, userId);
-      if (!accessResult.canAccess) {
+      if (!accessResult.canAccess && !accessResult.hasEnrolled) {
         logger.warn('User denied access to program during post-auth', {
           userId,
           programId: storedProgramId,
@@ -77,7 +87,10 @@ export async function handlePostAuth(
       });
 
       return {
-        targetPath: `/programs/${storedProgramId}`,
+        targetPath:
+          userRole === 'trainee'
+            ? `/programs/${storedProgramId}/enroll`
+            : `/programs/${storedProgramId}`,
         programId: storedProgramId,
         permissionDenied: false,
       };

@@ -17,6 +17,7 @@
  *   - getAttendanceStats         — extended with `pending` count
  */
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { fetchAllRows } from '@/lib/supabasePagination';
 import {
   getNowHHMMInPHT,
   getPHTDateComponents,
@@ -416,20 +417,20 @@ const { data: result, error } = await supabaseAdmin
    * Extended with `pending` count (attendance module).
    */
   async getAttendanceStats(programId: string, tenantId?: string) {
-    let query = supabaseAdmin
-      .from('attendance')
-      .select(`
-        status,
-        morning_status,
-        afternoon_status,
-        session:program_sessions!inner(program_id, session_date)
-      `)
-      .eq('session.program_id', programId);
+    const data = await fetchAllRows<any>(() => {
+      let query = supabaseAdmin
+        .from('attendance')
+        .select(`
+          status,
+          morning_status,
+          afternoon_status,
+          session:program_sessions!inner(program_id, session_date)
+        `)
+        .eq('session.program_id', programId);
 
-    if (tenantId) query = query.eq('tenant_id', tenantId);
-
-    const { data, error } = await query;
-    if (error) throw error;
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+      return query;
+    });
 
     // Fetch excluded dates (holidays, no-attendance days) from attendance_exceptions (3NF normalized)
     const { data: exceptions, error: exceptionsError } = await supabaseAdmin
@@ -752,24 +753,25 @@ const computedSessionStatus: 'present' | 'late' = isLate ? 'late' : 'present';
 
 const { data: existing } = await supabaseAdmin
       .from('attendance')
-      .select('id, attempt_number, morning_status, afternoon_status, late_duration_minutes')
+      .select('id, attempt_number, morning_status, afternoon_status, late_duration_minutes, gps_lat, gps_lng, gps_accuracy, gps_address')
       .eq('session_id', data.session_id)
       .eq('trainee_id', data.trainee_id)
       .maybeSingle();
 
     const currentAttempt = (existing?.attempt_number ?? 0) + 1;
+    const hasIncomingGps = data.gps_lat != null && data.gps_lng != null;
 
     // Build update payload — only touch this session_label's columns
-
+    // Preserve prior session GPS when a subsequent upsert omits coordinates
 const updatePayload: Record<string, unknown> = {
       session_id:        data.session_id,
       trainee_id:        data.trainee_id,
       submission_method: 'self_service',
       attempt_number:    currentAttempt,
-      gps_lat:           data.gps_lat   ?? null,
-      gps_lng:           data.gps_lng   ?? null,
-      gps_accuracy:      data.gps_accuracy ?? null,
-      gps_address:       data.gps_address  ?? null,
+      gps_lat:           hasIncomingGps ? data.gps_lat : (existing?.gps_lat ?? null),
+      gps_lng:           hasIncomingGps ? data.gps_lng : (existing?.gps_lng ?? null),
+      gps_accuracy:      hasIncomingGps ? (data.gps_accuracy ?? null) : (existing?.gps_accuracy ?? null),
+      gps_address:       hasIncomingGps ? (data.gps_address ?? null) : (existing?.gps_address ?? null),
       device_info:       data.device_info  ?? null,
       ...(data.tenant_id ? { tenant_id: data.tenant_id } : {}),
     };
@@ -1102,18 +1104,19 @@ const overallStats = await this.getAttendanceStats(programId, tenantId);
       : 0;
 
     // Daily trend — last 30 days
-
-let trendQuery = supabaseAdmin
-      .from('attendance')
-      .select(`
-        status,
-        session:program_sessions!inner(session_date, program_id)
-      `)
-      .eq('session.program_id', programId)
-      .gte('session.session_date', thirtyDaysAgoStr)
-      .lte('session.session_date', today);
-    if (tenantId) trendQuery = trendQuery.eq('tenant_id', tenantId);
-    const { data: trendData } = await trendQuery;
+    const trendData = await fetchAllRows<any>(() => {
+      let trendQuery = supabaseAdmin
+        .from('attendance')
+        .select(`
+          status,
+          session:program_sessions!inner(session_date, program_id)
+        `)
+        .eq('session.program_id', programId)
+        .gte('session.session_date', thirtyDaysAgoStr)
+        .lte('session.session_date', today);
+      if (tenantId) trendQuery = trendQuery.eq('tenant_id', tenantId);
+      return trendQuery;
+    });
 
     const trendByDate = new Map<string, { present: number; late: number; absent: number }>();
     for (const rec of trendData || []) {

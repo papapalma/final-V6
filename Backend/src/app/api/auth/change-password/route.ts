@@ -46,7 +46,8 @@ const { data: user, error: fetchError } = await supabaseAdmin
     .from('users')
     .select('id, password_hash')
     .eq('id', authResult.user.userId)
-    .single();
+    .is('deleted_at', null)
+    .maybeSingle();
 
   if (fetchError || !user) {
     return errorResponse('User not found', 404);

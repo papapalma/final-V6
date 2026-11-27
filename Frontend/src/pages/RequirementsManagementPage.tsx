@@ -111,7 +111,10 @@ export default function RequirementsManagementPage() {
     );
   }
 
-  const canManageRequirements = user?.role === 'local_admin' || user?.role === 'super_admin';
+  const canManageRequirements =
+    user?.role === 'local_admin' ||
+    user?.role === 'super_admin' ||
+    user?.role === 'staff_training_coordinator';
 
   if (!canManageRequirements) {
     return (

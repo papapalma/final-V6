@@ -9,6 +9,7 @@ import { withErrorHandler } from '@/middleware/errorHandler';
 import { handleOptionsRequest } from '@/middleware/cors';
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds, fetchAllRows } from '@/lib/supabasePagination';
 
 // OPTIONS /api/reports/programs - Handle CORS preflight
 
@@ -50,25 +51,36 @@ const { searchParams } = new URL(request.url);
   // Query all active/completed enrollments for these programs so counts & rosters match ProgramsPage
   let enrollmentRows: Array<{ program_id: string; trainee_id: string; status: string; enrollment_date: string }> = [];
   if (programIds.length > 0) {
-    const { data, error } = await supabaseAdmin
-      .from('enrollments')
-      .select('program_id, trainee_id, status, enrollment_date')
-      .in('program_id', programIds)
-      .in('status', ['enrolled', 'active', 'completed']);
-    if (error) throw error;
-    enrollmentRows = data || [];
+    const enrollmentBatches = await Promise.all(
+      chunkIds(programIds, 150).map((programChunk) =>
+        fetchAllRows<{ program_id: string; trainee_id: string; status: string; enrollment_date: string }>(() =>
+          supabaseAdmin
+            .from('enrollments')
+            .select('program_id, trainee_id, status, enrollment_date')
+            .in('program_id', programChunk)
+            .in('status', ['enrolled', 'active', 'completed'])
+        )
+      )
+    );
+    enrollmentRows = enrollmentBatches.flat();
   }
 
   const traineeIds = [...new Set(enrollmentRows.map((enrollment) => enrollment.trainee_id).filter(Boolean))];
   const traineesById = new Map<string, string>();
   if (traineeIds.length > 0) {
-    const { data: trainees, error: traineesError } = await supabaseAdmin
-      .from('trainees')
-      .select('id, first_name, last_name, email')
-      .in('id', traineeIds);
-    if (traineesError) throw traineesError;
+    // Chunk `.in()` to avoid PostgREST URL length overflow (UND_ERR_HEADERS_OVERFLOW) with 500+ trainees
+    const traineeBatches = await Promise.all(
+      chunkIds(traineeIds, 150).map(async (idChunk) => {
+        const { data: trainees, error: traineesError } = await supabaseAdmin
+          .from('trainees')
+          .select('id, first_name, last_name, email')
+          .in('id', idChunk);
+        if (traineesError) throw traineesError;
+        return trainees || [];
+      })
+    );
 
-    for (const trainee of trainees || []) {
+    for (const trainee of traineeBatches.flat()) {
       const name = [trainee.first_name, trainee.last_name].filter(Boolean).join(' ').trim();
       traineesById.set(trainee.id, name || trainee.email || 'Unnamed trainee');
     }

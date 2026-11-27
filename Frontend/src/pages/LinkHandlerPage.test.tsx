@@ -28,7 +28,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '../contexts/AuthContext';
 import LinkHandlerPage from './LinkHandlerPage';
@@ -268,10 +268,11 @@ beforeEach(() => {
 
       await waitFor(() => {
         expect(programSharingService.validateProgramShare).toHaveBeenCalled();
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
       });
 
-      // Component should redirect without storing for invalid program
-      expect(mockNavigate).toHaveBeenCalled();
+      // No data should be stored for invalid program
+      expect(localStorage.getItem('selected_program_id')).toBeNull();
     });
 
     /**
@@ -331,9 +332,12 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // Should redirect to home on error
-        expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+        // Should show error recovery UI with Back to Home action
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
       });
+
+      fireEvent.click(screen.getByRole('button', { name: /Back to Home/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
 
       // No data should be stored
       expect(localStorage.getItem('selected_program_id')).toBeNull();
@@ -408,9 +412,8 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // Should redirect away due to validation failure
-        expect(mockNavigate).toHaveBeenCalled();
-        // Verify no data was stored
+        // Should show unavailable state and keep storage empty
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
         expect(localStorage.getItem('selected_program_id')).toBeNull();
       });
     });
@@ -418,42 +421,36 @@ beforeEach(() => {
 
   describe('Routing Logic for Different User Types', () => {
     /**
-     * Requirement 3.1: WHEN a Shared_Link is accessed and the Program_ID is stored in 
-     * Local_Storage, THE User_Type_Detector SHALL check if the user has an active session
-     * 
-     * Requirement 3.4: WHEN the User_Type_Detector identifies an existing Trainee without 
-     * an active session, THE Router SHALL redirect them to the login page
-     * 
-     * **Validates: Requirements 3.1, 3.4**
+     * Requirement 3.1 / 3.4: Unauthenticated visitor sees Public Program Preview card
+     * with Register & Apply and Log In to Enroll CTAs.
      */
-    it('should route unauthenticated user to login page', async () => {
+    it('should render public program preview for unauthenticated user with login and register CTAs', async () => {
       mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
 
       vi.mocked(programSharingService.validateProgramShare).mockResolvedValue({
         isValid: true,
         isActive: true,
         isPublic: true,
-        program: { id: validProgramId, name: 'Program', description: 'Test' },
+        program: { id: validProgramId, tenant_id: 'tenant-1', name: 'Program', description: 'Test' },
       });
 
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // Should store program_id
         expect(localStorage.getItem('selected_program_id')).toBe(validProgramId);
-        // Should route to login for unauthenticated user
-        expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
+        expect(screen.getByText('Program')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Register & Apply/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Log In to Enroll/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Log In to Enroll/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/', {
+        state: { openLogin: true, programId: validProgramId, tenantId: 'tenant-1' },
       });
     });
 
     /**
-     * Requirement 3.2: IF the user has an active authenticated session, THEN THE 
-     * User_Type_Detector SHALL treat them as an existing Trainee
-     * 
-     * Requirement 3.5: WHEN the User_Type_Detector identifies a New_User, THE Router 
-     * SHALL redirect them to the signup page
-     * 
-     * **Validates: Requirements 3.1, 3.2, 3.5**
+     * Requirement 3.2: Valid shared link calls validateProgramShare
      */
     it('should route authenticated user to program page', async () => {
       mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
@@ -465,8 +462,6 @@ beforeEach(() => {
         program: { id: validProgramId, name: 'Program', description: 'Test' },
       });
 
-      // Mock authenticated user - this would need to be handled differently in real tests
-      // For now, we test the unauthenticated path
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
@@ -477,34 +472,19 @@ beforeEach(() => {
     /**
      * **Validates: Requirements 3.1, 3.4**
      */
-    it('should use replace=true for routing to preserve history', async () => {
-      mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
-
-      vi.mocked(programSharingService.validateProgramShare).mockResolvedValue({
-        isValid: true,
-        isActive: true,
-        isPublic: true,
-        program: { id: validProgramId, name: 'Program', description: 'Test' },
-      });
+    it('should use replace=true when recovering from invalid program_id', async () => {
+      mockSearchParams = new URLSearchParams(`program_id=${invalidProgramId}`);
 
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // All navigation calls should use replace: true
-        expect(mockNavigate).toHaveBeenCalledWith(
-          expect.any(String),
-          { replace: true }
-        );
+        expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
       });
     });
   });
 
   describe('Error Handling for Invalid/Expired Links', () => {
     /**
-     * Requirement 8.1: WHEN the Link_Handler attempts to validate a Program_ID that 
-     * references an inactive or deleted program, THE Program_Validator SHALL return a 
-     * validation failure
-     * 
      * **Validates: Requirements 8.1**
      */
     it('should handle deleted program error', async () => {
@@ -520,8 +500,8 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // Should redirect away
-        expect(mockNavigate).toHaveBeenCalled();
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
+        expect(screen.getByText('Program has been deleted')).toBeInTheDocument();
       });
     });
 
@@ -548,7 +528,7 @@ beforeEach(() => {
     /**
      * **Validates: Requirements 8.1, 8.4**
      */
-    it('should redirect to programs list for invalid programs', async () => {
+    it('should show Back to Home recovery button instead of redirecting to protected /programs list', async () => {
       mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
 
       vi.mocked(programSharingService.validateProgramShare).mockResolvedValue({
@@ -560,8 +540,11 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/programs', { replace: true });
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
       });
+      expect(mockNavigate).not.toHaveBeenCalledWith('/programs', expect.anything());
+      fireEvent.click(screen.getByRole('button', { name: /Back to Home/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
     });
 
     /**
@@ -577,8 +560,10 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
       });
+      fireEvent.click(screen.getByRole('button', { name: /Back to Home/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
     });
   });
 
@@ -619,8 +604,8 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // Should have navigated (no longer loading)
-        expect(mockNavigate).toHaveBeenCalled();
+        expect(screen.queryByText('Validating program...')).not.toBeInTheDocument();
+        expect(screen.getByText('Program')).toBeInTheDocument();
       });
     });
 
@@ -640,8 +625,8 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // Should show error or redirect
-        expect(mockNavigate).toHaveBeenCalled();
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
+        expect(screen.getByText('Validation failed')).toBeInTheDocument();
       });
     });
   });
@@ -652,20 +637,12 @@ beforeEach(() => {
      * 
      * **Validates: Requirements 2.1**
      */
-    it('should clear URL query parameter after processing by using replace=true', async () => {
-      mockSearchParams = new URLSearchParams(`program_id=${validProgramId}`);
-
-      vi.mocked(programSharingService.validateProgramShare).mockResolvedValue({
-        isValid: true,
-        isActive: true,
-        isPublic: true,
-        program: { id: validProgramId, name: 'Program', description: 'Test' },
-      });
+    it('should navigate cleanly with replace=true when missing program_id', async () => {
+      mockSearchParams = new URLSearchParams('');
 
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // All navigation calls should use replace: true to clear query params
         const calls = mockNavigate.mock.calls;
         expect(calls.some(call => call[1]?.replace === true)).toBe(true);
       });
@@ -707,20 +684,30 @@ beforeEach(() => {
         isValid: true,
         isActive: true,
         isPublic: true,
-        program: { id: validProgramId, name: 'Test Program', description: 'Learn testing' },
+        program: {
+          id: validProgramId,
+          tenant_id: 'tenant-xyz',
+          name: 'Test Program',
+          description: 'Learn testing',
+        },
       });
 
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // 1. Program should be validated
         expect(programSharingService.validateProgramShare).toHaveBeenCalledWith(validProgramId);
-        
-        // 2. Program should be stored in LocalStorage
         expect(localStorage.getItem('selected_program_id')).toBe(validProgramId);
-        
-        // 3. User should be routed to login
-        expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
+        expect(localStorage.getItem('selected_program_tenant_id')).toBe('tenant-xyz');
+        expect(screen.getByText('Test Program')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Register & Apply/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/', {
+        state: {
+          openRegister: true,
+          programId: validProgramId,
+          tenantId: 'tenant-xyz',
+        },
       });
     });
 
@@ -741,15 +728,12 @@ beforeEach(() => {
       renderWithProviders(<LinkHandlerPage />);
 
       await waitFor(() => {
-        // 1. Program should be validated
         expect(programSharingService.validateProgramShare).toHaveBeenCalled();
-        
-        // 2. No data should be stored
         expect(localStorage.getItem('selected_program_id')).toBeNull();
-        
-        // 3. User should be redirected to programs list
-        expect(mockNavigate).toHaveBeenCalledWith('/programs', { replace: true });
+        expect(screen.getByText('Program Unavailable')).toBeInTheDocument();
+        expect(screen.getByText('Program not found')).toBeInTheDocument();
       });
+      expect(mockNavigate).not.toHaveBeenCalledWith('/programs', expect.anything());
     });
 
     /**

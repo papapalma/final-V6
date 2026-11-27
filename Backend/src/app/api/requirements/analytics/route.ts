@@ -26,6 +26,7 @@ import {
   forbiddenResponse,
 } from '@/utils/responses';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { fetchAllRows } from '@/lib/supabasePagination';
 
 /**
  * Represents analytics for a single requirement
@@ -81,8 +82,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   const { tenantId, role } = ctxResult.context;
 
-  // 2. Check if user has admin role
-  if (role !== 'local_admin' && role !== 'super_admin') {
+  // 2. Check if user has admin or training coordinator role
+  if (role !== 'local_admin' && role !== 'super_admin' && role !== 'staff_training_coordinator') {
     return forbiddenResponse('Only admins can access analytics endpoints');
   }
 
@@ -130,25 +131,23 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   };
 
   for (const requirement of requirements) {
-    // Query enrollment_requirements to get submission stats for this requirement
-    const { data: submissions, error: submissionError } = await supabaseAdmin
-      .from('enrollment_requirements')
-      .select(
-        `
-        id,
-        submission_status,
-        submitted_at,
-        verified_at,
-        created_at
-        `,
-        { count: 'exact' }
-      )
-      .eq('requirement_id', requirement.id)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .eq('is_applicable', true); // Only count applicable requirements
-
-    if (submissionError) throw submissionError;
+    // Query enrollment_requirements via paginated helper (table has no deleted_at column)
+    const submissions = await fetchAllRows<any>(() =>
+      supabaseAdmin
+        .from('enrollment_requirements')
+        .select(
+          `
+          id,
+          submission_status,
+          submitted_at,
+          verified_at,
+          created_at
+          `
+        )
+        .eq('requirement_id', requirement.id)
+        .eq('tenant_id', tenantId)
+        .eq('is_applicable', true)
+    );
 
     // Calculate statistics for this requirement
     const stats = {

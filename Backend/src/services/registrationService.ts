@@ -232,6 +232,7 @@ export class RegistrationService {
         .from('users')
         .select('id')
         .eq('email', data.email.toLowerCase())
+        .is('deleted_at', null)
         .maybeSingle();
 
       if (existingUser) {
@@ -242,6 +243,7 @@ export class RegistrationService {
         .from('users')
         .select('id')
         .eq('username', data.username)
+        .is('deleted_at', null)
         .maybeSingle();
 
       if (existingUsername) {
@@ -328,6 +330,7 @@ export class RegistrationService {
         .from('users')
         .select('id')
         .eq('email', data.email.toLowerCase())
+        .is('deleted_at', null)
         .maybeSingle();
       userId = existingUser?.id || null;
     }
@@ -778,11 +781,12 @@ export class RegistrationService {
 
     if (approvalError) throw approvalError;
 
-    // Check if user account already exists
+    // Check if an active user account already exists
     const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id, email')
       .eq('email', traineeReg.email)
+      .is('deleted_at', null)
       .maybeSingle();
 
     // If user doesn't exist, create one (new trainee flow)

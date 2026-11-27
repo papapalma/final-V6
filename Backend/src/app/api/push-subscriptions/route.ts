@@ -2,14 +2,8 @@
  * POST /api/push-subscriptions  — Register a device push subscription
  * GET  /api/push-subscriptions  — Get all subscriptions for the current user
  *
- * Web Push Notification Subscriptions API
- * 
- * Allows PWA users to register their device push subscription with the backend.
- * The backend stores the subscription endpoint and cryptographic keys needed
- * to send encrypted push notifications to the user's device.
- *
- * Implements Requirement 12.6: Push notification subscriptions are scoped to
- * the requesting user and tenant.
+ * Aligned to the live Supabase `push_subscriptions` JSONB schema:
+ *   id, tenant_id, trainee_id, user_id, subscription (jsonb), created_at, updated_at
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,10 +12,11 @@ import { successResponse, forbiddenResponse, errorResponse, createdResponse } fr
 import { withErrorHandler } from '@/middleware/errorHandler';
 import { handleOptionsRequest } from '@/middleware/cors';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { resolveTraineeForUser } from '@/lib/resolveTraineeId';
+import { parseStoredSubscription } from '@/services/pushService';
 import { logger } from '@/utils/logger';
 import { z } from 'zod';
 
-// Validation schemas
 const pushSubscriptionSchema = z.object({
   endpoint: z.string().url('Invalid subscription endpoint'),
   keys: z.object({
@@ -32,19 +27,29 @@ const pushSubscriptionSchema = z.object({
   userAgent: z.string().optional(),
 });
 
-type PushSubscriptionInput = z.infer<typeof pushSubscriptionSchema>;
+function formatSubscriptionResponse(row: any) {
+  const parsed = parseStoredSubscription(row?.subscription);
+  return {
+    id: row.id,
+    endpoint: parsed?.endpoint || '',
+    deviceIdentifier: parsed?.deviceIdentifier || undefined,
+    isActive: parsed ? parsed.isActive !== false : false,
+    lastUsedAt: parsed?.lastUsedAt || row.updated_at || undefined,
+    createdAt: row.created_at,
+  };
+}
 
 // OPTIONS /api/push-subscriptions
 export async function OPTIONS(request: NextRequest) {
   return handleOptionsRequest(request);
 }
 
-// POST /api/push-subscriptions - Register device subscription
+// POST /api/push-subscriptions - Register or reactivate device subscription
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const ctxResult = requireTenantContext(request);
   if (ctxResult.error) return ctxResult.error as NextResponse;
 
-  const { tenantId, userId } = ctxResult.context;
+  const { tenantId, userId, role } = ctxResult.context;
 
   if (!userId) {
     return forbiddenResponse('User context required for push subscriptions');
@@ -54,34 +59,51 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const body = await request.json();
     const validated = pushSubscriptionSchema.parse(body);
 
-    // Check if subscription already exists for this endpoint
-    const { data: existing, error: checkError } = await supabaseAdmin
-      .from('push_subscriptions')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('endpoint', validated.endpoint)
-      .maybeSingle();
+    const resolvedTrainee =
+      role === 'trainee' ? await resolveTraineeForUser(userId, role) : null;
+    const traineeId = resolvedTrainee?.id ?? null;
 
-    if (checkError && checkError.code !== 'PGRST116') {
-      logger.error('[PUSH] Error checking existing subscription', { error: checkError });
+    // Load user's existing subscriptions to match endpoint idempotently
+    const { data: existingRows, error: checkError } = await supabaseAdmin
+      .from('push_subscriptions')
+      .select('id, subscription, trainee_id, created_at, updated_at')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId);
+
+    if (checkError) {
+      logger.error('[PUSH] Error checking existing subscriptions', { error: checkError, userId });
       return errorResponse('Failed to check subscription', 500);
     }
 
-    let result;
+    const existing = (existingRows || []).find(
+      (row: any) => row.subscription?.endpoint === validated.endpoint
+    );
+
+    const nowIso = new Date().toISOString();
+    const subscriptionJson = {
+      endpoint: validated.endpoint,
+      keys: {
+        auth: validated.keys.auth,
+        p256dh: validated.keys.p256dh,
+      },
+      deviceIdentifier: validated.deviceIdentifier || null,
+      userAgent: validated.userAgent || null,
+      isActive: true,
+      lastUsedAt: nowIso,
+    };
+
+    let resultRow;
 
     if (existing) {
-      // Update existing subscription (mark as active again)
       const { data, error } = await supabaseAdmin
         .from('push_subscriptions')
         .update({
-          is_active: true,
-          last_used_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          user_agent: validated.userAgent || null,
-          device_identifier: validated.deviceIdentifier || null,
+          trainee_id: traineeId ?? existing.trainee_id ?? null,
+          subscription: subscriptionJson,
+          updated_at: nowIso,
         })
         .eq('id', existing.id)
-        .select()
+        .select('id, subscription, created_at, updated_at')
         .single();
 
       if (error) {
@@ -89,27 +111,24 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return errorResponse('Failed to update subscription', 500);
       }
 
-      result = data;
+      resultRow = data;
       logger.info('[PUSH] Updated existing subscription', {
         subscriptionId: existing.id,
         userId,
+        traineeId,
         tenantId,
       });
     } else {
-      // Create new subscription
       const { data, error } = await supabaseAdmin
         .from('push_subscriptions')
         .insert({
           user_id: userId,
+          trainee_id: traineeId,
           tenant_id: tenantId,
-          endpoint: validated.endpoint,
-          auth_secret: validated.keys.auth,
-          p256dh_key: validated.keys.p256dh,
-          device_identifier: validated.deviceIdentifier || null,
-          user_agent: validated.userAgent || null,
-          is_active: true,
+          subscription: subscriptionJson,
+          updated_at: nowIso,
         })
-        .select()
+        .select('id, subscription, created_at, updated_at')
         .single();
 
       if (error) {
@@ -117,16 +136,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return errorResponse('Failed to register push subscription', 500);
       }
 
-      result = data;
+      resultRow = data;
       logger.info('[PUSH] Created new subscription', {
         subscriptionId: data.id,
         userId,
+        traineeId,
         tenantId,
         deviceIdentifier: validated.deviceIdentifier,
       });
     }
 
-    return createdResponse(result, 'Push subscription registered');
+    return createdResponse(formatSubscriptionResponse(resultRow), 'Push subscription registered');
   } catch (error) {
     if (error instanceof z.ZodError) {
       const issues = error.issues || (error as any).errors || [];
@@ -136,7 +156,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   }
 });
 
-// GET /api/push-subscriptions - Get user's subscriptions
+// GET /api/push-subscriptions - Get current user's subscriptions
 export const GET = withErrorHandler(async (request: NextRequest) => {
   const ctxResult = requireTenantContext(request);
   if (ctxResult.error) return ctxResult.error as NextResponse;
@@ -147,21 +167,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     return forbiddenResponse('User context required');
   }
 
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('push_subscriptions')
-      .select('id, endpoint, device_identifier, is_active, last_used_at, created_at')
-      .eq('user_id', userId)
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false });
+  const { data, error } = await supabaseAdmin
+    .from('push_subscriptions')
+    .select('id, subscription, created_at, updated_at')
+    .eq('user_id', userId)
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false });
 
-    if (error) {
-      logger.error('[PUSH] Error fetching subscriptions', { error, userId });
-      return errorResponse('Failed to fetch subscriptions', 500);
-    }
-
-    return successResponse(data, 'Push subscriptions retrieved');
-  } catch (error) {
-    throw error;
+  if (error) {
+    logger.error('[PUSH] Error fetching subscriptions', { error, userId });
+    return errorResponse('Failed to fetch subscriptions', 500);
   }
+
+  const formatted = (data || []).map(formatSubscriptionResponse);
+  return successResponse(formatted, 'Push subscriptions retrieved');
 });

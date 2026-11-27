@@ -16,7 +16,9 @@ import { programService } from '@/services/programService';
 import { requireTenantContext } from '@/middleware/tenantContext';
 import { successResponse, notFoundResponse, forbiddenResponse } from '@/utils/responses';
 import { withErrorHandler } from '@/middleware/errorHandler';
-import { handleOptionsRequest } from '@/middleware/cors';
+import { handleOptionsRequest, isOriginAllowed } from '@/middleware/cors';
+
+const SHAREABLE_PROGRAM_STATUSES = new Set(['active', 'upcoming']);
 
 /**
  * Open Graph metadata for social media previews
@@ -38,14 +40,84 @@ interface ShareableLinkResponse {
   og: OpenGraphMetadata;
 }
 
+function parseHttpOrigin(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.origin.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+function isLocalOrigin(origin: string): boolean {
+  try {
+    const hostname = new URL(origin).hostname;
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Get the base URL from environment or request
+ * Resolve the public frontend base URL for generated share links.
+ * Priority:
+ *   1. Trusted `Origin` or `Referer` header (automatically matches bmdc.site in prod & localhost:3001 in dev)
+ *   2. Configured `FRONTEND_URL` environment variable (ignored if it points to localhost while request came on a public host)
+ *   3. Forwarded/request host fallback
  */
 function getBaseUrl(request: NextRequest): string {
-  const host = request.headers.get('host');
-  const protocol = request.headers.get('x-forwarded-proto') || 'http';
-  const baseUrl = `${protocol}://${host}`;
-  return baseUrl;
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+  const host = forwardedHost || request.headers.get('host');
+  const protocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'http';
+  const hostOrigin = host ? `${protocol}://${host}`.replace(/\/+$/, '') : null;
+
+  const candidateOrigin =
+    parseHttpOrigin(request.headers.get('origin')) ??
+    parseHttpOrigin(request.headers.get('referer'));
+
+  if (candidateOrigin) {
+    const isSameHost = Boolean(host && new URL(candidateOrigin).host === host);
+    if (isOriginAllowed(candidateOrigin) || isSameHost) {
+      return candidateOrigin;
+    }
+  }
+
+  const envFrontendUrl = parseHttpOrigin(process.env.FRONTEND_URL);
+  if (envFrontendUrl && (!hostOrigin || isLocalOrigin(hostOrigin) || !isLocalOrigin(envFrontendUrl))) {
+    return envFrontendUrl;
+  }
+
+  return hostOrigin || 'http://localhost:3001';
+}
+
+/**
+ * Normalize a stored program image_path into a publicly reachable URL for OG previews.
+ */
+function buildPublicImageUrl(imagePath: string | null | undefined): string | undefined {
+  if (!imagePath) return undefined;
+  if (/^https?:\/\//i.test(imagePath)) return imagePath;
+
+  const backendBase = (process.env.BACKEND_URL || '').replace(/\/+$/, '');
+  const normalized = imagePath.replace(/\\/g, '/');
+
+  // Tenant-scoped uploads route through the public /api/files/{tenant_id}/images/programs/... proxy
+  const tenantScopedMatch = normalized.match(
+    /^\/?uploads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/.+)$/i
+  );
+  if (tenantScopedMatch) {
+    return `${backendBase}/api/files/${tenantScopedMatch[1]}`;
+  }
+
+  if (normalized.startsWith('/uploads/')) {
+    return `${backendBase}${normalized}`;
+  }
+  if (normalized.startsWith('uploads/')) {
+    return `${backendBase}/${normalized}`;
+  }
+
+  return `${backendBase}/uploads/${normalized.replace(/^\/+/, '')}`;
 }
 
 /**
@@ -57,9 +129,8 @@ function generateOpenGraphMetadata(
 ): OpenGraphMetadata {
   // Construct description from program details
   const description = program.description || `Join the ${program.name} program`;
-  
-  // Use program image if available, otherwise default placeholder
-  const imageUrl = program.image_path ? `${process.env.BACKEND_URL || ''}/uploads/${program.image_path}` : undefined;
+
+  const imageUrl = buildPublicImageUrl(program.image_path);
 
   return {
     title: `${program.name} - Training Program`,
@@ -127,9 +198,9 @@ export const GET = withErrorHandler(
       return notFoundResponse('Program not found');
     }
 
-    // Verify program is active (Requirement 1.2, 1.3)
-    if (program.status !== 'active') {
-      return forbiddenResponse('Can only generate share links for active programs');
+    // Verify program is active or upcoming (block completed/cancelled programs)
+    if (!SHAREABLE_PROGRAM_STATUSES.has(program.status)) {
+      return forbiddenResponse('Can only generate share links for active or upcoming programs');
     }
 
     // Generate shareable URL

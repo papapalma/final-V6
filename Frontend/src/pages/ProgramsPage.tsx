@@ -525,16 +525,6 @@ export default function ProgramsPage() {
           </div>
         )}
 
-        {!loading && viewMode === 'table' && tableTotalPages > 1 && (
-          <div className="hidden sm:mt-6 sm:flex sm:justify-center">
-            <PaginationWrapper
-              currentPage={tablePage}
-              totalPages={tableTotalPages}
-              onPageChange={setTablePage}
-            />
-          </div>
-        )}
-
         {/* Programs Grid / Empty State */}
         {!loading && (filteredPrograms.length === 0 ? (
           <Card className="rounded-2xl border-dashed border-border/80 bg-card/50 backdrop-blur-sm">

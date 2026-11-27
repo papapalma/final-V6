@@ -35,6 +35,8 @@ import {
   ArrowLeftRight,
   ClipboardList,
   ArrowUpRight,
+  AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { dashboardLogger } from '../utils/activityLogger';
@@ -43,6 +45,8 @@ import activityLogService from '../services/activityLogService';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
+import TrainingStaffWorkspace from '../components/dashboard/TrainingStaffWorkspace';
+import InventoryStaffWorkspace from '../components/dashboard/InventoryStaffWorkspace';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -88,8 +92,8 @@ export default function DashboardPage() {
     try {
       setLoading(true);
 
-      const shouldFetchActivity = !isTrainingStaff && hasPermission('canViewActivityLogs');
-      const shouldFetchAnalytics = !isTrainingStaff;
+      const shouldFetchActivity = !isTrainingStaff && !isInventoryStaff && hasPermission('canViewActivityLogs');
+      const shouldFetchAnalytics = !isTrainingStaff && !isInventoryStaff;
 
       // Fire all independent dashboard requests in parallel (capped recent activity logs)
       const [statsResult, activityResult, analyticsResult] = await Promise.allSettled([
@@ -212,6 +216,26 @@ export default function DashboardPage() {
           iconBg: 'bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-sm shadow-rose-500/25',
         }] : []),
         ...(isInventoryStaff ? [{
+          label: 'Overdue Returns',
+          value: data.lending?.overdue || 0,
+          trend: `${data.lending?.active || 0} active loans`,
+          trendUp: (data.lending?.overdue || 0) === 0,
+          href: '/lendings',
+          icon: Clock,
+          gradient: 'bg-gradient-to-br from-rose-500/12 via-rose-500/4 to-transparent dark:from-rose-500/20 dark:via-rose-500/5 dark:to-transparent',
+          border: 'border-rose-200/80 dark:border-rose-800/60',
+          iconBg: 'bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-sm shadow-rose-500/25',
+        }, {
+          label: 'Low Stock Alerts',
+          value: data.inventory?.lowStock || 0,
+          trend: `${data.inventory?.borrowed || 0} units borrowed`,
+          trendUp: (data.inventory?.lowStock || 0) === 0,
+          href: '/items?stock=low',
+          icon: AlertTriangle,
+          gradient: 'bg-gradient-to-br from-amber-500/12 via-amber-500/4 to-transparent dark:from-amber-500/20 dark:via-amber-500/5 dark:to-transparent',
+          border: 'border-amber-200/80 dark:border-amber-800/60',
+          iconBg: 'bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-sm shadow-amber-500/25',
+        }, {
           label: 'Total Inventory Items',
           value: data.inventory?.total || 0,
           trend: `${data.inventory?.lowStock || 0} low stock`,
@@ -276,11 +300,9 @@ export default function DashboardPage() {
     }
   };
 
-  const expectedKpiCount = isTrainingStaff ? 6 : isInventoryStaff ? 3 : 5;
+  const expectedKpiCount = isTrainingStaff ? 6 : 5;
   const kpiGridCols = isTrainingStaff
     ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-6'
-    : isInventoryStaff
-    ? 'grid-cols-1 sm:grid-cols-3 lg:grid-cols-3'
     : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5';
 
   const quickActions = [
@@ -439,8 +461,12 @@ export default function DashboardPage() {
           </section>
         )}
 
+        {/* Role-Specific Operational Workspaces (Golden Ratio 62/38 Split) */}
+        {isTrainingStaff && <TrainingStaffWorkspace />}
+        {isInventoryStaff && <InventoryStaffWorkspace />}
+
         {/* Recent Activity - Desktop Table */}
-        {!isTrainingStaff && <Card className="hidden md:block">
+        {!isTrainingStaff && !isInventoryStaff && <Card className="hidden md:block">
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
             <CardDescription>Latest system activity and changes</CardDescription>

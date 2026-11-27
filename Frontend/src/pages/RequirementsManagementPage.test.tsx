@@ -112,9 +112,18 @@ describe('RequirementsManagementPage', () => {
       expect(screen.queryByText(/Access Denied/i)).not.toBeInTheDocument();
     });
 
-    it('should deny access to staff_trainingcoordinator users', () => {
+    it('should allow staff_training_coordinator users to access', () => {
       renderPage({
-        user: { id: '123', role: 'staff_trainingcoordinator' },
+        user: { id: '123', role: 'staff_training_coordinator' },
+        hasPermission: vi.fn(() => true),
+      });
+      expect(screen.getAllByText(/Requirements Management/i)[0]).toBeInTheDocument();
+      expect(screen.queryByText(/Access Denied/i)).not.toBeInTheDocument();
+    });
+
+    it('should deny access to staff_inventory_manager users', () => {
+      renderPage({
+        user: { id: '123', role: 'staff_inventory_manager' },
         hasPermission: vi.fn(() => false),
       });
       expect(screen.getByText(/Access Denied/i)).toBeInTheDocument();

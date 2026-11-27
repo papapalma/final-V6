@@ -26,6 +26,7 @@ import { checkRateLimit, getRateLimitKey } from '@/utils/rateLimit';
 import { activityLogService } from '@/services/activityLogService';
 import { authRecoveryService } from '@/services/authRecoveryService';
 import { redeemTenantSelectionToken } from '@/services/multiTenantAuthService';
+import { isMissingDeletedAtColumnError } from '@/lib/userSoftDelete';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,7 @@ export async function OPTIONS(request: NextRequest) {
 export const POST = withErrorHandler(async (request: NextRequest) => {
   // Rate limit: 10 attempts per IP per 15 minutes (same window as login)
 
-const rlResponse = checkRateLimit(getRateLimitKey(request, 'select-tenant'), {
+  const rlResponse = checkRateLimit(getRateLimitKey(request, 'select-tenant'), {
     limit: 10,
     windowMs: 15 * 60 * 1000,
   });
@@ -66,7 +67,7 @@ const rlResponse = checkRateLimit(getRateLimitKey(request, 'select-tenant'), {
   //   2. The requested tenant_id is in the allowed set for this token
   //   3. Token is consumed (one-time use) to prevent replay
 
-const result = redeemTenantSelectionToken(
+  const result = redeemTenantSelectionToken(
     validatedData.selection_token,
     validatedData.tenant_id
   );
@@ -74,14 +75,14 @@ const result = redeemTenantSelectionToken(
   if (!result) {
     // Generic message — do not reveal whether the token or tenant was invalid
 
-return unauthorizedResponse(
+    return unauthorizedResponse(
       'Invalid or expired selection token. Please log in again.'
     );
   }
 
   // ── Fetch tenant name for the response ──────────────────────────────────
 
-const { data: tenant } = await supabaseAdmin
+  const { data: tenant } = await supabaseAdmin
     .from('tenants')
     .select('id, name, status')
     .eq('id', validatedData.tenant_id)
@@ -99,14 +100,19 @@ const { data: tenant } = await supabaseAdmin
     .from('users')
     .select('id, email, username, role, preferred_language')
     .eq('id', result.userId)
-    .single();
+    .is('deleted_at', null)
+    .maybeSingle();
 
-  if (userError && (userError.code === '42703' || userError.code === 'PGRST204' || userError.message?.includes('preferred_language'))) {
-    const fallback = await supabaseAdmin
+  if (userError && (userError.code === '42703' || userError.code === 'PGRST204' || userError.message?.includes('preferred_language') || isMissingDeletedAtColumnError(userError))) {
+    const missingDeletedAt = isMissingDeletedAtColumnError(userError);
+    let fallbackQuery = supabaseAdmin
       .from('users')
       .select('id, email, username, role')
-      .eq('id', result.userId)
-      .single();
+      .eq('id', result.userId);
+    if (!missingDeletedAt) {
+      fallbackQuery = fallbackQuery.is('deleted_at', null);
+    }
+    const fallback = await fallbackQuery.maybeSingle();
     user = fallback.data ? { ...fallback.data, preferred_language: 'en' } : null;
   }
 
@@ -116,7 +122,7 @@ const { data: tenant } = await supabaseAdmin
 
   // ── Issue refresh token ──────────────────────────────────────────────────
 
-const ip =
+  const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     request.headers.get('x-real-ip') ||
     undefined;
@@ -126,7 +132,7 @@ const ip =
 
   // ── Log successful tenant selection ─────────────────────────────────────
 
-await activityLogService.logAction(result.userId, 'login', 'user', result.userId, undefined, undefined, validatedData.tenant_id);
+  await activityLogService.logAction(result.userId, 'login', 'user', result.userId, undefined, undefined, validatedData.tenant_id);
 
   const refreshTokenMaxAge =
     Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS || 14) * 24 * 60 * 60;

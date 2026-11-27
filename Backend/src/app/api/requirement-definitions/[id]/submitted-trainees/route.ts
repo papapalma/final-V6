@@ -1,8 +1,14 @@
 import { NextRequest } from 'next/server';
 import { requireTenantContext } from '@/middleware/tenantContext';
 import { withErrorHandler } from '@/middleware/errorHandler';
+import { handleOptionsRequest } from '@/middleware/cors';
 import { notFoundResponse, paginatedResponse } from '@/utils/responses';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds, fetchAllRows } from '@/lib/supabasePagination';
+
+export async function OPTIONS(request: NextRequest) {
+  return handleOptionsRequest(request);
+}
 
 type TraineeRow = {
   id: string;
@@ -36,26 +42,29 @@ export const GET = withErrorHandler(async (
   if (requirementError) throw requirementError;
   if (!requirement) return notFoundResponse('Requirement definition not found');
 
-  const { data: files, error: filesError } = await supabaseAdmin
-    .from('training_requirement_files')
-    .select('id,trainee_id,file_path,file_name,file_size_bytes,uploaded_at,requirement_type')
-    .eq('tenant_id', tenantId)
-    .eq('requirement_type', requirement.requirement_type)
-    .is('deleted_at', null)
-    .order('uploaded_at', { ascending: false });
+  const files = await fetchAllRows<any>(() =>
+    supabaseAdmin
+      .from('training_requirement_files')
+      .select('id,trainee_id,file_path,file_name,file_size_bytes,uploaded_at,requirement_type')
+      .eq('tenant_id', tenantId)
+      .eq('requirement_type', requirement.requirement_type)
+      .is('deleted_at', null)
+      .order('uploaded_at', { ascending: false })
+  );
 
-  if (filesError) throw filesError;
-
-  const traineeIds = [...new Set((files || []).map((file) => file.trainee_id).filter(Boolean))];
-  const { data: trainees, error: traineesError } = traineeIds.length
-    ? await supabaseAdmin
+  const traineeIds = [...new Set(files.map((file) => file.trainee_id).filter(Boolean))];
+  const traineeBatches = await Promise.all(
+    chunkIds(traineeIds, 150).map(async (idChunk) => {
+      const { data, error } = await supabaseAdmin
         .from('trainees')
         .select('id,first_name,last_name,email')
         .eq('tenant_id', tenantId)
-        .in('id', traineeIds)
-    : { data: [], error: null };
-
-  if (traineesError) throw traineesError;
+        .in('id', idChunk);
+      if (error) throw error;
+      return (data || []) as TraineeRow[];
+    })
+  );
+  const trainees = traineeBatches.flat();
 
   const traineeById = new Map(
     (trainees || []).map((trainee: TraineeRow) => [trainee.id, trainee] as const)

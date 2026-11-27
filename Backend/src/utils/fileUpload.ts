@@ -520,6 +520,11 @@ if (normalizedPath === DEFAULT_THUMBNAIL_RELATIVE_PATH) {
 return true;
     }
 
+if (path.posix.basename(normalizedPath).startsWith('seed-')) {
+      // Keep shared reusable capstone seed assets on disk when editing/deleting a single record.
+      return true;
+    }
+
 const absolutePath = toAbsolutePublicPath(normalizedPath);
     if (!absolutePath) {
       return false;

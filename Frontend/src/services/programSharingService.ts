@@ -7,15 +7,28 @@
 
 import api from './api';
 
+export interface SharedProgramDetails {
+  id: string;
+  tenant_id?: string;
+  name: string;
+  description?: string;
+  status?: string;
+  start_date?: string;
+  end_date?: string;
+  duration_weeks?: number;
+  max_trainees?: number;
+  enrollment_limit?: number | null;
+  current_enrollment?: number;
+  image_path?: string | null;
+  thumbnail_path?: string | null;
+  instructor?: string;
+}
+
 export interface ValidateProgramShareResponse {
   isValid: boolean;
   isActive: boolean;
   isPublic: boolean;
-  program?: {
-    id: string;
-    name: string;
-    description: string;
-  };
+  program?: SharedProgramDetails;
   error?: string;
 }
 
@@ -72,11 +85,16 @@ class ProgramSharingService {
     traineeId: string
   ): Promise<VerifyAccessResponse> {
     try {
-      const response = await api.post<VerifyAccessResponse>(
+      const response = await api.post<any>(
         `programs/${programId}/verify-access`,
         { trainee_id: traineeId }
       );
-      return response.data;
+      const raw = response.data || {};
+      return {
+        canAccess: Boolean(raw.canAccess ?? raw.can_access ?? false),
+        hasEnrolled: Boolean(raw.hasEnrolled ?? raw.has_enrolled ?? false),
+        reason: raw.reason,
+      };
     } catch (error) {
       console.error('Error verifying program access:', error);
       return {

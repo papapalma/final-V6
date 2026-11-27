@@ -190,7 +190,125 @@ export async function uploadRequirementFile(
     fileName,
   });
 
+  // Sync enrollment_requirements so analytics and submission views reflect uploaded registration documents
+  await syncEnrollmentRequirementsForFile(
+    tenantId,
+    traineeId,
+    requirementType,
+    relativePath,
+    data.uploaded_at || new Date().toISOString()
+  );
+
   return data as TrainingRequirementFileResponse;
+}
+
+/**
+ * Keep enrollment_requirements in sync when a trainee requirement file is uploaded or deleted.
+ * Non-fatal: logs a warning if sync fails so file persistence is never rolled back.
+ */
+async function syncEnrollmentRequirementsForFile(
+  tenantId: string,
+  traineeId: string,
+  requirementType: RequirementType,
+  documentUrl: string | null,
+  submittedAt: string | null
+): Promise<void> {
+  try {
+    const { data: requirementDef, error: defError } = await supabaseAdmin
+      .from('requirement_definitions')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('requirement_type', requirementType)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (defError || !requirementDef?.id) return;
+
+    const { data: enrollments, error: enrollError } = await supabaseAdmin
+      .from('enrollments')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('trainee_id', traineeId);
+
+    if (enrollError || !enrollments || enrollments.length === 0) return;
+
+    const enrollmentIds = enrollments.map((e: { id: string }) => e.id).filter(Boolean);
+    if (enrollmentIds.length === 0) return;
+
+    const { data: existingRows, error: existingError } = await supabaseAdmin
+      .from('enrollment_requirements')
+      .select('id, enrollment_id, submission_status')
+      .eq('tenant_id', tenantId)
+      .eq('requirement_id', requirementDef.id)
+      .in('enrollment_id', enrollmentIds);
+
+    if (existingError) {
+      logger.warn('[TRAINING_REQUIREMENT] Failed querying enrollment_requirements for sync', {
+        traineeId,
+        requirementType,
+        error: existingError.message,
+      });
+      return;
+    }
+
+    const existingByEnrollment = new Map<string, { id: string; submission_status: string }>(
+      (existingRows || []).map((row: any) => [row.enrollment_id, row])
+    );
+
+    if (documentUrl) {
+      for (const enrollmentId of enrollmentIds) {
+        const existing = existingByEnrollment.get(enrollmentId);
+        if (existing) {
+          const nextStatus =
+            existing.submission_status === 'pending' || existing.submission_status === 'rejected'
+              ? 'submitted'
+              : existing.submission_status;
+          await supabaseAdmin
+            .from('enrollment_requirements')
+            .update({
+              document_url: documentUrl,
+              submitted_at: submittedAt,
+              submission_status: nextStatus,
+            })
+            .eq('id', existing.id)
+            .eq('tenant_id', tenantId);
+        } else {
+          await supabaseAdmin
+            .from('enrollment_requirements')
+            .insert({
+              enrollment_id: enrollmentId,
+              requirement_id: requirementDef.id,
+              tenant_id: tenantId,
+              is_applicable: true,
+              submission_status: 'submitted',
+              document_url: documentUrl,
+              submitted_at: submittedAt,
+            });
+        }
+      }
+    } else {
+      for (const row of existingRows || []) {
+        if (row.submission_status === 'submitted') {
+          await supabaseAdmin
+            .from('enrollment_requirements')
+            .update({
+              submission_status: 'pending',
+              document_url: null,
+              submitted_at: null,
+            })
+            .eq('id', row.id)
+            .eq('tenant_id', tenantId);
+        }
+      }
+    }
+  } catch (syncError: any) {
+    logger.warn('[TRAINING_REQUIREMENT] Warning syncing enrollment_requirements', {
+      tenantId,
+      traineeId,
+      requirementType,
+      error: syncError?.message || syncError,
+    });
+  }
 }
 
 /**
@@ -278,6 +396,8 @@ export async function deleteRequirementFile(
   if (updateError) {
     throw updateError;
   }
+
+  await syncEnrollmentRequirementsForFile(tenantId, traineeId, requirementType, null, null);
 
   // Delete file from disk
   if (data?.file_path) {

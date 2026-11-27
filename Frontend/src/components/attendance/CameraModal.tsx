@@ -10,15 +10,20 @@
  *   preview -> JPEG blob -> upload -> verification pipeline without weakening prod security.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Camera, RotateCcw, Check, AlertCircle, Loader2, Sparkles } from 'lucide-react';
+import { X, Camera, RotateCcw, Check, AlertCircle, Loader2, Sparkles, MapPin, MapPinOff, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { getGpsAccuracyInfo, type GpsCaptureState } from '../../lib/gpsFormat';
 
 export interface CameraModalProps {
   isOpen: boolean;
   sessionLabel: 'morning' | 'afternoon';
   onCapture: (blob: Blob) => void;
   onClose: () => void;
+  /** Optional live GPS state pre-warmed by AttendanceSubmitFlow */
+  gpsState?: GpsCaptureState;
+  /** Retry GPS capture without closing the camera or losing the selfie preview */
+  onRetryGps?: () => void;
 }
 
 type CameraState = 'loading' | 'live' | 'simulated_dev' | 'preview' | 'denied' | 'unsupported';
@@ -28,6 +33,8 @@ export default function CameraModal({
   sessionLabel,
   onCapture,
   onClose,
+  gpsState,
+  onRetryGps,
 }: CameraModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -237,10 +244,11 @@ export default function CameraModal({
   }, [revokePreview, startCamera]);
 
   const handleConfirm = useCallback(() => {
+    if (gpsState && gpsState.status !== 'ready') return;
     if (previewBlob) {
       onCapture(previewBlob);
     }
-  }, [previewBlob, onCapture]);
+  }, [previewBlob, onCapture, gpsState]);
 
   const handleClose = useCallback(() => {
     stopStream();
@@ -251,6 +259,18 @@ export default function CameraModal({
   }, [stopStream, revokePreview, onClose]);
 
   if (!isOpen) return null;
+
+  const gpsAccuracyInfo = gpsState?.coords
+    ? getGpsAccuracyInfo(gpsState.coords.accuracy)
+    : null;
+  const isGpsBlocked = Boolean(gpsState && gpsState.status !== 'ready');
+  const isGpsError = Boolean(
+    gpsState &&
+    (gpsState.status === 'denied' ||
+      gpsState.status === 'unavailable' ||
+      gpsState.status === 'inaccurate' ||
+      gpsState.status === 'unsupported')
+  );
 
   return (
     <div
@@ -290,6 +310,58 @@ export default function CameraModal({
           <X className="size-5" />
         </button>
       </div>
+
+      {/* ── Live GPS status pill ── */}
+      {gpsState && gpsState.status !== 'idle' && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-14 left-4 right-4 z-20 flex justify-center pointer-events-none"
+        >
+          {gpsState.status === 'locating' && (
+            <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/70 backdrop-blur-xs py-1 px-3 text-xs font-medium text-white">
+              <Loader2 className="size-3.5 animate-spin text-sky-400 shrink-0" />
+              <span>Locating GPS…</span>
+            </div>
+          )}
+
+          {gpsState.status === 'ready' && gpsAccuracyInfo && (
+            <div
+              className={`pointer-events-auto inline-flex items-center gap-2 rounded-full border backdrop-blur-xs py-1 px-3 text-xs font-medium bg-black/70 ${gpsAccuracyInfo.pillClass}`}
+            >
+              <MapPin className="size-3.5 shrink-0" />
+              <span>
+                GPS Ready · {gpsAccuracyInfo.quality} ({gpsAccuracyInfo.formatted})
+              </span>
+            </div>
+          )}
+
+          {isGpsError && (
+            <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-red-400/50 bg-red-950/85 backdrop-blur-xs py-1 px-3 text-xs font-medium text-red-100">
+              <MapPinOff className="size-3.5 text-red-300 shrink-0" />
+              <span>
+                {gpsState.status === 'denied'
+                  ? 'Location Denied'
+                  : gpsState.status === 'inaccurate'
+                    ? 'GPS Accuracy Too Low'
+                    : gpsState.status === 'unsupported'
+                      ? 'GPS Unsupported'
+                      : 'Location Unavailable'}
+              </span>
+              {onRetryGps && gpsState.status !== 'unsupported' && (
+                <button
+                  type="button"
+                  onClick={onRetryGps}
+                  className="ml-1 inline-flex items-center gap-1 rounded-full bg-white/15 hover:bg-white/25 py-0.5 px-2 text-[11px] font-semibold text-white transition-colors"
+                >
+                  <RefreshCw className="size-3" />
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Main content area ── */}
       <div className="flex-1 flex items-center justify-center relative overflow-hidden">
@@ -407,41 +479,80 @@ export default function CameraModal({
       </div>
 
       {/* ── Bottom action bar ── */}
-      <div className="flex items-center justify-center gap-6 py-6 px-4 z-20">
-        {(state === 'live' || state === 'simulated_dev') && (
-          <button
-            onClick={handleCapture}
-            aria-label="Capture selfie"
-            className="att-punch-trigger flex items-center justify-center size-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 active:scale-95 text-white shadow-lg cursor-pointer"
-          >
-            <Camera className="size-7" />
-          </button>
+      <div className="flex flex-col items-center gap-3 py-6 px-4 z-20">
+        {state === 'preview' && isGpsBlocked && gpsState && (
+          <div className="w-full max-w-md rounded-xl border border-amber-400/40 bg-black/80 backdrop-blur-xs px-4 py-3 text-center space-y-2">
+            <p className="text-xs text-white/90 leading-relaxed">
+              {gpsState.status === 'locating'
+                ? 'Acquiring your GPS location before submitting…'
+                : gpsState.errorMessage ?? 'Location (GPS) is required to submit attendance.'}
+            </p>
+            {isGpsError && onRetryGps && gpsState.status !== 'unsupported' && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={onRetryGps}
+                className="gap-1.5 py-2 px-3.5 bg-white/15 hover:bg-white/25 text-white border-white/25"
+              >
+                <RefreshCw className="size-3.5" />
+                Retry Location
+              </Button>
+            )}
+          </div>
         )}
 
-        {state === 'preview' && (
-          <>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={handleRetake}
-              className="gap-2 py-3 px-5 bg-white/20 hover:bg-white/30 text-white border-white/30"
-              aria-label="Retake selfie"
+        <div className="flex items-center justify-center gap-6">
+          {(state === 'live' || state === 'simulated_dev') && (
+            <button
+              onClick={handleCapture}
+              aria-label="Capture selfie"
+              className="att-punch-trigger flex items-center justify-center size-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 active:scale-95 text-white shadow-lg cursor-pointer"
             >
-              <RotateCcw className="size-4" />
-              Retake
-            </Button>
+              <Camera className="size-7" />
+            </button>
+          )}
 
-            <Button
-              size="lg"
-              onClick={handleConfirm}
-              className="gap-2 py-3 px-5 bg-emerald-500 hover:bg-emerald-600 text-white border-0"
-              aria-label="Confirm selfie"
-            >
-              <Check className="size-4" />
-              Use Photo
-            </Button>
-          </>
-        )}
+          {state === 'preview' && (
+            <>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={handleRetake}
+                className="gap-2 py-3 px-5 bg-white/20 hover:bg-white/30 text-white border-white/30"
+                aria-label="Retake selfie"
+              >
+                <RotateCcw className="size-4" />
+                Retake
+              </Button>
+
+              <Button
+                size="lg"
+                onClick={handleConfirm}
+                disabled={isGpsBlocked}
+                className="gap-2 py-3 px-5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/40 disabled:text-white/70 text-white border-0"
+                aria-label="Confirm selfie"
+              >
+                {gpsState?.status === 'locating' ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Waiting for GPS…
+                  </>
+                ) : isGpsError ? (
+                  <>
+                    <MapPinOff className="size-4" />
+                    GPS Required
+                  </>
+                ) : (
+                  <>
+                    <Check className="size-4" />
+                    Use Photo
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -207,7 +207,8 @@ const { data: user, error: userError } = await supabaseAdmin
   .from('users')
   .select('id, username, email, role, tenant_id')
   .eq('id', userId)
-  .single();
+  .is('deleted_at', null)
+  .maybeSingle();
 
   if (userError || !user) {
   logger.error('[LOGIN_2FA] User not found during 2FA verification', {

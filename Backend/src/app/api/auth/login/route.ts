@@ -31,6 +31,7 @@ import { handleOptionsRequest } from '@/middleware/cors';
 import { checkRateLimit, getRateLimitKey, isAuthRateLimitDisabled } from '@/utils/rateLimit';
 import { authRecoveryService } from '@/services/authRecoveryService';
 import { generateCsrfToken } from '@/lib/security/csrf';
+import { isMissingDeletedAtColumnError } from '@/lib/userSoftDelete';
 import {
   getUserTenants,
   issueTenantSelectionToken,
@@ -72,20 +73,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     if (emailRlResponse) return emailRlResponse as NextResponse;
   }
 
-  // ── Step 1: Find user by email ──────────────────────────────────────────
+  // ── Step 1: Find active (non-archived) user by email ────────────────────
 
   let { data: user, error } = await supabaseAdmin
     .from('users')
     .select('id, email, username, role, password_hash, preferred_language')
     .eq('email', validatedData.email)
-    .single();
+    .is('deleted_at', null)
+    .maybeSingle();
 
-  if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('preferred_language'))) {
-    const fallback = await supabaseAdmin
+  if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('preferred_language') || isMissingDeletedAtColumnError(error))) {
+    const missingDeletedAt = isMissingDeletedAtColumnError(error);
+    let fallbackQuery = supabaseAdmin
       .from('users')
       .select('id, email, username, role, password_hash')
-      .eq('email', validatedData.email)
-      .single();
+      .eq('email', validatedData.email);
+    if (!missingDeletedAt) {
+      fallbackQuery = fallbackQuery.is('deleted_at', null);
+    }
+    const fallback = await fallbackQuery.maybeSingle();
     user = fallback.data ? { ...fallback.data, preferred_language: 'en' } : null;
     error = fallback.error;
   }

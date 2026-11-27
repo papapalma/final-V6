@@ -592,7 +592,7 @@ export default function ReportsPage() {
                   <CardDescription className="text-xs sm:text-sm">Programs with Enrollments</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{programData.length}</h3>}
+                  {loading ? <Skeleton className="h-8 w-20" /> : <h3 className="text-2xl sm:text-3xl font-bold tabular-nums">{programData.filter((p) => p.enrolledCount > 0).length}</h3>}
                 </CardContent>
               </Card>
             </>
@@ -772,8 +772,8 @@ export default function ReportsPage() {
                       </div>
                       {Array.isArray(program.students) && program.students.length > 0 ? (
                         <ul className="grid gap-2 sm:grid-cols-2">
-                          {program.students.map((student: string) => (
-                            <li key={`${program.program}-${student}`} className="rounded-md border px-3.5 py-2 text-sm">
+                          {program.students.map((student: string, studentIndex: number) => (
+                            <li key={`${program.id ?? program.program}-${studentIndex}`} className="rounded-md border px-3.5 py-2 text-sm">
                               {student}
                             </li>
                           ))}

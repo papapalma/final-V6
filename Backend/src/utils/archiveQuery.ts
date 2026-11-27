@@ -9,6 +9,7 @@ export const ARCHIVE_TABLES = {
   item: 'items',
   trainee_status: 'trainee_status_records',
   training_requirement_file: 'training_requirement_files',
+  user: 'users',
 } as const;
 
 export type ArchivedEntityType = keyof typeof ARCHIVE_TABLES;
@@ -74,19 +75,28 @@ export async function queryArchivedItems(
   const offset = (validPage - 1) * validLimit;
 
   try {
-    // Build the base query: only soft-deleted records for this tenant
-    let query = supabaseClient
-      .from(tableName)
-      .select('*', { count: 'exact' })
-      .not('deleted_at', 'is', null) // WHERE deleted_at IS NOT NULL
-      .eq('tenant_id', tenantId);
+    // Build the base query: only soft-deleted records for this tenant.
+    // Users are tenant-scoped via `users_tenants` and must never select `password_hash`.
+    const isUsersTable = tableName === 'users';
+    const client = supabaseClient as any;
+    let query = isUsersTable
+      ? client
+          .from('users')
+          .select(
+            'id, email, username, role, deleted_at, created_at, updated_at, users_tenants!inner(tenant_id)',
+            { count: 'exact' }
+          )
+          .not('deleted_at', 'is', null)
+          .eq('users_tenants.tenant_id', tenantId)
+          .neq('role', 'super_admin')
+      : client
+          .from(tableName)
+          .select('*', { count: 'exact' })
+          .not('deleted_at', 'is', null) // WHERE deleted_at IS NOT NULL
+          .eq('tenant_id', tenantId);
 
     // Apply search filter if provided
     if (search) {
-      // Search on common fields (adjust based on table structure if needed)
-      // For trainees: search by first_name, last_name, email
-      // For programs: search by name
-      // For trainee_status_records: search by id (minimal)
       const searchFields = getSearchFieldsForTable(tableName);
       if (searchFields.length > 0) {
         const searchCondition = searchFields
@@ -110,10 +120,14 @@ export async function queryArchivedItems(
       throw new Error(`Failed to query archived items from ${tableName}: ${error.message}`);
     }
 
+    const sanitizedData = isUsersTable
+      ? (data || []).map(({ users_tenants: _ut, ...rest }: any) => rest)
+      : data || [];
+
     const totalPages = Math.ceil((count || 0) / validLimit);
 
     return {
-      data: data || [],
+      data: sanitizedData,
       count: count || 0,
       page: validPage,
       limit: validLimit,
@@ -133,8 +147,10 @@ function getSearchFieldsForTable(tableName: string): string[] {
   const searchFieldsMap: Record<string, string[]> = {
     trainees: ['first_name', 'last_name', 'email'],
     programs: ['name'],
+    items: ['name'],
     trainee_status_records: ['id'], // Limited search capability
     training_requirement_files: ['name', 'file_name'],
+    users: ['username', 'email'],
   };
   return searchFieldsMap[tableName] || [];
 }
@@ -145,6 +161,6 @@ function getSearchFieldsForTable(tableName: string): string[] {
  */
 function supportsArchive(tableName: string): boolean {
   // Only these tables support soft deletes
-  const archiveSupportedTables = ['trainees', 'programs', 'trainee_status_records', 'training_requirement_files'];
+  const archiveSupportedTables = ['trainees', 'programs', 'items', 'trainee_status_records', 'training_requirement_files', 'users'];
   return archiveSupportedTables.includes(tableName);
 }

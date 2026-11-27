@@ -178,6 +178,8 @@ self.addEventListener('push', (event) => {
     body: data.body || 'You have a new update from BMDC',
     icon: data.icon || '/icons/bmdc-logo-192x192.png',
     badge: data.badge || '/icons/bmdc-logo-72x72.png',
+    tag: data.tag || 'bmdc-notification',
+    renotify: Boolean(data.tag),
     vibrate: [100, 50, 100],
     data: {
       url: data.url || '/'
@@ -193,16 +195,20 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = event.notification.data?.url || '/';
+  const resolvedUrl = new URL(targetUrl, self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
       for (const client of clientList) {
-        if (client.url === targetUrl && 'focus' in client) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          if (client.url !== resolvedUrl && 'navigate' in client) {
+            await client.navigate(resolvedUrl).catch(() => {});
+          }
           return client.focus();
         }
       }
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        return self.clients.openWindow(resolvedUrl);
       }
     })
   );

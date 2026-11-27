@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext } from '@/middleware/tenantContext';
+import { handleOptionsRequest, corsResponse } from '@/middleware/cors';
 import { logger } from '@/utils/logger';
 import { deleteRequirementFile } from '@/services/trainingRequirementService';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+
+export async function OPTIONS(request: NextRequest) {
+  return handleOptionsRequest(request);
+}
 
 export async function DELETE(
   request: NextRequest,
@@ -10,13 +15,13 @@ export async function DELETE(
 ) {
   try {
     const ctxResult = requireTenantContext(request);
-    if (ctxResult.error) return ctxResult.error as NextResponse;
+    if (ctxResult.error) return corsResponse(ctxResult.error as NextResponse, request);
     const context = ctxResult.context!;
 
     const { id: traineeId, type: requirementType } = await params;
 
     if (!requirementType) {
-      return NextResponse.json({ error: 'Invalid requirement type' }, { status: 400 });
+      return corsResponse({ error: 'Invalid requirement type' }, request, { status: 400 });
     }
 
     const { data: trainee, error: traineeError } = await supabaseAdmin
@@ -26,18 +31,18 @@ export async function DELETE(
       .single();
 
     if (traineeError || !trainee) {
-      return NextResponse.json({ error: 'Trainee not found' }, { status: 404 });
+      return corsResponse({ error: 'Trainee not found' }, request, { status: 404 });
     }
 
-    if (trainee.tenant_id !== context.tenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    if (trainee.tenant_id !== context.tenantId && !context.isSuperAdmin) {
+      return corsResponse({ error: 'Unauthorized' }, request, { status: 403 });
     }
 
-    await deleteRequirementFile(context.tenantId, traineeId, requirementType as any);
+    await deleteRequirementFile(trainee.tenant_id, traineeId, requirementType as any);
     logger.info('Requirement file deleted', { traineeId, requirementType, userId: context.userId });
-    return NextResponse.json({ success: true });
+    return corsResponse({ success: true }, request);
   } catch (error: any) {
     logger.error('Failed to delete requirement file', { error: error?.message });
-    return NextResponse.json({ error: 'Failed to delete file' }, { status: 500 });
+    return corsResponse({ error: 'Failed to delete file' }, request, { status: 500 });
   }
 }

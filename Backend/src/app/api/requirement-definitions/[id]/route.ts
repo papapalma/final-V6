@@ -94,8 +94,8 @@ export const PATCH = withErrorHandler(async (
 
   const { tenantId, role } = ctxResult.context;
 
-  // 2. Check if user has admin role
-  if (role !== 'admin' && role !== 'local_admin' && role !== 'super_admin') {
+  // 2. Check if user has admin or training coordinator role
+  if (role !== 'admin' && role !== 'local_admin' && role !== 'super_admin' && role !== 'staff_training_coordinator') {
     return forbiddenResponse('Only admins can update requirement definitions');
   }
 
@@ -214,8 +214,8 @@ export const DELETE = withErrorHandler(async (
 
   const { tenantId, role } = ctxResult.context;
 
-  // 2. Check if user has admin role
-  if (role !== 'admin' && role !== 'local_admin' && role !== 'super_admin') {
+  // 2. Check if user has admin or training coordinator role
+  if (role !== 'admin' && role !== 'local_admin' && role !== 'super_admin' && role !== 'staff_training_coordinator') {
     return forbiddenResponse('Only admins can delete requirement definitions');
   }
 

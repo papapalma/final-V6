@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { chunkIds, fetchAllRows } from '@/lib/supabasePagination';
 import { db } from '@/lib/db';
 import { Program } from '@/types';
 import { CreateProgramInput, UpdateProgramInput } from '@/utils/validators';
@@ -82,18 +83,36 @@ export class ProgramService {
     const programIds = programsList.map((p) => p.id).filter(Boolean);
     const includeRegistrations = options?.includeRegistrationCounts === true;
 
-    const enrollmentsPromise = supabaseAdmin
-      .from('enrollments')
-      .select('program_id, tenant_id')
-      .in('program_id', programIds)
-      .eq('status', 'enrolled');
+    const programChunks = chunkIds(programIds, 150);
+
+    const enrollmentsPromise = Promise.all(
+      programChunks.map((progChunk) =>
+        fetchAllRows<{ program_id: string; tenant_id?: string | null }>(() =>
+          supabaseAdmin
+            .from('enrollments')
+            .select('program_id, tenant_id')
+            .in('program_id', progChunk)
+            .eq('status', 'enrolled')
+        )
+      )
+    )
+      .then((batches) => ({ data: batches.flat(), error: null as Error | null }))
+      .catch((error: Error) => ({ data: null, error }));
 
     const registrationsPromise = includeRegistrations
-      ? supabaseAdmin
-          .from('enrollments')
-          .select('program_id, trainee_id, trainee:trainees!inner(id, tenant_id, registration_status)')
-          .in('program_id', programIds)
-          .in('trainee.registration_status', ['pending', 'approved'])
+      ? Promise.all(
+          programChunks.map((progChunk) =>
+            fetchAllRows<any>(() =>
+              supabaseAdmin
+                .from('enrollments')
+                .select('program_id, trainee_id, trainee:trainees!inner(id, tenant_id, registration_status)')
+                .in('program_id', progChunk)
+                .in('trainee.registration_status', ['pending', 'approved'])
+            )
+          )
+        )
+          .then((batches) => ({ data: batches.flat(), error: null as Error | null }))
+          .catch((error: Error) => ({ data: null, error }))
       : Promise.resolve({ data: null, error: null });
 
     const [enrollmentsRes, registrationsRes] = await Promise.all([

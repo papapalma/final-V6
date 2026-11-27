@@ -7,6 +7,7 @@ import { withErrorHandler } from '@/middleware/errorHandler';
 import { handleOptionsRequest } from '@/middleware/cors';
 import { checkRateLimit, getRateLimitKey } from '@/utils/rateLimit';
 import { authRecoveryService } from '@/services/authRecoveryService';
+import { isMissingDeletedAtColumnError } from '@/lib/userSoftDelete';
 import { logger } from '@/utils/logger';
 import { activityLogService } from '@/services/activityLogService';
 
@@ -51,13 +52,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     return unauthorizedResponse('Invalid or expired refresh token');
   }
 
-  const { data: user, error } = await supabaseAdmin
+  let { data: user, error } = await supabaseAdmin
     .from('users')
-    .select('id, email, username, role, tenant_id')
+    .select('id, email, username, role, tenant_id, deleted_at')
     .eq('id', rotated.userId)
     .single();
 
-  if (error || !user) {
+  if (error && isMissingDeletedAtColumnError(error)) {
+    const fallback = await supabaseAdmin
+      .from('users')
+      .select('id, email, username, role, tenant_id')
+      .eq('id', rotated.userId)
+      .single();
+    user = fallback.data ? { ...fallback.data, deleted_at: null } : null;
+    error = fallback.error;
+  }
+
+  if (error || !user || user.deleted_at) {
     return unauthorizedResponse('User not found');
   }
 

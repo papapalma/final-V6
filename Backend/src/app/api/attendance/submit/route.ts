@@ -50,6 +50,7 @@ import {
 } from '@/utils/responses';
 import { detectCompressionBomb } from '@/lib/security/decompression-bomb';
 import { validateGPS, validateDeviceInfo, validateJsonbSize, validateGeofence, getGeofenceForProgram } from '@/lib/security/index';
+import { reverseGeocode } from '@/lib/reverseGeocode';
 import { maybeEncrypt, isEncryptionEnabled } from '@/lib/fileEncryption';
 import { checkDuplicateSubmission, recordSubmission } from '@/lib/duplicateSubmissionDetection';
 import { getPHTDateComponents } from '@/lib/timezone';
@@ -442,63 +443,57 @@ const imageBuffer = Buffer.from(await file.arrayBuffer());
     }
   }
 
-  // Ensure tenant directories exist (lazy init)
-
-await initTenantDirectories(tenantId);
-
-  // Store selfie and get relative path
-
-const selfiePath = await storeSelfie(
-  imageBuffer,
-  tenantId,
-  trainee.id,
-  session.id,
-  fields.session_label
-  );
-
-  // Parse optional fields
-
-const gpsLat  = fields.gps_lat  ? parseFloat(fields.gps_lat)  : undefined;
+  // Parse and validate required GPS coordinates BEFORE storing selfie on disk
+  const gpsLat  = fields.gps_lat  ? parseFloat(fields.gps_lat)  : undefined;
   const gpsLng  = fields.gps_lng  ? parseFloat(fields.gps_lng)  : undefined;
   const gpsAcc  = fields.gps_accuracy ? parseFloat(fields.gps_accuracy) : undefined;
-  const gpsAddress = fields.gps_address  ?? undefined;
+  let gpsAddress = fields.gps_address?.trim() || undefined;
 
-  // Validate GPS coordinates if provided
-  if (gpsLat !== undefined || gpsLng !== undefined) {
-    const gpsValidation = validateGPS(gpsLat, gpsLng, gpsAcc);
-    if (!gpsValidation.valid) {
-      return errorResponse(gpsValidation.reason || 'Invalid GPS data', 400);
-    }
+  if (gpsLat === undefined || gpsLng === undefined) {
+    return errorResponse(
+      'Location (GPS) is required to submit attendance. Please enable location access and try again.',
+      400
+    );
+  }
 
-    // Task 22: Validate geofence (check if GPS is within authorized location)
-    // ponytail: simple geofence check (upgrade: support multiple geofences per program)
-    if (trainee.program_id) {
-      const geofence = await getGeofenceForProgram(trainee.program_id, tenantId);
-      
-      if (geofence) {
-        // Geofence exists for this program - validate GPS against it
-        const geofenceValidation = validateGeofence(gpsLat!, gpsLng!, gpsAcc, geofence);
-        if (!geofenceValidation.valid) {
-          // Log geofence violation
-          await activityLogService.logAction(
-            authResult.user.userId,
-            'geofence_violation',
-            'attendance',
-            `violation_${session.id}`,
-            {
-              trainee_id: trainee.id,
-              session_id: session.id,
-              reason: geofenceValidation.reason,
-              gps_lat: gpsLat,
-              gps_lng: gpsLng,
-              gps_accuracy: gpsAcc,
-            }
-          );
-          return errorResponse(geofenceValidation.reason || 'Location outside authorized area', 403);
-        }
+  const gpsValidation = validateGPS(gpsLat, gpsLng, gpsAcc);
+  if (!gpsValidation.valid) {
+    return errorResponse(gpsValidation.reason || 'Invalid GPS data', 400);
+  }
+
+  // Task 22: Validate geofence (check if GPS is within authorized location)
+  // ponytail: simple geofence check (upgrade: support multiple geofences per program)
+  if (trainee.program_id) {
+    const geofence = await getGeofenceForProgram(trainee.program_id, tenantId);
+
+    if (geofence) {
+      // Geofence exists for this program - validate GPS against it
+      const geofenceValidation = validateGeofence(gpsLat, gpsLng, gpsAcc, geofence);
+      if (!geofenceValidation.valid) {
+        // Log geofence violation
+        await activityLogService.logAction(
+          authResult.user.userId,
+          'geofence_violation',
+          'attendance',
+          `violation_${session.id}`,
+          {
+            trainee_id: trainee.id,
+            session_id: session.id,
+            reason: geofenceValidation.reason,
+            gps_lat: gpsLat,
+            gps_lng: gpsLng,
+            gps_accuracy: gpsAcc,
+          }
+        );
+        return errorResponse(geofenceValidation.reason || 'Location outside authorized area', 403);
       }
-      // If no geofence exists, GPS validation alone is sufficient
     }
+    // If no geofence exists, GPS validation alone is sufficient
+  }
+
+  // Best-effort reverse geocode when client did not supply an address (cached, 2.5s timeout, non-blocking)
+  if (!gpsAddress) {
+    gpsAddress = await reverseGeocode(gpsLat, gpsLng);
   }
 
   // Task 15.3: Validate gps_address JSONB size limit if provided
@@ -518,6 +513,20 @@ const gpsLat  = fields.gps_lat  ? parseFloat(fields.gps_lat)  : undefined;
       }
     }
   }
+
+  // Ensure tenant directories exist (lazy init)
+
+await initTenantDirectories(tenantId);
+
+  // Store selfie and get relative path
+
+const selfiePath = await storeSelfie(
+  imageBuffer,
+  tenantId,
+  trainee.id,
+  session.id,
+  fields.session_label
+  );
 
   // Extract IP from headers
 

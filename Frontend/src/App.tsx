@@ -208,10 +208,10 @@ export default function App() {
                   <Route path="/settings"              element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
                   <Route path="/admin/landing-content" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><LandingContentEditorPage /></ProtectedRoute>} />
                   <Route path="/admin/announcements" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><AnnouncementsManagementPage /></ProtectedRoute>} />
-                  <Route path="/admin/requirements" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><RequirementsManagementPage /></ProtectedRoute>} />
-                  <Route path="/admin/requirements/new" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><RequirementDetailPage /></ProtectedRoute>} />
-                  <Route path="/admin/requirements/:id" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><RequirementDetailPage /></ProtectedRoute>} />
-                  <Route path="/admin/requirements/:id/edit" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><RequirementDetailPage /></ProtectedRoute>} />
+                  <Route path="/admin/requirements" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin', 'staff_training_coordinator']}><RequirementsManagementPage /></ProtectedRoute>} />
+                  <Route path="/admin/requirements/new" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin', 'staff_training_coordinator']}><RequirementDetailPage /></ProtectedRoute>} />
+                  <Route path="/admin/requirements/:id" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin', 'staff_training_coordinator']}><RequirementDetailPage /></ProtectedRoute>} />
+                  <Route path="/admin/requirements/:id/edit" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin', 'staff_training_coordinator']}><RequirementDetailPage /></ProtectedRoute>} />
                   <Route path="/admin/archive" element={<ProtectedRoute allowedRoles={['local_admin', 'super_admin']}><ArchivePage /></ProtectedRoute>} />
                   <Route path="/account-management"    element={<ProtectedRoute><AccountManagementPage /></ProtectedRoute>} />
                   <Route path="/non-attendance-dates"  element={<ProtectedRoute><NonAttendanceDatesPage /></ProtectedRoute>} />

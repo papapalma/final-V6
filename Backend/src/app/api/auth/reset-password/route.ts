@@ -175,12 +175,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Find user by email (case-insensitive)
+    // Find active user by email (case-insensitive)
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .ilike('email', normalizedEmail)
-      .single();
+      .is('deleted_at', null)
+      .maybeSingle();
 
     if (userError || !user) {
       logger.error('[PASSWORD_RESET] User not found during reset', { email: normalizedEmail });

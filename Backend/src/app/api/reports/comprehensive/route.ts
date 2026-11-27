@@ -137,8 +137,8 @@ if (startDate) activityQuery = activityQuery.gte('created_at', startDate);
     anomaliesQuery,
     activityQuery,
     user.role !== 'super_admin'
-      ? supabaseAdmin.from('users').select('id, role, email, username, created_at').eq('tenant_id', user.tenantId)
-      : supabaseAdmin.from('users').select('id, role, email, username, created_at'),
+      ? supabaseAdmin.from('users').select('id, role, email, username, created_at').eq('tenant_id', user.tenantId).is('deleted_at', null)
+      : supabaseAdmin.from('users').select('id, role, email, username, created_at').is('deleted_at', null),
   ]);
 
   if (itemsError) throw itemsError;

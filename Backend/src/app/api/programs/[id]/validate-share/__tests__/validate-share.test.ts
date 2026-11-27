@@ -394,13 +394,13 @@ describe('Program Validation Endpoint - GET /api/programs/{programId}/validate-s
       }
     });
 
-    it('should validate that only active programs pass validation (Property 3 - Status Check)', async () => {
+    it('should validate that only active or upcoming programs pass validation (Property 3 - Status Check)', async () => {
       const { programService } = require('@/services/programService');
 
       const statuses = ['active', 'upcoming', 'completed', 'cancelled'];
       const expectedResults = {
         active: true,
-        upcoming: false,
+        upcoming: true,
         completed: false,
         cancelled: false,
       };

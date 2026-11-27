@@ -13,6 +13,8 @@ export interface ArchivedItem {
   id: string;
   first_name?: string;
   last_name?: string;
+  username?: string;
+  role?: string;
   email?: string;
   name?: string;
   file_name?: string;

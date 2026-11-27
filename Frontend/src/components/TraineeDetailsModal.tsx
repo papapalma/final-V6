@@ -69,33 +69,31 @@ export default function TraineeDetailsModal({ trainee, open, onOpenChange, onEdi
 
   const loadRequirements = async () => {
     if (!trainee) {
-      console.log('No trainee, skipping loadRequirements');
+      setRequirements({});
       return;
     }
     try {
       setLoadingRequirements(true);
-      console.log('Fetching requirements for trainee:', trainee.id);
-      const response = await api.get(`/trainees/${String(trainee.id)}/requirements`);
-      console.log('API Response:', response);
-      console.log('Response data:', response.data);
-      console.log('Files array:', response.data?.files);
-      
-      const files = response?.data?.files || (response as any)?.files;
-      if (files && Array.isArray(files)) {
-        console.log('Files is array, processing...');
+      setRequirements({});
+      const response = await api.get(`/trainees/${String(trainee.id)}/requirements`, undefined, {
+        headers: { 'X-Skip-Cache': 'true' },
+      });
+      const files =
+        response?.data?.files ||
+        (response as any)?.files ||
+        (Array.isArray(response?.data) ? response.data : []);
+      if (Array.isArray(files)) {
         const reqMap: Record<string, any> = {};
         files.forEach((file: any) => {
-          console.log('Processing file:', file.requirement_type);
-          reqMap[file.requirement_type] = file;
+          if (file?.requirement_type) {
+            reqMap[file.requirement_type] = file;
+          }
         });
-        console.log('Final map:', reqMap);
-        console.log('Map keys:', Object.keys(reqMap));
         setRequirements(reqMap);
-      } else {
-        console.warn('No files array in response:', { responseData: response.data, responseDirect: response });
       }
     } catch (error: any) {
       console.error('Failed to load requirements:', error);
+      setRequirements({});
     } finally {
       setLoadingRequirements(false);
     }
@@ -117,6 +115,7 @@ export default function TraineeDetailsModal({ trainee, open, onOpenChange, onEdi
 
   const handleOpenFilePreview = (file: any) => {
     setSelectedFile({
+      file_id: file.id,
       file_path: file.file_path,
       file_name: file.file_name,
       requirement_type: file.requirement_type,
@@ -125,10 +124,12 @@ export default function TraineeDetailsModal({ trainee, open, onOpenChange, onEdi
     setFilePreviewOpen(true);
   };
 
-  const handleDownloadFile = async (filePath: string, fileName: string, requirementType?: string) => {
+  const handleDownloadFile = async (_filePath: string, fileName: string, requirementType?: string, fileId?: string) => {
     if (!trainee || !requirementType) return;
     try {
-      const downloadUrl = `/trainees/${String(trainee.id)}/requirements/${requirementType}/download`;
+      const downloadUrl = `/trainees/${String(trainee.id)}/requirements/${requirementType}/download${
+        fileId ? `?file_id=${encodeURIComponent(fileId)}` : ''
+      }`;
       await api.downloadFile(downloadUrl, fileName);
     } catch (error) {
       console.error('Download failed:', error);
@@ -384,7 +385,7 @@ export default function TraineeDetailsModal({ trainee, open, onOpenChange, onEdi
                             <Eye className="size-4 text-primary" />
                           </button>
                           <button
-                            onClick={() => handleDownloadFile(req.file_path, req.file_name, req.requirement_type)}
+                            onClick={() => handleDownloadFile(req.file_path, req.file_name, req.requirement_type, req.id)}
                             className="p-1.5 rounded hover:bg-primary/10 transition-colors"
                             title="Download"
                           >

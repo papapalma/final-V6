@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { fetchAllRows } from '@/lib/supabasePagination';
 import { hashPassword } from '@/lib/auth';
+import { isMissingDeletedAtColumnError } from '@/lib/userSoftDelete';
 import { successResponse, createdResponse, errorResponse } from '@/utils/responses';
 import { requireRoleAsync } from '@/middleware/auth';
 import { withErrorHandler } from '@/middleware/errorHandler';
@@ -33,39 +35,49 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const search = searchParams.get('search') || '';
   const role = searchParams.get('role');
 
-  // Local admins can only see users in their tenant
+  // Single-query inner join + pagination avoids PostgREST `.in()` URL overflow on 500+ tenant users
+  const buildUsersQuery = (filterSoftDeleted: boolean) => {
+    let userQuery = supabaseAdmin
+      .from('users')
+      .select('id, email, username, role, created_at, updated_at, users_tenants!inner(tenant_id)')
+      .eq('users_tenants.tenant_id', user.tenantId)
+      .not('role', 'eq', 'super_admin')
+      .order('created_at', { ascending: false });
 
-let query = supabaseAdmin
-  .from('users_tenants')
-  .select('user_id')
-  .eq('tenant_id', user.tenantId);
+    if (filterSoftDeleted) {
+      userQuery = userQuery.is('deleted_at', null);
+    }
 
-  const { data: tenantUsers, error: tenantError } = await query;
-  if (tenantError) throw tenantError;
+    if (search) {
+      userQuery = userQuery.or(`email.ilike.%${search}%,username.ilike.%${search}%`);
+    }
 
-  const userIds = tenantUsers?.map(ut => ut.user_id) || [];
-  
-  if (userIds.length === 0) {
-  return successResponse([]);
+    if (role) {
+      userQuery = userQuery.eq('role', role);
+    }
+
+    return userQuery;
+  };
+
+  let rows: any[];
+  try {
+    rows = await fetchAllRows<any>(() => buildUsersQuery(true));
+  } catch (err) {
+    if (isMissingDeletedAtColumnError(err)) {
+      rows = await fetchAllRows<any>(() => buildUsersQuery(false));
+    } else {
+      throw err;
+    }
   }
 
-let userQuery = supabaseAdmin
-  .from('users')
-  .select('id, email, username, role, created_at, updated_at')
-  .in('id', userIds)
-  .not('role', 'eq', 'super_admin')  // Explicitly exclude super admin accounts
-  .order('created_at', { ascending: false });
-
-  if (search) {
-  userQuery = userQuery.or(`email.ilike.%${search}%,username.ilike.%${search}%`);
-  }
-
-if (role) {
-  userQuery = userQuery.eq('role', role);
-  }
-
-const { data: users, error } = await userQuery;
-  if (error) throw error;
+  const seen = new Set<string>();
+  const users = rows
+    .filter((row) => {
+      if (!row?.id || seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    })
+    .map(({ users_tenants: _ut, ...rest }) => rest);
 
   return successResponse(users);
 });
@@ -82,15 +94,45 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const body = await request.json();
   const validatedData = createUserSchema.parse(body);
 
-  // Check if user already exists
-  const { data: existingUser } = await supabaseAdmin
-  .from('users')
-  .select('id')
-  .eq('email', validatedData.email)
-  .single();
+  // Check if an active user already exists with this email or username
+  let { data: existingUser, error: existingEmailErr } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .ilike('email', validatedData.email)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (existingEmailErr && isMissingDeletedAtColumnError(existingEmailErr)) {
+    const fallback = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .ilike('email', validatedData.email)
+      .maybeSingle();
+    existingUser = fallback.data;
+  }
 
   if (existingUser) {
-  return errorResponse('User with this email already exists', 409);
+    return errorResponse('User with this email already exists', 409);
+  }
+
+  let { data: existingUsername, error: existingUsernameErr } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('username', validatedData.username)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (existingUsernameErr && isMissingDeletedAtColumnError(existingUsernameErr)) {
+    const fallback = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('username', validatedData.username)
+      .maybeSingle();
+    existingUsername = fallback.data;
+  }
+
+  if (existingUsername) {
+    return errorResponse('Username is already in use', 409);
   }
 
 const passwordHash = await hashPassword(validatedData.password);

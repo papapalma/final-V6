@@ -1,122 +1,150 @@
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import ArchivePage, { ENTITY_TYPES } from './ArchivePage';
+import api from '../services/api';
+import { toast } from 'sonner';
 
-// Simple unit tests focused on component logic rather than full integration
+const mockRefetch = vi.fn().mockResolvedValue(undefined);
+const mockSetFilters = vi.fn();
 
-describe('ArchivePage Component Logic', () => {
+const mockArchiveState = {
+  items: [
+    {
+      id: 'u-archived-1',
+      username: 'Paolo',
+      email: 'paolo@bmdc.site',
+      role: 'staff_training_coordinator',
+      deleted_at: '2026-10-01T00:00:00Z',
+      daysSinceDeleted: 40,
+      daysRemaining: 0,
+      eligibleForPurge: true,
+    },
+  ],
+  loading: false,
+  error: null,
+  filters: { entityType: 'user', search: '', page: 1, limit: 20 },
+  setFilters: mockSetFilters,
+  pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+  refetch: mockRefetch,
+};
+
+vi.mock('react-router-dom', () => ({
+  Navigate: () => <div>Redirected</div>,
+}));
+
+vi.mock('../components/DashboardLayout', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 'u-admin', role: 'local_admin', email: 'admin@bmdc.site', username: 'Admin' },
+    hasPermission: () => true,
+  }),
+}));
+
+vi.mock('../hooks/useArchiveFilters', () => ({
+  useArchiveFilters: () => mockArchiveState,
+}));
+
+vi.mock('../services/api', () => ({
+  default: {
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
+describe('ArchivePage — User Accounts & Dynamic Entity Fixes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
   });
 
-  it('correctly identifies admin role access', () => {
-    const userRole = 'local_admin';
-    const hasAccess = userRole === 'local_admin';
-    expect(hasAccess).toBe(true);
+  it('includes User Accounts in ENTITY_TYPES and renders dynamic User Account badge instead of Trainee', () => {
+    expect(ENTITY_TYPES.some((t) => t.value === 'user' && t.label === 'User Accounts')).toBe(true);
+
+    render(<ArchivePage />);
+
+    expect(screen.getByText('User Account')).toBeInTheDocument();
+    expect(screen.queryByText('Trainee')).not.toBeInTheDocument();
+    expect(screen.getByText('Paolo')).toBeInTheDocument();
+    expect(screen.getByText('paolo@bmdc.site')).toBeInTheDocument();
   });
 
-  it('correctly denies trainee role access', () => {
-    const userRole = 'trainee';
-    const hasAccess = userRole === 'local_admin';
-    expect(hasAccess).toBe(false);
-  });
+  it('sends active entityType (user) on single restore and surfaces email/username collision errors', async () => {
+    vi.mocked(api.patch).mockResolvedValueOnce({
+      data: {
+        restored: [],
+        restoredCount: 0,
+        failed: [{ id: 'u-archived-1', error: 'Cannot restore user: email or username is already in use by an active account' }],
+        failedCount: 1,
+      },
+    } as any);
 
-  it('correctly calculates days remaining color for green (>7 days)', () => {
-    const daysRemaining = 20;
-    const expectedColor =
-      daysRemaining <= 0 ? 'text-red-600' : daysRemaining <= 7 ? 'text-orange-600' : 'text-green-600';
-    expect(expectedColor).toBe('text-green-600');
-  });
+    render(<ArchivePage />);
 
-  it('correctly calculates days remaining color for orange (1-7 days)', () => {
-    const daysRemaining = 5;
-    const expectedColor =
-      daysRemaining <= 0 ? 'text-red-600' : daysRemaining <= 7 ? 'text-orange-600' : 'text-green-600';
-    expect(expectedColor).toBe('text-orange-600');
-  });
+    // Click restore icon button in the row
+    const buttons = screen.getAllByRole('button');
+    const restoreIconBtn = buttons.find((b) => b.className.includes('hover:bg-blue-50'))!;
+    fireEvent.click(restoreIconBtn);
 
-  it('correctly calculates days remaining color for red (0 days)', () => {
-    const daysRemaining = 0;
-    const expectedColor =
-      daysRemaining <= 0 ? 'text-red-600' : daysRemaining <= 7 ? 'text-orange-600' : 'text-green-600';
-    expect(expectedColor).toBe('text-red-600');
-  });
+    expect(await screen.findByText('Restore User Account')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
 
-  it('correctly identifies eligible items for purge', () => {
-    const item1 = { eligible_for_purge: true };
-    const item2 = { eligible_for_purge: false };
-
-    expect(item1.eligible_for_purge).toBe(true);
-    expect(item2.eligible_for_purge).toBe(false);
-  });
-
-  it('correctly maps entity types to colors', () => {
-    const entityColorMap: Record<string, string> = {
-      trainee: 'bg-blue-500/10 text-blue-700',
-      program: 'bg-green-500/10 text-green-700',
-      trainee_status: 'bg-purple-500/10 text-purple-700',
-      training_requirement_file: 'bg-orange-500/10 text-orange-700',
-    };
-
-    expect(entityColorMap['trainee']).toBe('bg-blue-500/10 text-blue-700');
-    expect(entityColorMap['program']).toBe('bg-green-500/10 text-green-700');
-  });
-
-  it('correctly handles selected items with Map', () => {
-    const selectedItems = new Map<string, boolean>();
-
-    // Add items
-    selectedItems.set('item-1', true);
-    selectedItems.set('item-2', true);
-
-    expect(selectedItems.size).toBe(2);
-    expect(selectedItems.has('item-1')).toBe(true);
-
-    // Remove item
-    selectedItems.delete('item-1');
-    expect(selectedItems.size).toBe(1);
-  });
-
-  it('correctly determines bulk purge eligibility', () => {
-    const selectedIds = ['item-1', 'item-2'];
-    const allItems = [
-      { id: 'item-1', eligible_for_purge: true },
-      { id: 'item-2', eligible_for_purge: false },
-      { id: 'item-3', eligible_for_purge: true },
-    ];
-
-    const bulkPurgeDisabled = selectedIds.some((id) => {
-      const item = allItems.find((i) => i.id === id);
-      return item && !item.eligible_for_purge;
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/archive', {
+        entityType: 'user',
+        ids: ['u-archived-1'],
+      });
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/already in use/i));
+      expect(toast.success).not.toHaveBeenCalled();
     });
-
-    expect(bulkPurgeDisabled).toBe(true);
   });
 
-  it('correctly determines bulk purge eligibility when all eligible', () => {
-    const selectedIds = ['item-1', 'item-3'];
-    const allItems = [
-      { id: 'item-1', eligible_for_purge: true },
-      { id: 'item-2', eligible_for_purge: false },
-      { id: 'item-3', eligible_for_purge: true },
-    ];
+  it('restores archived user successfully when no collision occurs', async () => {
+    vi.mocked(api.patch).mockResolvedValueOnce({
+      data: {
+        restored: ['u-archived-1'],
+        restoredCount: 1,
+        failed: [],
+        failedCount: 0,
+      },
+    } as any);
 
-    const bulkPurgeDisabled = selectedIds.some((id) => {
-      const item = allItems.find((i) => i.id === id);
-      return item && !item.eligible_for_purge;
+    render(<ArchivePage />);
+
+    const restoreIconBtn = screen
+      .getAllByRole('button')
+      .find((b) => b.className.includes('hover:bg-blue-50'))!;
+    fireEvent.click(restoreIconBtn);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith('/archive', {
+        entityType: 'user',
+        ids: ['u-archived-1'],
+      });
+      expect(toast.success).toHaveBeenCalledWith('Item restored successfully');
+      expect(mockRefetch).toHaveBeenCalled();
     });
-
-    expect(bulkPurgeDisabled).toBe(false);
-  });
-
-  it('correctly filters entity types', () => {
-    const ENTITY_TYPES = [
-      { value: 'trainee', label: 'Trainees' },
-      { value: 'program', label: 'Programs' },
-      { value: 'trainee_status', label: 'Trainee Status' },
-      { value: 'training_requirement_file', label: 'Training Requirement Files' },
-    ];
-
-    const filtered = ENTITY_TYPES.filter((t) => t.value === 'trainee');
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].label).toBe('Trainees');
   });
 });

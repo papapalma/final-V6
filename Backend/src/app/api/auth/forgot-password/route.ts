@@ -113,7 +113,8 @@ const { data: user, error: userError } = await supabaseAdmin
   .from('users')
   .select('id, email')
   .ilike('email', normalizedEmail)
-  .single();
+  .is('deleted_at', null)
+  .maybeSingle();
 
   // Always return same response for security (prevent user enumeration)
   if (userError || !user) {

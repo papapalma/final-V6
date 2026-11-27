@@ -107,21 +107,20 @@ export default function ProgramEnrollmentPage() {
 
     setEnrolling(true);
     try {
-      // Call the enrollment API
-      const response = await programService.enrollTraineeInProgram(program.id, {
-        trainee_id: user.id,
-      });
+      // Server resolves the canonical trainees.id from the authenticated JWT
+      const response = await programService.enrollTraineeInProgram(program.id, {});
 
       if (response) {
         toast.success('Successfully enrolled in program!');
         logger.info('Trainee enrolled in program', {
-          traineeId: user.id,
+          userId: user.id,
           programId: program.id,
           programName: program.name,
         });
         
         // Clear program from storage after successful enrollment
         localStorage.removeItem('selected_program_id');
+        localStorage.removeItem('selected_program_tenant_id');
         
         // Update UI to show enrolled state
         setIsEnrolled(true);
@@ -135,8 +134,10 @@ export default function ProgramEnrollmentPage() {
       } else {
         toast.error('Failed to enroll in program');
       }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Enrollment failed';
+    } catch (error: any) {
+      const errorMsg =
+        error?.message ||
+        (error instanceof Error ? error.message : 'Enrollment failed');
       toast.error(errorMsg);
       logger.error('Failed to enroll trainee', { error });
     } finally {
